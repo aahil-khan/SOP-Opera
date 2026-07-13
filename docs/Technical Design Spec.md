@@ -1,7 +1,8 @@
 # Technical Design Specification (TDS)
 ### Operational Review Platform — v1.0
 
-Source of truth, in order: PRD v3 → Canonical Domain Model v1.0 → System Interaction & Workflow Specification v1.0 → this document.
+**Implementation authority.** This document is the implementation source of truth. The PRD, Canonical Domain Model, and SIWS describe product intent; where they differ from this spec, implement what is written here.
+
 Audience: 4 engineers, 10-day build, implementing directly against this spec in Cursor.
 Status: Final for implementation. Update in place as decisions are made; don't let this drift from what's actually built.
 
@@ -13,7 +14,9 @@ Status: Final for implementation. Update in place as decisions are made; don't l
 
 ## 1. Overview
 
-The platform runs Operational Reviews for a single plant, single tenant. A Review opens, gathers Context from two providers (Manual Input, Simulator), triggers an AI-generated Assessment over deterministically derived facts, and closes once a human Decision Maker accepts or rejects the AI's Recommendations. The Digital Twin — a static 2D SVG floor plan with clickable, highlightable assets — is the primary way a human sees *why* the AI said what it said. That evidence trace, live, driven by real backend state, is the product's signature moment and the highest-priority thing to get right.
+The platform runs Operational Reviews for a single plant, single tenant. A Review opens, gathers **Context** (live operational information) from two providers (Manual Input, Simulator), triggers an Assessment over deterministically derived facts, and closes once a Decision Maker submits a Decision backed by that Assessment. **Evidence** — frozen Context and the Assessment cited at Decision time — is captured when the Decision is recorded. Physical work happens outside the platform; there is no Execution or Completed review state.
+
+The Digital Twin — a static 2D SVG floor plan with clickable, highlightable assets — is the primary way a human sees *why* the Assessment reached its conclusion. That reasoning trace, live, driven by real backend state, is the product's signature moment and the highest-priority thing to get right.
 
 Everything in this document optimizes for one outcome: four engineers building this in parallel without blocking each other, arriving at a working, demo-ready system in 10 days that is also clean enough to keep building on afterward.
 
@@ -21,13 +24,24 @@ Everything in this document optimizes for one outcome: four engineers building t
 
 ## 2. Engineering Principles
 
-- **The three-way ownership split is enforced in code, not convention.** The AI service can only ever write Assessments and Recommendations. Only a Decision endpoint, invoked by a human-selected role, can write a Decision. Only the Review state machine service can change `reviews.state`. No other code path touches these tables.
+- **The three-way ownership split is enforced in code, not convention.** The AI pipeline can only write **AI Assessments** and their Recommendations. **Manual Assessments** are written only via the dedicated manual-assessment endpoint by an authorized human. Only a Decision endpoint, invoked by a human holding Decision Maker authority, can write a Decision — and every Decision must reference a Complete Assessment (AI or Manual). Only the Review state machine service can change `reviews.state`. No other code path touches these tables.
 - **Derived Facts are deterministic and computed synchronously.** No LLM call ever sees raw Context. Rule functions run in plain Python.
 - **Structured output is enforced, not hoped for.** Every AI call validates against a Pydantic schema. One retry. Then fail loud — a failed Assessment is a valid, visible state, never a silent stall.
 - **State transitions are centralized.** One function is the only legal way to move a Review from one state to another. Nothing else mutates `reviews.state` directly.
 - **No infrastructure the demo doesn't need.** No message broker, no Kubernetes, no CRUD UI for fixtures, no hash-chained audit log. If it doesn't make the Assessment Pipeline or the Digital Twin better, cut it.
 - **Broadcast over targeting.** Single tenant, single plant, a handful of concurrent demo users — every WebSocket event goes to every connected client. The frontend filters by relevance. Building per-user event routing here is solving a problem that doesn't exist yet.
 - **When in doubt, protect these two:** the Operational Assessment Pipeline and the Digital Twin. Every other component should be built at the minimum quality that keeps those two credible.
+
+### 2.1 Terminology
+
+| Term | Meaning |
+| --- | --- |
+| **Context** | Live operational information ingested from providers. Has a validity window; may go stale. |
+| **Evidence** | Immutable snapshot of the Context and Assessment explicitly cited when a Decision is recorded. |
+| **AI Assessment** | Assessment produced by the Assessment Orchestrator via an AI provider (`assessment_type = ai`). |
+| **Manual Assessment** | Assessment authored by a supervisor when AI generation fails (`assessment_type = manual`). Same shape as an AI Assessment; no LLM involved. |
+
+**Retrieved references** (regulations, historical incidents, SOPs) are inputs to the AI retrieval stage — not Evidence until frozen at Decision time.
 
 ---
 
@@ -81,10 +95,10 @@ Purely to reduce ownership confusion during implementation — if a PR touches s
 2. The Context Engine persists it and synchronously runs the Derived Facts rules against currently-valid Context for the affected Asset.
 3. The **Assessment Orchestrator** is the single owner of all reassessment decisions. When Context changes, it executes a deterministic `should_reassess(review, changed_context)` check. Minor telemetry fluctuations do not trigger new runs; only material changes to derived facts (e.g., significant gas increase, worker enters hazardous zone, permit state changes, or equipment status changes) automatically re-trigger Assessment (Review → `Assessing`).
 4. When a Review enters `Assessing`, an Assessment job is created (`status = pending`), and a background task picks it up.
-5. The **Assessment Orchestrator** (Section 5.4) takes the job: it deterministically decides, from the active Derived Facts alone, whether retrieval is required; if so it fetches the relevant Regulations, historical Incidents, and/or SOPs before building anything. It then builds a prompt from Derived Facts + Context references + any retrieved evidence, calls the active AI provider, validates the structured response, retries once on failure, and persists Assessment + Recommendations (or marks the job `failed`).
+5. The **Assessment Orchestrator** (Section 5.4) takes the job: it deterministically decides, from the active Derived Facts alone, whether retrieval is required; if so it fetches the relevant Regulations, historical Incidents, and/or SOPs before building anything. It then builds a prompt from Derived Facts + Context references + any retrieved references, calls the active AI provider, validates the structured response, retries once on failure, and persists an AI Assessment + Recommendations (or marks the job `failed`). On failure, the supervisor may instead submit a Manual Assessment (Section 5.4.2).
 6. A WebSocket event (`assessment.completed` or `assessment.failed`) broadcasts to all clients.
 7. Frontend updates the Review view and the Digital Twin (asset highlight state is derived from the latest Assessment + active Derived Facts).
-8. A Decision Maker submits a Decision. Evidence (the specific Context + Assessment relied on) is frozen at this instant.
+8. A Decision Maker submits a Decision against the active Complete Assessment. Evidence (the cited Context + Assessment) is frozen at this instant.
 9. Review closes → Report generated → Notification events fire → Audit entries have already been written at every step above, not as a final pass.
 
 ---
@@ -93,16 +107,24 @@ Purely to reduce ownership confusion during implementation — if a PR touches s
 
 ### 5.1 Operational Review
 
-The state machine is the spine of the backend. Full state set is implemented; the demo exercises the primary path.
+The state machine is the spine of the backend. **This lifecycle is canonical** — do not map to earlier PRD states (`Context Collection`, `Assessment Running`, etc.). `Execution` and `Completed` are intentionally absent; physical work is outside the platform.
+
+Primary path:
 
 ```text
 Opened → Assessing → Pending Decision → Decided → Closed
+```
+
+Secondary paths:
+
+```text
                  ↑             │
-                 └─────────────┘  (new material Context)
+                 └─────────────┘  (new material Context while Pending Decision)
 Pending Decision → Escalated → Pending Decision / Decided
 Closed → Reopened → Assessing
-
 ```
+
+**Decision outcomes** (canonical): `Approved`, `Approved with Conditions`, `Blocked`. Stored as `approved`, `approved_with_conditions`, `blocked`. Blocked means not proceeding under current conditions. Approved with Conditions means proceeding after stated mitigations.
 
 One service owns every transition:
 
@@ -209,6 +231,21 @@ class AIProvider(Protocol):
 
 Flow: retrieve (if required) → generate → validate → **on failure, one retry with a repair instruction appended** → on second failure, `status = failed`, Review stays in `Assessing`, visibly. Recommendations are a field on the Assessment result, not a separate pipeline stage.
 
+#### 5.4.2 Manual Assessment
+
+Every Decision must reference a Complete Assessment. If AI generation fails, the supervisor is not blocked: they create a **Manual Assessment** instead.
+
+| | AI Assessment | Manual Assessment |
+| --- | --- | --- |
+| `assessment_type` | `ai` | `manual` |
+| Author | Assessment Orchestrator | Supervisor via `POST /reviews/{id}/assessments/manual` |
+| `assessment_metadata` | Full AI observability row | Omitted; `provider` recorded as `"manual"` if a row is kept |
+| Recommendations | From structured AI output | Supervisor-supplied (`text`, `rationale`) |
+
+On AI failure the failed Assessment row is retained for audit. A Manual Assessment is a **new** `assessments` row with `status = complete`. Either completion path transitions the Review to `Pending Decision`.
+
+Recovery flow: **Assessment Failed → Retry AI → Switch Provider (optional) → Create Manual Assessment → Pending Decision → Decision**.
+
 #### 5.4.1 AI Observability
 
 Captured on every attempt, success or failure:
@@ -249,7 +286,7 @@ Not a simulator. A static SVG floor plan for the single plant, with asset locati
 
 Rendering is entirely frontend logic. Clicking an asset opens a side panel showing its current Context, Evidence (if any Review has frozen some), and Incident history. No CAD editing, no automated mapping, no 3D.
 
-**Evidence panel traces the reasoning path.** The side panel lays out, top to bottom, exactly why the AI reached its conclusion: Asset → Context → Derived Facts → Retrieved Evidence → Assessment → Recommendations → Decision.
+**Reasoning trace panel.** The side panel lays out, top to bottom, exactly why the Assessment reached its conclusion: Asset → Context → Derived Facts → Retrieved References → Assessment → Recommendations → Decision. Before a Decision is submitted this shows live Context; after Decision, the cited snapshot is Evidence.
 
 ### 5.6 Simulator
 
@@ -291,12 +328,12 @@ Reacts to the Domain Events list from the SIWS. In-app only, delivered over the 
 
 * `ReviewList` / `ReviewDetail` — the core workflow screens, state-machine-aware.
 * `DigitalTwin` — SVG viewer + toggleable side panel, subscribes to WebSocket stream.
-* `AssessmentPanel` — shows the AI's Assessment, Recommendations, and confidence.
+* `AssessmentPanel` — shows the active Assessment (AI or Manual), Recommendations, and confidence.
 * `AIOpsDashboard` — read-only, polls/subscribes to aggregate metrics including Assessment Success Rate, Failed Assessments, and Validation Failures.
 * `ReportsView`, `NotificationsPanel`.
 * `DemoModeBar` — persistent control strip: scenario selector, start, reset.
 
-**Assessment Failure UX:** Rather than displaying a raw error when generation fails, the UI implements a structured recovery flow: **Assessment Failed → Retry → Switch Provider (if configured) → Continue Manual Review**. The operator must never be blocked from making a Decision simply because the AI failed, reinforcing the platform's human-in-the-loop philosophy.
+**Assessment Failure UX:** Rather than displaying a raw error when generation fails, the UI implements a structured recovery flow: **Assessment Failed → Retry AI → Switch Provider (if configured) → Create Manual Assessment → Decision**. The operator is never blocked from progressing because the AI failed — they author a Manual Assessment and proceed. Every Decision remains backed by a Complete Assessment.
 
 ---
 
@@ -351,24 +388,35 @@ class Recommendation(BaseModel):
     rationale: str
     disposition: Literal["proposed", "accepted", "rejected"] | None
 
+class RecommendationIn(BaseModel):
+    text: str
+    rationale: str
+
+class ManualAssessmentIn(BaseModel):
+    summary: str
+    risk_level: Literal["nominal", "elevated", "blocking"]
+    recommendations: list[RecommendationIn]
+
 class Assessment(BaseModel):
     id: UUID
     review_id: UUID
+    assessment_type: Literal["ai", "manual"]
     status: Literal["pending", "generating", "complete", "failed", "superseded"]
     risk_level: Literal["nominal", "elevated", "blocking"]
     summary: str
     recommendations: list[Recommendation]
     derived_fact_ids: list[UUID]
-    metadata: AssessmentMetadata
+    metadata: AssessmentMetadata | None  # None for manual assessments
 
 class Decision(BaseModel):
     id: UUID
     review_id: UUID
     assessment_id: UUID
-    decided_by: UUID          
+    decided_by: UUID
+    # Stored values; display labels: Approved | Approved with Conditions | Blocked
     outcome: Literal["approved", "approved_with_conditions", "blocked"]
     recommendation_dispositions: dict[UUID, Literal["accepted", "rejected"]]
-    conditions: str | None
+    conditions: str | None  # Required when outcome is approved_with_conditions
     submitted_at: datetime
 
 class Review(BaseModel):
@@ -388,7 +436,7 @@ class Review(BaseModel):
 | --- | --- |
 | Reviews | `POST /reviews`, `GET /reviews`, `GET /reviews/{id}`, `POST /reviews/{id}/escalate`, `POST /reviews/{id}/reopen` |
 | Context | `POST /context`, `GET /assets/{id}/context` |
-| Assessments | `GET /reviews/{id}/assessments`, `POST /reviews/{id}/assessments/retry` |
+| Assessments | `GET /reviews/{id}/assessments`, `POST /reviews/{id}/assessments/retry`, `POST /reviews/{id}/assessments/manual` |
 | Decisions | `POST /reviews/{id}/decisions` |
 | Reports | `GET /reviews/{id}/reports`, `GET /reports/{id}` |
 | Notifications | `GET /notifications` |
@@ -415,7 +463,7 @@ PostgreSQL, one schema. Audit is insert-only by team convention.
 | `review_participants` | review_id, worker_id, role, active |  |
 | `context_entries` | id, asset_id, category, payload (jsonb), provider, valid_from, valid_until, confidence |  |
 | `derived_facts` | id, asset_id, fact_type, value, computed_at, source_context_ids |  |
-| `assessments` | id, review_id, status, risk_level, summary, derived_fact_ids, version |  |
+| `assessments` | id, review_id, assessment_type, status, risk_level, summary, derived_fact_ids, version | `assessment_type`: `ai` \| `manual` |
 | `assessment_metadata` | assessment_id, provider, model, prompt_version, tokens_in, tokens_out, cost_usd, latency_ms, confidence, retrieved_evidence_ids |  |
 | `recommendations` | id, assessment_id, text, rationale, disposition |  |
 | `decisions` | id, review_id, assessment_id, decided_by, outcome, conditions, submitted_at |  |
@@ -442,6 +490,7 @@ backend/
     context/           routes.py, providers/manual.py, providers/simulator.py,
                        derived_facts.py, schemas.py
     assessment/        orchestrator.py, retrieval.py, pipeline.py,
+                       manual.py,
                        providers/openai_compatible.py,
                        providers/ollama.py, providers/mock.py, schemas.py
     decisions/         routes.py, service.py
@@ -517,7 +566,7 @@ All three run through the same deterministic Simulator engine via YAML scenario 
 | — | — | (material change check via `should_reassess`) | Review auto-opens / re-enters Assessing |
 | Twin highlights | — | — | Digital Twin shows the affected zone in blocking state |
 | AI blocks | — | — | Assessment completes with `risk_level = blocking` |
-| Supervisor opens Assessment | — | — | Evidence trace shows exactly which Context/Derived Facts drove the block |
+| Supervisor opens Assessment | — | — | Reasoning trace shows exactly which Context/Derived Facts drove the block |
 
 Everything downstream of this table (dashboards, Reports, AI Ops, architecture discussion) is explicitly secondary in the demo video and should not compete with this sequence for engineering time.
 
