@@ -1,7 +1,8 @@
-"""DB session plumbing — Phase 0 skeleton. Schema applied on startup when DB is reachable."""
+"""DB session plumbing. Schema applied on startup when DB is reachable."""
 
 from __future__ import annotations
 
+from collections.abc import AsyncGenerator
 from pathlib import Path
 from urllib.parse import urlparse, unquote
 
@@ -38,6 +39,6 @@ async def apply_schema() -> None:
         await conn.close()
 
 
-async def get_session() -> AsyncSession:
+async def get_session() -> AsyncGenerator[AsyncSession, None]:
     async with SessionLocal() as session:
         yield session

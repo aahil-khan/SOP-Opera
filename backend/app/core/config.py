@@ -1,11 +1,18 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+_ROOT_ENV = Path(__file__).resolve().parents[3] / ".env"
+_BACKEND_ENV = Path(__file__).resolve().parents[2] / ".env"
+_ENV_FILES = tuple(
+    str(p) for p in (_BACKEND_ENV, _ROOT_ENV) if p.is_file()
+) or (".env",)
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=_ENV_FILES,
         env_file_encoding="utf-8",
         extra="ignore",
     )
@@ -22,6 +29,8 @@ class Settings(BaseSettings):
 
     assessment_max_retries: int = 1
     gas_elevated_threshold: float = 20.0
+    cert_expiry_warning_days: int = 14
+    default_owner_user_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     simulator_default_step_delay_seconds: int = 5
 
     rag_enabled: bool = True
