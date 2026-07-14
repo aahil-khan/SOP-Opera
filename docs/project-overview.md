@@ -59,12 +59,15 @@ Everything in the product revolves around three objects with three owners:
 
 2. **Context comes in** — sensor readings, permit status, worker location, historical incidents, regulations, SOPs. In the hackathon this comes from **Manual Input** and a **Simulator** (same interface a real SCADA/SAP feed would use later).
 
-3. **Rules turn context into facts** — plain code, not AI:
+3. **Rules turn context into facts** — plain code, not AI. Six rules in total — not just the three example signals from the problem statement:
    - Gas above threshold → *Elevated Gas*
    - Overlapping permits → *Permit Conflict*
    - Worker in hazardous zone → *Zone Occupied*
+   - LOTO / isolation not confirmed → *Incomplete Isolation*
+   - Adjacent hot-work + confined-space conflict → *Simultaneous Ops*
+   - Assigned worker cert missing or expiring → *Certification Expiring*
 
-4. **AI produces an Assessment** — the LLM does **not** detect those facts. It **synthesizes** them with regulations, SOPs, and past incidents, then writes explainable reasoning and recommendations.
+4. **AI produces an Assessment** — the LLM does **not** detect those facts. It **semantically retrieves** relevant regulations / SOPs / past incidents (RAG with a rules-based fallback if retrieval quality is weak), then **synthesizes** them into explainable reasoning and recommendations.
 
 5. **Supervisor reviews and decides** — Approve, Approve with Conditions, or Block. They can accept or reject individual recommendations. Their authority is real.
 
@@ -96,13 +99,16 @@ The signature demo is **Compound Risk**: gas rises, a worker enters a hazardous 
 
 Judges will ask: *"Couldn't rules or SQL do this?"*
 
-**Yes — for detection.** That is intentional. Rules produce the facts.
+**Yes — for detection.** That is intentional. Rules produce the facts (and we have more than the problem statement's three example signals).
 
-**AI is for synthesis:** combining those facts with historical incidents, regulations, and SOPs into plant-floor language, recommendations, and an explainable assessment a supervisor can defend.
+**AI does two jobs:**
 
-**The product value is not "AI detected gas."** The product value is **"here is the full picture, here is why it matters, here is what we recommend, and here is a permanent record of what you decided."**
+1. **Retrieve** — find the relevant regulations, SOPs, and historical incidents for *this* combination of facts (semantic search over a seeded knowledge corpus). If retrieval quality is weak, a deterministic SQL rules map is the guaranteed fallback — same references, different path.
+2. **Synthesize** — turn those facts + references into plant-floor language, recommendations, and an explainable assessment a supervisor can defend.
 
-Do not lead with AI buzzwords. Lead with the supervisor's decision moment.
+**The product value is not "AI detected gas."** The product value is **"here is the full picture, here is why it matters (including matching history and cited regs), here is what we recommend, and here is a permanent record of what you decided."**
+
+Do not lead with AI buzzwords. Lead with the supervisor's decision moment. When asked about RAG, show the reasoning-trace "Retrieved References" node with path and score — not a slide.
 
 ---
 
@@ -110,15 +116,15 @@ Do not lead with AI buzzwords. Lead with the supervisor's decision moment.
 
 | Piece | What it does |
 | --- | --- |
-| **Backend** | FastAPI + PostgreSQL. Review state machine. Context engine. Derived facts. Assessment pipeline. |
-| **Frontend** | React app. Opens on **Digital Twin in Demo Mode**. Assessment panel. Decision flow. |
+| **Backend** | FastAPI + PostgreSQL (+ pgvector). Review state machine. Context engine. Six derived facts. Assessment pipeline. |
+| **Frontend** | Next.js app. Opens on **Digital Twin in Demo Mode**. Assessment panel. Decision flow. |
 | **Simulator** | YAML scenarios replay fake plant events (gas leak, permit conflict, compound risk). |
-| **AI** | Mock provider for dev; real provider (OpenAI-compatible or Ollama) for demo. Structured output, one retry, then fail visibly. |
+| **AI** | Hybrid retrieval (RAG + quality gate + deterministic fallback). Mock for dev; OpenAI-compatible / Ollama for demo. Structured output, one retry, then fail visibly. |
 | **Realtime** | WebSocket broadcasts so the twin and UI update live. |
 
 **Intentionally simplified for the hackathon:** no SAP/SCADA adapters (simulator stands in), no auth/SSO, no Kubernetes, no tamper-proof audit chain, seeded plant data only.
 
-**Architecture is frozen.** Remaining work is implementation, polish, and demo choreography.
+**Architecture is frozen for coding** (with the deliberate pre-build amendment: six facts + hybrid retrieval — see TDS). Remaining work is implementation, polish, and demo choreography.
 
 ---
 
@@ -157,7 +163,8 @@ These were considered and rejected. A focused product beats a feature buffet.
 
 | Document | Use it when you need… |
 | --- | --- |
-| **This doc** | Plain understanding of the whole project |
+| **This doc** | Quick understanding of the whole project |
+| [Implementation Guide](./implementation-guide.md) | Deep dive — architecture, features, final product, frozen decisions |
 | [Technical Design Spec](./Technical%20Design%20Spec.md) | How to build it (source of truth for code) |
 | [Execution Decisions](./execution-decisions.md) | Demo flow, pitch, UX priorities |
 | [Archive](./archive/) | Earlier design-phase docs (PRD, domain model, ADRs, checklist) — reference only |
@@ -184,7 +191,7 @@ The last winner emphasized: clear user + problem + gap + simple working demo + o
 | **Looking like an "AI product"** | Observability dashboard, multiple providers, structured output pipeline | Talk about the **supervisor's decision**, not the AI stack. Show AI only inside the reasoning trace. |
 | **Complexity vs. "simple demo"** | State machine, WebSockets, Derived Facts, Manual Assessment fallback | The *user journey* must feel simple even if the backend is solid. One scenario, one screen, one click. |
 | **Integration gap** | No real SAP/SCADA in demo | Explain the Context Provider seam in one sentence; don't apologize or over-slide it. |
-| **10-day pressure** | A lot for 4 engineers | Protect Compound Risk end-to-end above all else. Cut AI Ops and polish before cutting the twin trace. |
+| **10-day pressure** | A lot for 4 engineers | Protect Compound Risk end-to-end above all else. Cut AI Ops and polish before cutting the twin trace. Deterministic retrieval is the floor — cut RAG last. |
 
 None of these require architecture changes. They require **discipline in what we show and how we talk about it.**
 
@@ -192,8 +199,8 @@ None of these require architecture changes. They require **discipline in what we
 
 ## The story in 30 seconds (for rehearsal)
 
-> Shift supervisors at industrial plants already decide whether dangerous work can proceed — using permits, memory, and whatever happens to be on screen. The data often exists across SCADA, maintenance systems, and PTW software, but nobody synthesizes it at decision time. SOP Opera runs a structured Operational Review: rules surface the facts, AI explains what they mean together, and the supervisor makes the call. In our demo, three risks combine on a live plant map — the supervisor clicks the asset, sees exactly why work should stop, records the decision, and leaves a complete audit trail. We're not replacing plant systems. We're making the decision that already happens every day visible, explainable, and defensible.
+> Shift supervisors at industrial plants already decide whether dangerous work can proceed — using permits, memory, and whatever happens to be on screen. The data often exists across SCADA, maintenance systems, and PTW software, but nobody synthesizes it at decision time. SOP Opera runs a structured Operational Review: rules surface facts (more than the textbook three), AI retrieves matching history and regulations then explains what they mean together, and the supervisor makes the call. In our demo, three risks combine on a live plant map — the supervisor clicks the asset, sees exactly why work should stop (including a cited prior incident), records the decision, and leaves a complete audit trail. We're not replacing plant systems. We're making the decision that already happens every day visible, explainable, and defensible.
 
 ---
 
-*Read this first. Build from the TDS. Demo from Execution Decisions.*
+*Read [Project Overview](./project-overview.md) first. Use this for the full picture. Build from the TDS. Demo from Execution Decisions.*
