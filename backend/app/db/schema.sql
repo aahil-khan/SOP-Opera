@@ -44,7 +44,8 @@ CREATE TABLE IF NOT EXISTS incidents (
     asset_id UUID REFERENCES assets(id),
     description TEXT NOT NULL,
     reported_at TIMESTAMPTZ NOT NULL,
-    linked_review_ids UUID[] NOT NULL DEFAULT '{}'
+    linked_review_ids UUID[] NOT NULL DEFAULT '{}',
+    applies_to_category TEXT
 );
 
 CREATE TABLE IF NOT EXISTS regulations (
@@ -125,7 +126,8 @@ CREATE TABLE IF NOT EXISTS assessments (
     risk_level TEXT,
     summary TEXT,
     derived_fact_ids UUID[] NOT NULL DEFAULT '{}',
-    version INT NOT NULL DEFAULT 1
+    version INT NOT NULL DEFAULT 1,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS assessment_metadata (
@@ -138,6 +140,7 @@ CREATE TABLE IF NOT EXISTS assessment_metadata (
     cost_usd REAL,
     latency_ms INT,
     confidence REAL,
+    retrieved_context_ids UUID[] NOT NULL DEFAULT '{}',
     retrieved_evidence_ids UUID[] NOT NULL DEFAULT '{}',
     retrieval_mode TEXT,
     retrieval_quality TEXT,
@@ -203,3 +206,9 @@ CREATE INDEX IF NOT EXISTS idx_context_entries_asset ON context_entries(asset_id
 CREATE INDEX IF NOT EXISTS idx_derived_facts_asset ON derived_facts(asset_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_state ON reviews(state);
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_type, source_id);
+CREATE INDEX IF NOT EXISTS idx_assessments_review ON assessments(review_id);
+
+-- Soft migrations for DBs created before Phase 3 column additions
+ALTER TABLE incidents ADD COLUMN IF NOT EXISTS applies_to_category TEXT;
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
+ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_context_ids UUID[] NOT NULL DEFAULT '{}';

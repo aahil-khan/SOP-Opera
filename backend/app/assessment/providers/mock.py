@@ -1,0 +1,108 @@
+"""Deterministic mock AI provider — zero I/O, schema-valid every time."""
+
+from __future__ import annotations
+
+from uuid import UUID
+
+from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedReference
+
+from app.assessment.schemas import AssessmentResult, ProviderGeneration
+
+COMPOUND_TRIO = frozenset({"elevated_gas", "permit_conflict", "zone_occupied"})
+
+FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
+    "elevated_gas": (
+        "Evacuate non-essential personnel and initiate gas detection confirmation sweep.",
+        "Elevated gas readings exceed the safe working threshold for this zone.",
+    ),
+    "permit_conflict": (
+        "Suspend conflicting permits and reconcile work windows before restart.",
+        "Active permits overlap incompatibly on this asset.",
+    ),
+    "zone_occupied": (
+        "Clear the hazard zone and verify all personnel are accounted for.",
+        "Workers are present in a zone flagged for elevated risk.",
+    ),
+    "incomplete_isolation": (
+        "Complete isolation verification checklist before authorizing hot work.",
+        "Isolation boundaries are incomplete or unverified.",
+    ),
+    "simultaneous_ops": (
+        "Defer non-critical concurrent operations until primary work is secure.",
+        "Simultaneous operations increase interaction risk on this asset.",
+    ),
+    "certification_expiring": (
+        "Replace or re-certify workers whose credentials expire within the warning window.",
+        "Worker certifications are approaching expiry during active work.",
+    ),
+}
+
+
+def _risk_level(fact_types: set[str]) -> str:
+    if COMPOUND_TRIO.issubset(fact_types) or len(fact_types) >= 3:
+        return "blocking"
+    if len(fact_types) >= 1:
+        return "elevated"
+    return "nominal"
+
+
+class MockProvider:
+    async def generate_assessment(
+        self,
+        derived_facts: list[DerivedFact],
+        context_refs: list[UUID],
+        retrieved_references: list[RetrievedReference] | None,
+        *,
+        repair_hint: str | None = None,
+    ) -> ProviderGeneration:
+        fact_types = {f.fact_type for f in derived_facts}
+        risk = _risk_level(fact_types)
+        refs = retrieved_references or []
+        ref_bits = (
+            ", ".join(sorted({f"{r.source}:{r.id}" for r in refs}))
+            if refs
+            else "none"
+        )
+        facts_list = ", ".join(sorted(fact_types)) or "none"
+        summary = (
+            f"Mock assessment for active facts [{facts_list}]. "
+            f"Risk classified as {risk}. "
+            f"Retrieved references: {ref_bits}. "
+            f"Context entries cited: {len(context_refs)}."
+        )
+        if repair_hint:
+            summary += " (repair pass applied)."
+
+        recommendations: list[RecommendationIn] = []
+        for ft in sorted(fact_types):
+            text, rationale = FACT_RECOMMENDATIONS.get(
+                ft,
+                (
+                    f"Review and mitigate derived fact '{ft}'.",
+                    f"Fact '{ft}' is active and requires supervisor action.",
+                ),
+            )
+            recommendations.append(RecommendationIn(text=text, rationale=rationale))
+        if not recommendations:
+            recommendations.append(
+                RecommendationIn(
+                    text="Continue routine monitoring; no elevated facts detected.",
+                    rationale="No active derived facts at assessment time.",
+                )
+            )
+
+        result = AssessmentResult(
+            summary=summary,
+            risk_level=risk,  # type: ignore[arg-type]
+            recommendations=recommendations,
+            confidence=0.92 if fact_types else 0.7,
+        )
+        return ProviderGeneration(
+            result=result,
+            provider="mock",
+            model="mock-v1",
+            input_tokens=120 + 20 * len(fact_types),
+            output_tokens=80 + 15 * len(recommendations),
+            estimated_cost_usd=0.0,
+            latency_ms=5,
+        )
