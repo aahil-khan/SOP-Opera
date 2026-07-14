@@ -1,0 +1,48 @@
+name: compound_risk
+label: Compound Risk
+description: >
+  Signature demo sequence. Gas rises → worker enters hazardous zone →
+  conflicting permits activate → compound block. Matches TDS §12 build-up.
+
+steps:
+  # Plant safe → gas rises → Elevated Gas
+  - asset: Vessel A
+    category: sensor
+    payload:
+      gas_reading: 25.5
+      unit: ppm
+    confidence: 0.98
+    delay_seconds: 0
+    valid_for_hours: 4
+
+  # Worker enters hazardous zone → Zone Occupied
+  - asset: Vessel A
+    category: worker_location
+    payload:
+      worker_id: "55555555-5555-5555-5555-555555555551"
+      zone: hazardous
+    confidence: 0.95
+    delay_seconds: 3
+    valid_for_hours: 4
+
+  # First permit activates (hot work)
+  - asset: Vessel A
+    category: permit
+    payload:
+      permit_id: p-1
+      status: active
+      work_type: hot_work
+    confidence: 1.0
+    delay_seconds: 3
+    valid_for_hours: 4
+
+  # Second overlapping permit → Permit Conflict (compound now present)
+  - asset: Vessel A
+    category: permit
+    payload:
+      permit_id: p-2
+      status: active
+      work_type: cold_work
+    confidence: 1.0
+    delay_seconds: 2
+    valid_for_hours: 4

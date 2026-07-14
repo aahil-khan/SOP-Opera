@@ -101,6 +101,19 @@ class AssessmentOrchestrator:
             self._worker_task.cancel()
             self._worker_task = None
 
+    def drain(self) -> None:
+        """Empty the queue and pending provider overrides (used by Demo reset)."""
+        while not self._queue.empty():
+            try:
+                self._queue.get_nowait()
+            except asyncio.QueueEmpty:
+                break
+            try:
+                self._queue.task_done()
+            except ValueError:
+                pass
+        self._provider_override.clear()
+
 
 orchestrator = AssessmentOrchestrator()
 
