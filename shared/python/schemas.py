@@ -126,6 +126,13 @@ class Review(BaseModel):
     created_at: datetime
 
 
+class Asset(BaseModel):
+    id: UUID
+    name: str
+    zone: str
+    plant_id: str
+
+
 class PingResponse(BaseModel):
     ok: Literal[True] = True
     service: str = "sop-opera-api"

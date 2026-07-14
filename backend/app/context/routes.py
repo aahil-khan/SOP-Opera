@@ -7,9 +7,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context.providers.manual import ManualInputProvider
 from app.context.schemas import ContextIn, ContextIngestResult
-from app.context.service import AssetNotFoundError, list_asset_context
+from app.context.service import AssetNotFoundError, list_asset_context, list_assets
 from app.db.session import get_session
-from shared.python.schemas import Context
+from shared.python.schemas import Asset, Context
 
 router = APIRouter(tags=["context"])
 
@@ -24,6 +24,13 @@ async def post_context(
         return await provider.emit(body)
     except AssetNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.get("/assets", response_model=list[Asset])
+async def get_assets(
+    session: AsyncSession = Depends(get_session),
+) -> list[Asset]:
+    return await list_assets(session)
 
 
 @router.get("/assets/{asset_id}/context", response_model=list[Context])

@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from shared.python.schemas import Context, DerivedFact, Review
+from shared.python.schemas import Asset, Context, Decision, DerivedFact, Review
 
 
 class ContextIn(BaseModel):
@@ -41,5 +41,7 @@ class ReopenIn(BaseModel):
 
 class ReviewDetailOut(BaseModel):
     review: Review
+    asset: Asset
     context: list[Context]
     derived_facts: list[DerivedFact]
+    decision: Decision | None = None

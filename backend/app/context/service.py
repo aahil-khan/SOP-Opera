@@ -10,7 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.context.derived_facts import compute_and_persist
 from app.context.schemas import ContextIn, ContextIngestResult
 from app.reviews.service import handle_context_change
-from shared.python.schemas import Context
+from shared.python.schemas import Asset, Context
 
 
 class AssetNotFoundError(Exception):
@@ -95,6 +95,40 @@ async def ingest_context(
 
     return ContextIngestResult(
         context=context, derived_facts=facts, review=review
+    )
+
+
+async def list_assets(session: AsyncSession) -> list[Asset]:
+    result = await session.execute(
+        text("SELECT id, name, zone, plant_id FROM assets ORDER BY name")
+    )
+    return [
+        Asset(
+            id=row._mapping["id"],
+            name=row._mapping["name"],
+            zone=row._mapping["zone"],
+            plant_id=row._mapping["plant_id"],
+        )
+        for row in result.fetchall()
+    ]
+
+
+async def get_asset(session: AsyncSession, asset_id: UUID) -> Asset | None:
+    result = await session.execute(
+        text(
+            """
+            SELECT id, name, zone, plant_id FROM assets
+            WHERE id = CAST(:id AS uuid)
+            """
+        ),
+        {"id": str(asset_id)},
+    )
+    row = result.first()
+    if row is None:
+        return None
+    m = row._mapping
+    return Asset(
+        id=m["id"], name=m["name"], zone=m["zone"], plant_id=m["plant_id"]
     )
 
 

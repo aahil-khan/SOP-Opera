@@ -6,7 +6,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-from shared.python.schemas import RecommendationIn, RiskLevel
+from shared.python.schemas import RecommendationIn, RetrievedReference, RiskLevel
 
 
 class AssessmentResult(BaseModel):
@@ -47,4 +47,5 @@ class AssessmentOut(BaseModel):
     version: int
     created_at: str | None = None
     recommendations: list[dict] = Field(default_factory=list)
+    retrieved_references: list[RetrievedReference] = Field(default_factory=list)
     metadata: dict | None = None

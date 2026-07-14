@@ -1,82 +1,69 @@
 "use client";
 
 import {
-  getReviewsFromRuntimes,
-  useDemoStore,
-} from "@/lib/demoStore";
+  getLiveAssetViews,
+  useLiveStore,
+} from "@/lib/liveStore";
 import styles from "./ReviewSidebar.module.css";
 
 export function ReviewSidebar() {
-  const runtimes = useDemoStore((s) => s.runtimes);
-  const selectedAssetId = useDemoStore((s) => s.selectedAssetId);
-  const selectAsset = useDemoStore((s) => s.selectAsset);
-  const reviews = getReviewsFromRuntimes(runtimes);
+  const assets = useLiveStore((s) => s.assets);
+  const reviews = useLiveStore((s) => s.reviews);
+  const reviewDetails = useLiveStore((s) => s.reviewDetails);
+  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
+  const selectAsset = useLiveStore((s) => s.selectAsset);
 
-  // Also surface elevated/blocking assets that don't yet have a review (mid-scenario).
-  const affectedWithoutReview = Object.values(runtimes).filter(
-    (rt) =>
-      rt.risk_level !== "nominal" &&
-      !rt.review &&
-      !reviews.some((r) => r.asset.id === rt.asset.id),
+  const views = getLiveAssetViews({
+    assets,
+    reviews,
+    reviewDetails,
+    assessmentsByReview,
+  }).filter(
+    (v) =>
+      v.review != null ||
+      (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
   );
-
-  const items = [
-    ...reviews.map((rt) => ({
-      key: rt.review!.id,
-      assetId: rt.asset.id,
-      name: rt.asset.name,
-      zone: rt.asset.zone,
-      risk: rt.risk_level,
-      state: rt.review!.state.replaceAll("_", " "),
-      trigger: rt.review!.triggered_by,
-    })),
-    ...affectedWithoutReview.map((rt) => ({
-      key: `alert-${rt.asset.id}`,
-      assetId: rt.asset.id,
-      name: rt.asset.name,
-      zone: rt.asset.zone,
-      risk: rt.risk_level,
-      state: "signal",
-      trigger: "live context",
-    })),
-  ];
 
   return (
     <aside className={styles.sidebar} aria-label="Affected areas">
       <header className={styles.header}>
         <h2 className={styles.title}>Affected areas</h2>
-        <p className={styles.subtitle}>
-          Select to locate on the twin
-        </p>
+        <p className={styles.subtitle}>Select to locate on the twin</p>
       </header>
 
-      {items.length === 0 ? (
+      {views.length === 0 ? (
         <p className={styles.empty}>
-          No active signals. Start a scenario from Demo Mode.
+          No active signals. Ingest context or start a simulator scenario.
         </p>
       ) : (
         <ul className={styles.list}>
-          {items.map((item) => {
-            const active = selectedAssetId === item.assetId;
+          {views.map((v) => {
+            const active = selectedAssetId === v.asset.id;
             return (
-              <li key={item.key}>
+              <li key={v.review?.id ?? v.asset.id}>
                 <button
                   type="button"
                   className={styles.item}
                   data-active={active}
-                  data-risk={item.risk}
-                  onClick={() => selectAsset(item.assetId)}
+                  data-risk={v.risk_level}
+                  onClick={() => selectAsset(v.asset.id)}
                 >
                   <span className={styles.itemTop}>
-                    <span className={styles.itemName}>{item.name}</span>
-                    <span className="badge" data-risk={item.risk}>
-                      {item.risk}
+                    <span className={styles.itemName}>{v.asset.name}</span>
+                    <span className="badge" data-risk={v.risk_level}>
+                      {v.risk_level}
                     </span>
                   </span>
                   <span className={styles.itemMeta}>
-                    {item.zone} · {item.state}
+                    {v.asset.zone} ·{" "}
+                    {v.review
+                      ? v.review.state.replaceAll("_", " ")
+                      : "signal"}
                   </span>
-                  <span className={styles.itemTrigger}>{item.trigger}</span>
+                  <span className={styles.itemTrigger}>
+                    {v.review?.triggered_by ?? "live context"}
+                  </span>
                 </button>
               </li>
             );

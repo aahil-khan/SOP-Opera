@@ -118,12 +118,12 @@ async def create_manual_assessment(
             INSERT INTO assessment_metadata (
                 assessment_id, provider, model, prompt_version,
                 tokens_in, tokens_out, cost_usd, latency_ms, confidence,
-                retrieval_mode, retrieval_quality
+                retrieved_references, retrieval_mode, retrieval_quality
             )
             VALUES (
                 CAST(:aid AS uuid), 'manual', 'human', :pv,
                 0, 0, 0, 0, 1.0,
-                'skipped', 'n_a'
+                '[]'::jsonb, 'skipped', 'n_a'
             )
             """
         ),
@@ -173,6 +173,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                    m.provider, m.model, m.prompt_version, m.tokens_in, m.tokens_out,
                    m.cost_usd, m.latency_ms, m.confidence,
                    m.retrieved_context_ids, m.retrieved_evidence_ids,
+                   m.retrieved_references,
                    m.retrieval_mode, m.retrieval_quality, m.retrieval_score,
                    m.embedding_model
             FROM assessments a
@@ -207,6 +208,12 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
             }
             for r in recs.fetchall()
         ]
+        raw_refs = m.get("retrieved_references") or []
+        if isinstance(raw_refs, str):
+            import json
+
+            raw_refs = json.loads(raw_refs)
+        retrieved_references = list(raw_refs) if isinstance(raw_refs, list) else []
         meta = None
         if m.get("provider") is not None:
             meta = {
@@ -218,8 +225,12 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 "estimated_cost_usd": m["cost_usd"] or 0.0,
                 "latency_ms": m["latency_ms"] or 0,
                 "confidence": m["confidence"],
-                "retrieved_context_ids": [str(x) for x in (m["retrieved_context_ids"] or [])],
-                "retrieved_evidence_ids": [str(x) for x in (m["retrieved_evidence_ids"] or [])],
+                "retrieved_context_ids": [
+                    str(x) for x in (m["retrieved_context_ids"] or [])
+                ],
+                "retrieved_evidence_ids": [
+                    str(x) for x in (m["retrieved_evidence_ids"] or [])
+                ],
                 "retrieval_mode": m["retrieval_mode"],
                 "retrieval_quality": m["retrieval_quality"],
                 "retrieval_score": m["retrieval_score"],
@@ -238,6 +249,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 "version": m["version"],
                 "created_at": m["created_at"].isoformat() if m["created_at"] else None,
                 "recommendations": recommendations,
+                "retrieved_references": retrieved_references,
                 "metadata": meta,
             }
         )

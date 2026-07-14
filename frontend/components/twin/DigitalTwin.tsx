@@ -1,6 +1,10 @@
 "use client";
 
-import { useDemoStore } from "@/lib/demoStore";
+import {
+  findViewByAssetId,
+  getLiveAssetViews,
+  useLiveStore,
+} from "@/lib/liveStore";
 import type { RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
 import { AssetPanel } from "./AssetPanel";
@@ -8,18 +12,31 @@ import { ReviewSidebar } from "./ReviewSidebar";
 import styles from "./DigitalTwin.module.css";
 
 export function DigitalTwin() {
-  const runtimes = useDemoStore((s) => s.runtimes);
-  const selectedAssetId = useDemoStore((s) => s.selectedAssetId);
-  const selectAsset = useDemoStore((s) => s.selectAsset);
-  const isPlaying = useDemoStore((s) => s.isPlaying);
-  const activeScenario = useDemoStore((s) => s.activeScenario);
+  const assets = useLiveStore((s) => s.assets);
+  const reviews = useLiveStore((s) => s.reviews);
+  const reviewDetails = useLiveStore((s) => s.reviewDetails);
+  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
+  const selectAsset = useLiveStore((s) => s.selectAsset);
+  const loading = useLiveStore((s) => s.loading);
+  const error = useLiveStore((s) => s.error);
+  const bootstrapped = useLiveStore((s) => s.bootstrapped);
+
+  const views = getLiveAssetViews({
+    assets,
+    reviews,
+    reviewDetails,
+    assessmentsByReview,
+  });
 
   const riskByAsset: Record<string, RiskLevel> = {};
-  for (const [id, rt] of Object.entries(runtimes)) {
-    riskByAsset[id] = rt.risk_level;
+  for (const v of views) {
+    riskByAsset[v.asset.id] = v.risk_level;
   }
 
-  const selected = selectedAssetId ? runtimes[selectedAssetId] : null;
+  const selected = selectedAssetId
+    ? findViewByAssetId(views, selectedAssetId)
+    : null;
 
   return (
     <div className={styles.wrap}>
@@ -50,12 +67,13 @@ export function DigitalTwin() {
             />
             Blocking
           </span>
-          {activeScenario && (
-            <span className={styles.scenarioTag}>
-              Scenario: <code>{activeScenario}</code>
-              {isPlaying ? " · playing…" : " · idle"}
-            </span>
-          )}
+          <span className={styles.scenarioTag}>
+            {loading && !bootstrapped
+              ? "Connecting…"
+              : error
+                ? `Live · ${error}`
+                : "Live · backend"}
+          </span>
         </div>
 
         <div className={styles.stage}>
@@ -66,7 +84,7 @@ export function DigitalTwin() {
           />
           {selected && (
             <AssetPanel
-              runtime={selected}
+              view={selected}
               onClose={() => selectAsset(null)}
             />
           )}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import { TopNav } from "@/components/nav/TopNav";
 import { DemoModeBar } from "@/components/demo/DemoModeBar";
+import { RealtimeProvider } from "@/components/RealtimeProvider";
 
 export const metadata: Metadata = {
   title: "SOP Opera",
@@ -16,11 +17,13 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body>
-        <div className="app-shell">
-          <TopNav />
-          <main className="app-main">{children}</main>
-          <DemoModeBar />
-        </div>
+        <RealtimeProvider>
+          <div className="app-shell">
+            <TopNav />
+            <main className="app-main">{children}</main>
+            <DemoModeBar />
+          </div>
+        </RealtimeProvider>
       </body>
     </html>
   );

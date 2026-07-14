@@ -2,6 +2,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from app.context.derived_facts import load_valid_context
+from app.context.schemas import ReviewDetailOut
+from app.decisions.service import get_decision_for_review
+from shared.python.schemas import Context
 from shared.python.schemas import DerivedFact, Review
 from app.reviews.state_machine import ReviewEvent
 from app.reviews.repository import create_review, get_review, transition_review
@@ -9,9 +13,6 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.context.derived_facts import load_valid_context
-from app.context.schemas import ReviewDetailOut
-from shared.python.schemas import Context
 
 
 REASSESSABLE_STATES = frozenset({"opened", "pending_decision", "reopened"})
@@ -116,9 +117,22 @@ async def handle_context_change(
 async def get_review_detail(
     session: AsyncSession, review_id: UUID
 ) -> ReviewDetailOut | None:
+    # Deferred to avoid circular import with context.service → reviews.service.
+    from app.context.service import get_asset
+    from shared.python.schemas import Asset
+
     review = await get_review(session, review_id)
     if review is None:
         return None
+
+    asset = await get_asset(session, review.asset_id)
+    if asset is None:
+        asset = Asset(
+            id=review.asset_id,
+            name="unknown",
+            zone="unknown",
+            plant_id="unknown",
+        )
 
     entries = await load_valid_context(session, review.asset_id)
     context = [
@@ -166,7 +180,14 @@ async def get_review_detail(
             )
         )
 
-    return ReviewDetailOut(review=review, context=context, derived_facts=derived)
+    decision = await get_decision_for_review(session, review_id)
+    return ReviewDetailOut(
+        review=review,
+        asset=asset,
+        context=context,
+        derived_facts=derived,
+        decision=decision,
+    )
 
 
 async def list_reviews(

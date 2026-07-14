@@ -1,14 +1,16 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import type { Assessment, Decision } from "@/shared/schemas";
+import type { Decision } from "@/shared/schemas";
 import type { DecisionOutcome } from "@/shared/enums";
-import { useDemoStore } from "@/lib/demoStore";
+import type { AssessmentHistoryItem } from "@/lib/liveApi";
+import { useLiveStore } from "@/lib/liveStore";
 import styles from "./DecisionPanel.module.css";
 
 interface DecisionPanelProps {
   reviewId: string;
-  assessment: Assessment | null;
+  reviewState: string;
+  assessment: AssessmentHistoryItem | null;
   existing: Decision | null;
 }
 
@@ -23,11 +25,13 @@ function DecisionForm({
   assessment,
 }: {
   reviewId: string;
-  assessment: Assessment;
+  assessment: AssessmentHistoryItem;
 }) {
-  const submitDecision = useDemoStore((s) => s.submitDecision);
+  const submitDecision = useLiveStore((s) => s.submitDecision);
   const [outcome, setOutcome] = useState<DecisionOutcome>("blocked");
   const [conditions, setConditions] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const initialDispositions = useMemo(() => {
     const map: Record<string, "accepted" | "rejected"> = {};
     for (const rec of assessment.recommendations) {
@@ -39,6 +43,22 @@ function DecisionForm({
 
   const needsConditions = outcome === "approved_with_conditions";
   const canSubmit = !needsConditions || conditions.trim().length > 0;
+
+  async function onSubmit() {
+    setBusy(true);
+    setError(null);
+    try {
+      await submitDecision(reviewId, {
+        outcome,
+        recommendation_dispositions: dispositions,
+        conditions: needsConditions ? conditions.trim() : null,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className={`panel ${styles.panel}`}>
@@ -102,27 +122,23 @@ function DecisionForm({
       <button
         type="button"
         className="btn btn-primary"
-        disabled={!canSubmit}
-        onClick={() =>
-          submitDecision(
-            reviewId,
-            outcome,
-            dispositions,
-            needsConditions ? conditions.trim() : null,
-          )
-        }
+        disabled={!canSubmit || busy}
+        onClick={() => void onSubmit()}
       >
-        Submit decision (local)
+        {busy ? "Submitting…" : "Submit decision"}
       </button>
-      <p className={styles.hint}>
-        Phase 1: local mock only — does not call the API.
-      </p>
+      {error && (
+        <p style={{ color: "#f07178", fontSize: "0.85rem", marginTop: "0.5rem" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }
 
 export function DecisionPanel({
   reviewId,
+  reviewState,
   assessment,
   existing,
 }: DecisionPanelProps) {
@@ -135,14 +151,17 @@ export function DecisionPanel({
           {existing.conditions ? ` — ${existing.conditions}` : ""}
         </p>
         <p className={styles.hint}>
-          Evidence frozen at {new Date(existing.submitted_at).toLocaleString()}{" "}
-          (local mock — Phase 4 wires the backend).
+          Evidence frozen at {new Date(existing.submitted_at).toLocaleString()}.
         </p>
       </div>
     );
   }
 
-  if (!assessment || assessment.status !== "complete") {
+  const canDecide =
+    (reviewState === "pending_decision" || reviewState === "escalated") &&
+    assessment?.status === "complete";
+
+  if (!canDecide) {
     return (
       <div className={`panel ${styles.panel}`}>
         <h3 className={styles.title}>Decision</h3>

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -17,9 +18,22 @@ from app.db.session import SessionLocal
 from app.realtime.connection_manager import manager
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import ReviewEvent
-from shared.python.schemas import DerivedFact
+from shared.python.schemas import DerivedFact, RetrievedReference
 
 logger = logging.getLogger(__name__)
+
+
+def _serialize_refs(refs: list[RetrievedReference]) -> list[dict]:
+    return [
+        {
+            "source": r.source,
+            "id": str(r.id),
+            "retrieval_path": r.retrieval_path,
+            "score": r.score,
+            "chunk_id": str(r.chunk_id) if r.chunk_id else None,
+        }
+        for r in refs
+    ]
 
 
 async def _load_true_facts(
@@ -60,9 +74,7 @@ async def _load_true_facts(
 
 async def _load_asset(session: AsyncSession, asset_id: UUID) -> tuple[str, str]:
     result = await session.execute(
-        text(
-            "SELECT name, zone FROM assets WHERE id = CAST(:id AS uuid)"
-        ),
+        text("SELECT name, zone FROM assets WHERE id = CAST(:id AS uuid)"),
         {"id": str(asset_id)},
     )
     row = result.first()
@@ -101,6 +113,7 @@ async def _persist_metadata(
     confidence: float,
     context_ids: list[UUID],
     evidence_ids: list[UUID],
+    retrieved_references: list[RetrievedReference],
     retrieval_mode: str,
     retrieval_quality: str,
     retrieval_score: float | None,
@@ -112,13 +125,13 @@ async def _persist_metadata(
             INSERT INTO assessment_metadata (
                 assessment_id, provider, model, prompt_version,
                 tokens_in, tokens_out, cost_usd, latency_ms, confidence,
-                retrieved_context_ids, retrieved_evidence_ids,
+                retrieved_context_ids, retrieved_evidence_ids, retrieved_references,
                 retrieval_mode, retrieval_quality, retrieval_score, embedding_model
             )
             VALUES (
                 CAST(:aid AS uuid), :provider, :model, :prompt_version,
                 :tokens_in, :tokens_out, :cost_usd, :latency_ms, :confidence,
-                CAST(:ctx AS uuid[]), CAST(:ev AS uuid[]),
+                CAST(:ctx AS uuid[]), CAST(:ev AS uuid[]), CAST(:refs AS jsonb),
                 :retrieval_mode, :retrieval_quality, :retrieval_score, :embedding_model
             )
             ON CONFLICT (assessment_id) DO UPDATE SET
@@ -132,6 +145,7 @@ async def _persist_metadata(
                 confidence = EXCLUDED.confidence,
                 retrieved_context_ids = EXCLUDED.retrieved_context_ids,
                 retrieved_evidence_ids = EXCLUDED.retrieved_evidence_ids,
+                retrieved_references = EXCLUDED.retrieved_references,
                 retrieval_mode = EXCLUDED.retrieval_mode,
                 retrieval_quality = EXCLUDED.retrieval_quality,
                 retrieval_score = EXCLUDED.retrieval_score,
@@ -150,6 +164,7 @@ async def _persist_metadata(
             "confidence": confidence,
             "ctx": [str(i) for i in context_ids],
             "ev": [str(i) for i in evidence_ids],
+            "refs": json.dumps(_serialize_refs(retrieved_references)),
             "retrieval_mode": retrieval_mode,
             "retrieval_quality": retrieval_quality,
             "retrieval_score": retrieval_score,
@@ -271,6 +286,7 @@ async def run_assessment_job(
                 confidence=0.0,
                 context_ids=context_ids,
                 evidence_ids=evidence_ids,
+                retrieved_references=hybrid.refs,
                 retrieval_mode=hybrid.mode,
                 retrieval_quality=hybrid.quality,
                 retrieval_score=hybrid.best_score,
@@ -351,6 +367,7 @@ async def run_assessment_job(
             confidence=result.confidence,
             context_ids=context_ids,
             evidence_ids=evidence_ids,
+            retrieved_references=hybrid.refs,
             retrieval_mode=hybrid.mode,
             retrieval_quality=hybrid.quality,
             retrieval_score=hybrid.best_score,

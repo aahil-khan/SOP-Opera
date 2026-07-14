@@ -142,6 +142,7 @@ CREATE TABLE IF NOT EXISTS assessment_metadata (
     confidence REAL,
     retrieved_context_ids UUID[] NOT NULL DEFAULT '{}',
     retrieved_evidence_ids UUID[] NOT NULL DEFAULT '{}',
+    retrieved_references JSONB NOT NULL DEFAULT '[]'::jsonb,
     retrieval_mode TEXT,
     retrieval_quality TEXT,
     retrieval_score REAL,
@@ -208,7 +209,8 @@ CREATE INDEX IF NOT EXISTS idx_reviews_state ON reviews(state);
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_review ON assessments(review_id);
 
--- Soft migrations for DBs created before Phase 3 column additions
+-- Soft migrations for DBs created before Phase 3/4 column additions
 ALTER TABLE incidents ADD COLUMN IF NOT EXISTS applies_to_category TEXT;
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_context_ids UUID[] NOT NULL DEFAULT '{}';
+ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_references JSONB NOT NULL DEFAULT '[]'::jsonb;

@@ -11,7 +11,7 @@ export const REST_GROUPS = {
     "POST /reviews/{id}/escalate",
     "POST /reviews/{id}/reopen",
   ],
-  context: ["POST /context", "GET /assets/{id}/context"],
+  context: ["POST /context", "GET /assets", "GET /assets/{id}/context"],
   assessments: [
     "GET /reviews/{id}/assessments",
     "POST /reviews/{id}/assessments/retry",
@@ -34,6 +34,7 @@ export const WS_EVENTS = [
   "review.status_changed",
   "assessment.completed",
   "assessment.failed",
+  "decision.submitted",
   "echo",
 ] as const;
 
