@@ -1,0 +1,77 @@
+.node {
+  position: relative;
+  padding-left: 1.35rem;
+  padding-bottom: 0.9rem;
+}
+
+.node:not(:last-child)::before {
+  content: "";
+  position: absolute;
+  left: 5px;
+  top: 16px;
+  bottom: 0;
+  width: 2px;
+  background: var(--border);
+}
+
+.dot {
+  position: absolute;
+  left: 0;
+  top: 4px;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--panel-elevated);
+  border: 2px solid var(--border);
+}
+
+.dot[data-filled="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.label {
+  margin: 0;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.body {
+  margin: 0.2rem 0 0;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--fg);
+}
+
+.meta {
+  margin: 0.25rem 0 0;
+  font-size: 0.8rem;
+  color: var(--muted);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.45rem;
+  border-radius: 4px;
+  font-size: 0.72rem;
+  background: var(--panel-elevated);
+  border: 1px solid var(--border);
+  color: var(--muted);
+}
+
+.chipStrong {
+  color: var(--fg);
+  border-color: color-mix(in srgb, var(--accent) 40%, var(--border));
+}

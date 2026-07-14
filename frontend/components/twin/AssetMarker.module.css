@@ -1,0 +1,80 @@
+.marker {
+  cursor: pointer;
+}
+
+.marker:focus {
+  outline: none;
+}
+
+.marker:focus-visible .hit {
+  stroke: var(--accent);
+  stroke-width: 3;
+}
+
+.hit {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2;
+  transition: stroke 0.15s ease;
+}
+
+.disk {
+  transition: fill 0.25s ease, filter 0.25s ease;
+}
+
+.disk[data-risk="nominal"] {
+  fill: var(--risk-nominal);
+}
+
+.disk[data-risk="elevated"] {
+  fill: var(--risk-elevated);
+  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--risk-elevated) 60%, transparent));
+}
+
+.disk[data-risk="blocking"] {
+  fill: var(--risk-blocking);
+  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--risk-blocking) 70%, transparent));
+}
+
+.pulse {
+  fill: none;
+  stroke-width: 2;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pulse[data-active="true"] {
+  animation: pulse-ring 1.6s ease-out infinite;
+}
+
+.pulse[data-risk="elevated"] {
+  stroke: var(--risk-elevated);
+}
+
+.pulse[data-risk="blocking"] {
+  stroke: var(--risk-blocking);
+}
+
+.label {
+  fill: var(--fg);
+  font-size: 12px;
+  font-weight: 600;
+  pointer-events: none;
+  user-select: none;
+}
+
+.selected .hit {
+  stroke: var(--accent);
+  stroke-width: 2.5;
+}
+
+@keyframes pulse-ring {
+  0% {
+    r: 12;
+    opacity: 0.7;
+  }
+  100% {
+    r: 28;
+    opacity: 0;
+  }
+}

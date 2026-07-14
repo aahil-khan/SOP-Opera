@@ -1,0 +1,94 @@
+.panel {
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+.title {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.outcomes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.outcome[data-active="true"] {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.outcome[data-outcome="blocked"][data-active="true"] {
+  border-color: var(--risk-blocking);
+  box-shadow: 0 0 0 1px var(--risk-blocking);
+  color: var(--risk-blocking);
+}
+
+.label {
+  margin: 0 0 0.35rem;
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.dispRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.85rem;
+}
+
+.dispRow:last-child {
+  border-bottom: none;
+}
+
+.toggles {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.toggle[data-active="true"][data-kind="accepted"] {
+  border-color: var(--risk-nominal);
+  color: var(--risk-nominal);
+}
+
+.toggle[data-active="true"][data-kind="rejected"] {
+  border-color: var(--risk-blocking);
+  color: var(--risk-blocking);
+}
+
+.textarea {
+  width: 100%;
+  min-height: 72px;
+  resize: vertical;
+  padding: 0.55rem 0.65rem;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--panel-elevated);
+  color: var(--fg);
+}
+
+.textarea:disabled {
+  opacity: 0.45;
+}
+
+.done {
+  margin: 0;
+  color: var(--ok);
+  font-size: 0.9rem;
+}
+
+.hint {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.8rem;
+}
