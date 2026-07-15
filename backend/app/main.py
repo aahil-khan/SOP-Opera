@@ -53,7 +53,7 @@ async def lifespan(_app: FastAPI):
         worker_task.cancel()
 
 
-app = FastAPI(title="SOP Opera API", version="0.6.0", lifespan=lifespan)
+app = FastAPI(title="SOP Opera API", version="0.7.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,

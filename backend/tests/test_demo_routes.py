@@ -100,3 +100,32 @@ async def test_start_and_status_and_reset(client: AsyncClient):
         await asyncio.sleep(0.15)
     else:
         pytest.fail("gas_leak scenario did not finish in time")
+
+
+@pytest.mark.asyncio
+async def test_random_start_and_conflict_and_reset(client: AsyncClient):
+    start = await client.post(
+        "/demo/random/start",
+        json={
+            "max_concurrent_issues": 3,
+            "spawn_interval_min_seconds": 0.5,
+            "spawn_interval_max_seconds": 0.8,
+            "seed": 7,
+            "issue_cap": 2,
+            "floors": ["ground"],
+        },
+    )
+    assert start.status_code == 202, start.text
+    body = start.json()
+    assert body["running"] is True
+    assert body["mode"] == "random"
+    assert body["config"]["seed"] == 7
+
+    conflict = await client.post("/demo/scenarios/gas_leak/start")
+    assert conflict.status_code == 409
+
+    reset = await client.post("/demo/reset")
+    assert reset.status_code == 200
+    idle = await client.get("/demo/status")
+    assert idle.json()["running"] is False
+    assert idle.json()["mode"] == "idle"

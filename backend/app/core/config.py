@@ -29,9 +29,20 @@ class Settings(BaseSettings):
 
     assessment_max_retries: int = 1
     gas_elevated_threshold: float = 20.0
+    temp_elevated_threshold: float = 80.0
+    vibration_anomaly_threshold: float = 7.1
+    effluent_ph_min: float = 6.0
+    effluent_ph_max: float = 9.0
+    tank_level_high_pct: float = 95.0
+    tank_level_low_pct: float = 5.0
+    weather_wind_hold_ms: float = 15.0
     cert_expiry_warning_days: int = 14
     default_owner_user_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     simulator_default_step_delay_seconds: int = 5
+    random_max_concurrent_issues: int = 8
+    random_spawn_interval_min_seconds: float = 4.0
+    random_spawn_interval_max_seconds: float = 12.0
+    random_compound_probability: float = 0.25
 
     rag_enabled: bool = True
     embedding_provider: str = "mock"
