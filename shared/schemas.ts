@@ -40,6 +40,25 @@ export interface RetrievedReference {
   retrieval_path: RetrievalPath;
   score: number | null;
   chunk_id: string | null;
+  title?: string | null;
+  snippet?: string | null;
+  code?: string | null;
+  triggered_by_fact?: string | null;
+}
+
+export interface ReasoningFactor {
+  fact_type: string;
+  headline: string;
+  detail: string;
+  evidence: RetrievedReference[];
+  context_ids: string[];
+}
+
+export interface AreaOwner {
+  worker_id: string;
+  name: string;
+  role: string;
+  zone: string;
 }
 
 export interface Recommendation {
@@ -77,6 +96,7 @@ export interface AssessmentMetadata {
   embedding_model: string | null;
   confidence: number;
   assessment_version: number;
+  reasoning_factors?: ReasoningFactor[];
 }
 
 export interface Assessment {
@@ -89,6 +109,7 @@ export interface Assessment {
   recommendations: Recommendation[];
   derived_fact_ids: string[];
   metadata: AssessmentMetadata | null;
+  reasoning_factors?: ReasoningFactor[];
 }
 
 export interface Decision {
@@ -116,4 +137,21 @@ export interface Asset {
   name: string;
   zone: string;
   plant_id: string;
+}
+
+export interface Report {
+  id: string;
+  review_id: string;
+  closure_event_seq: number;
+  content: Record<string, unknown>;
+  generated_at: string;
+}
+
+export interface Notification {
+  id: string;
+  review_id: string | null;
+  event_type: string;
+  summary: string;
+  recipient_ids: string[];
+  created_at: string;
 }

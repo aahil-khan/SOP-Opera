@@ -55,6 +55,25 @@ class RetrievedReference(BaseModel):
     retrieval_path: RetrievalPath
     score: float | None = None
     chunk_id: UUID | None = None
+    title: str | None = None
+    snippet: str | None = None
+    code: str | None = None
+    triggered_by_fact: str | None = None
+
+
+class ReasoningFactor(BaseModel):
+    fact_type: str
+    headline: str
+    detail: str
+    evidence: list[RetrievedReference] = Field(default_factory=list)
+    context_ids: list[UUID] = Field(default_factory=list)
+
+
+class AreaOwner(BaseModel):
+    worker_id: UUID
+    name: str
+    role: str
+    zone: str
 
 
 class Recommendation(BaseModel):
@@ -92,6 +111,7 @@ class AssessmentMetadata(BaseModel):
     embedding_model: str | None = None
     confidence: float
     assessment_version: int
+    reasoning_factors: list[ReasoningFactor] = Field(default_factory=list)
 
 
 class Assessment(BaseModel):
@@ -104,6 +124,7 @@ class Assessment(BaseModel):
     recommendations: list[Recommendation]
     derived_fact_ids: list[UUID]
     metadata: AssessmentMetadata | None = None
+    reasoning_factors: list[ReasoningFactor] = Field(default_factory=list)
 
 
 class Decision(BaseModel):
@@ -131,6 +152,23 @@ class Asset(BaseModel):
     name: str
     zone: str
     plant_id: str
+
+
+class Report(BaseModel):
+    id: UUID
+    review_id: UUID
+    closure_event_seq: int
+    content: dict[str, Any]
+    generated_at: datetime
+
+
+class Notification(BaseModel):
+    id: UUID
+    review_id: UUID | None
+    event_type: str
+    summary: str
+    recipient_ids: list[UUID]
+    created_at: datetime
 
 
 class PingResponse(BaseModel):

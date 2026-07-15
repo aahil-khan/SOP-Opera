@@ -24,6 +24,12 @@ CREATE TABLE IF NOT EXISTS workers (
     department_id UUID REFERENCES departments(id)
 );
 
+CREATE TABLE IF NOT EXISTS zone_owners (
+    zone TEXT PRIMARY KEY,
+    worker_id UUID NOT NULL REFERENCES workers(id),
+    role TEXT NOT NULL DEFAULT 'Area Supervisor'
+);
+
 CREATE TABLE IF NOT EXISTS permits (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     asset_id UUID NOT NULL REFERENCES assets(id),
@@ -146,7 +152,9 @@ CREATE TABLE IF NOT EXISTS assessment_metadata (
     retrieval_mode TEXT,
     retrieval_quality TEXT,
     retrieval_score REAL,
-    embedding_model TEXT
+    embedding_model TEXT,
+    failure_reason TEXT,  -- validation | provider_error | NULL on success
+    reasoning_factors JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE TABLE IF NOT EXISTS recommendations (
@@ -214,3 +222,5 @@ ALTER TABLE incidents ADD COLUMN IF NOT EXISTS applies_to_category TEXT;
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_context_ids UUID[] NOT NULL DEFAULT '{}';
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_references JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS failure_reason TEXT;
+ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS reasoning_factors JSONB NOT NULL DEFAULT '[]'::jsonb;

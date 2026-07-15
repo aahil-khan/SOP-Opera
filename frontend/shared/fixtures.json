@@ -69,7 +69,11 @@
       "id": "cc000002-0000-0000-0000-000000000002",
       "asset_id": "11111111-1111-1111-1111-111111111111",
       "category": "worker_location",
-      "payload": { "worker_id": "w-1", "zone": "hazardous" },
+      "payload": {
+        "worker_id": "55555555-5555-5555-5555-555555555551",
+        "worker_name": "Asha Rao",
+        "zone": "hazardous"
+      },
       "provider": "simulator",
       "valid_from": "2026-07-14T06:02:00Z",
       "valid_until": "2026-07-14T07:02:00Z",
@@ -89,19 +93,78 @@
   "retrieved_references": [
     {
       "source": "historical_incidents",
-      "id": "inc00001-0000-0000-0000-000000000001",
+      "id": "c3333333-3333-3333-3333-333333333301",
       "retrieval_path": "rag",
       "score": 0.84,
-      "chunk_id": "chunk001-0000-0000-0000-000000000001"
+      "chunk_id": "chunk001-0000-0000-0000-000000000001",
+      "title": "Historical incident",
+      "snippet": "Near-miss: workers remained in hazardous zone during gas alarm; alarm was ignored for 4 minutes.",
+      "triggered_by_fact": "zone_occupied"
     },
     {
       "source": "regulations",
-      "id": "reg00001-0000-0000-0000-000000000001",
+      "id": "a1111111-1111-1111-1111-111111111101",
       "retrieval_path": "deterministic",
       "score": null,
-      "chunk_id": null
+      "chunk_id": null,
+      "code": "OSHA-1910.146",
+      "title": "Confined Space Atmospheric Testing",
+      "snippet": "Gas readings above action levels require evacuation and continuous monitoring before re-entry.",
+      "triggered_by_fact": "elevated_gas"
     }
   ],
+  "reasoning_factors": [
+    {
+      "fact_type": "elevated_gas",
+      "headline": "Elevated gas",
+      "detail": "Gas reading 25.5 ppm exceeds the 20 ppm action threshold on Vessel A.",
+      "evidence": [
+        {
+          "source": "regulations",
+          "id": "a1111111-1111-1111-1111-111111111101",
+          "retrieval_path": "deterministic",
+          "score": null,
+          "chunk_id": null,
+          "code": "OSHA-1910.146",
+          "title": "Confined Space Atmospheric Testing",
+          "snippet": "Gas readings above action levels require evacuation and continuous monitoring before re-entry.",
+          "triggered_by_fact": "elevated_gas"
+        }
+      ],
+      "context_ids": ["cc000001-0000-0000-0000-000000000001"]
+    },
+    {
+      "fact_type": "zone_occupied",
+      "headline": "Zone occupied",
+      "detail": "Asha Rao in hazardous — personnel present in a hazardous zone near Vessel A. Area owner: Asha Rao (Area Supervisor).",
+      "evidence": [
+        {
+          "source": "historical_incidents",
+          "id": "c3333333-3333-3333-3333-333333333301",
+          "retrieval_path": "rag",
+          "score": 0.84,
+          "chunk_id": "chunk001-0000-0000-0000-000000000001",
+          "title": "Historical incident",
+          "snippet": "Near-miss: workers remained in hazardous zone during gas alarm; alarm was ignored for 4 minutes.",
+          "triggered_by_fact": "zone_occupied"
+        }
+      ],
+      "context_ids": ["cc000002-0000-0000-0000-000000000002"]
+    },
+    {
+      "fact_type": "permit_conflict",
+      "headline": "Permit conflict",
+      "detail": "Active overlapping permits on Vessel A: p-1 (hot_work). Work windows must be reconciled before restart.",
+      "evidence": [],
+      "context_ids": ["cc000003-0000-0000-0000-000000000003"]
+    }
+  ],
+  "area_owner": {
+    "worker_id": "55555555-5555-5555-5555-555555555551",
+    "name": "Asha Rao",
+    "role": "Area Supervisor",
+    "zone": "coke-oven-battery"
+  },
   "assessment": {
     "id": "as000001-0000-0000-0000-000000000001",
     "review_id": "bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb",
@@ -122,6 +185,15 @@
       "df000002-0000-0000-0000-000000000002",
       "df000003-0000-0000-0000-000000000003"
     ],
+    "reasoning_factors": [
+      {
+        "fact_type": "elevated_gas",
+        "headline": "Elevated gas",
+        "detail": "Gas reading 25.5 ppm exceeds the 20 ppm action threshold on Vessel A.",
+        "evidence": [],
+        "context_ids": ["cc000001-0000-0000-0000-000000000001"]
+      }
+    ],
     "metadata": {
       "provider": "mock",
       "model": "mock-v1",
@@ -137,8 +209,8 @@
         "cc000003-0000-0000-0000-000000000003"
       ],
       "retrieved_evidence_ids": [
-        "inc00001-0000-0000-0000-000000000001",
-        "reg00001-0000-0000-0000-000000000001"
+        "c3333333-3333-3333-3333-333333333301",
+        "a1111111-1111-1111-1111-111111111101"
       ],
       "retrieval_mode": "rag",
       "retrieval_quality": "good",
