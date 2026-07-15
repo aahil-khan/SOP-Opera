@@ -35,6 +35,34 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
         "Replace or re-certify workers whose credentials expire within the warning window.",
         "Worker certifications are approaching expiry during active work.",
     ),
+    "over_temperature": (
+        "Reduce firing rate and verify temperature instrumentation before continuing.",
+        "Process temperature exceeds the safe operating band for this asset.",
+    ),
+    "equipment_vibration_anomaly": (
+        "Inspect rotating equipment and schedule vibration diagnosis immediately.",
+        "Vibration severity is outside the accepted ISO operating band.",
+    ),
+    "effluent_quality_breach": (
+        "Divert effluent to holding and do not discharge until quality is restored.",
+        "Effluent pH is outside the permitted discharge band.",
+    ),
+    "tank_level_critical": (
+        "Stop transfers and verify tank level instrumentation and overfill protection.",
+        "Tank inventory is at a critical high or low setpoint.",
+    ),
+    "ppe_noncompliance": (
+        "Stop entry until PPE is brought into compliance and re-brief the work party.",
+        "A worker is missing required PPE for the zone hazard class.",
+    ),
+    "lifting_operation_conflict": (
+        "Suspend overlapping lifts and restart under a single coordinated lift plan.",
+        "Two or more active lifts share conflicting airspace.",
+    ),
+    "weather_hold": (
+        "Hold hot work and outdoor lifts until weather all-clear is declared.",
+        "Weather conditions breach site hold criteria with exposed work active.",
+    ),
 }
 
 

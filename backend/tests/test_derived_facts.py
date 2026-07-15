@@ -5,12 +5,20 @@ from uuid import uuid4
 
 from app.context.derived_facts import (
     ContextEntryView,
+    DERIVED_FACT_RULES,
     evaluate_rules,
     rule_certification_expiring,
+    rule_effluent_quality_breach,
     rule_elevated_gas,
+    rule_equipment_vibration_anomaly,
     rule_incomplete_isolation,
+    rule_lifting_operation_conflict,
+    rule_over_temperature,
     rule_permit_conflict,
+    rule_ppe_noncompliance,
     rule_simultaneous_ops,
+    rule_tank_level_critical,
+    rule_weather_hold,
     rule_zone_occupied,
 )
 
@@ -115,7 +123,7 @@ def test_certification_expiring_true_and_false():
     )
 
 
-def test_evaluate_rules_runs_all_six():
+def test_evaluate_rules_runs_all_thirteen():
     entries = [
         _entry("sensor", {"gas_reading": 30.0}),
         _entry("worker_location", {"worker_id": "w-1", "zone": "hazardous"}),
@@ -126,16 +134,71 @@ def test_evaluate_rules_runs_all_six():
         ),
     ]
     result = evaluate_rules(entries, now=NOW)
-    assert set(result.keys()) == {
-        "elevated_gas",
-        "permit_conflict",
-        "zone_occupied",
-        "incomplete_isolation",
-        "simultaneous_ops",
-        "certification_expiring",
-    }
+    assert set(result.keys()) == {name for name, _ in DERIVED_FACT_RULES}
+    assert len(result) == 13
     assert result["elevated_gas"] is not None
     assert result["zone_occupied"] is not None
     assert result["permit_conflict"] is not None
     assert result["simultaneous_ops"] is not None
     assert result["incomplete_isolation"] is not None
+
+
+def test_over_temperature_true_and_false():
+    over = [_entry("sensor", {"temp_reading": 95.0, "unit": "C"})]
+    under = [_entry("sensor", {"temp_reading": 60.0, "unit": "C"})]
+    assert rule_over_temperature(over, now=NOW, threshold=80.0) is not None
+    assert rule_over_temperature(under, now=NOW, threshold=80.0) is None
+
+
+def test_equipment_vibration_anomaly_true_and_false():
+    bad = [_entry("sensor", {"vibration_mm_s": 9.5})]
+    ok = [_entry("sensor", {"vibration_mm_s": 3.0})]
+    assert rule_equipment_vibration_anomaly(bad, now=NOW, threshold=7.1) is not None
+    assert rule_equipment_vibration_anomaly(ok, now=NOW, threshold=7.1) is None
+
+
+def test_effluent_quality_breach_true_and_false():
+    low = [_entry("sensor", {"ph": 4.5})]
+    high = [_entry("sensor", {"ph": 10.2})]
+    ok = [_entry("sensor", {"ph": 7.2})]
+    assert rule_effluent_quality_breach(low, now=NOW) is not None
+    assert rule_effluent_quality_breach(high, now=NOW) is not None
+    assert rule_effluent_quality_breach(ok, now=NOW) is None
+
+
+def test_tank_level_critical_true_and_false():
+    high = [_entry("sensor", {"level_pct": 97.0})]
+    low = [_entry("sensor", {"level_pct": 2.0})]
+    ok = [_entry("sensor", {"level_pct": 55.0})]
+    assert rule_tank_level_critical(high, now=NOW) is not None
+    assert rule_tank_level_critical(low, now=NOW) is not None
+    assert rule_tank_level_critical(ok, now=NOW) is None
+
+
+def test_ppe_noncompliance_true_and_false():
+    bad = [_entry("ppe_status", {"worker_id": "w-1", "compliant": False})]
+    ok = [_entry("ppe_status", {"worker_id": "w-1", "compliant": True})]
+    assert rule_ppe_noncompliance(bad, now=NOW) is not None
+    assert rule_ppe_noncompliance(ok, now=NOW) is None
+
+
+def test_lifting_operation_conflict_true_and_false():
+    one = [_entry("lift_plan", {"lift_id": "L1", "status": "active"})]
+    two = one + [_entry("lift_plan", {"lift_id": "L2", "status": "active"})]
+    assert rule_lifting_operation_conflict(one, now=NOW) is None
+    assert rule_lifting_operation_conflict(two, now=NOW) is not None
+
+
+def test_weather_hold_true_and_false():
+    weather = _entry("weather", {"wind_ms": 18.0, "lightning": False})
+    hot = _entry(
+        "permit",
+        {"permit_id": "p1", "status": "active", "work_type": "hot_work"},
+    )
+    calm = _entry("weather", {"wind_ms": 5.0, "lightning": False})
+    assert rule_weather_hold([weather, hot], now=NOW, wind_threshold=15.0) is not None
+    assert rule_weather_hold([weather], now=NOW, wind_threshold=15.0) is None
+    assert rule_weather_hold([calm, hot], now=NOW, wind_threshold=15.0) is None
+    lightning = _entry("weather", {"wind_ms": 2.0, "lightning": True})
+    lift = _entry("lift_plan", {"lift_id": "L1", "status": "active"})
+    assert rule_weather_hold([lightning, lift], now=NOW) is not None

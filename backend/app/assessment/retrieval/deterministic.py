@@ -19,6 +19,13 @@ RETRIEVAL_RULES: dict[str, list[SourceType]] = {
     "incomplete_isolation": ["sops", "regulations"],
     "simultaneous_ops": ["sops", "historical_incidents"],
     "certification_expiring": ["regulations", "sops"],
+    "over_temperature": ["regulations", "sops"],
+    "equipment_vibration_anomaly": ["sops", "historical_incidents"],
+    "effluent_quality_breach": ["regulations"],
+    "tank_level_critical": ["sops", "regulations"],
+    "ppe_noncompliance": ["sops", "regulations"],
+    "lifting_operation_conflict": ["sops", "historical_incidents"],
+    "weather_hold": ["sops", "regulations"],
 }
 
 

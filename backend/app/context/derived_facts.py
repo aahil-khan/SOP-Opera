@@ -204,6 +204,205 @@ def rule_certification_expiring(
     )
 
 
+def rule_over_temperature(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    threshold: float | None = None,
+) -> DerivedFact | None:
+    threshold = (
+        threshold
+        if threshold is not None
+        else get_settings().temp_elevated_threshold
+    )
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and isinstance(e.payload.get("temp_reading"), (int, float))
+        and float(e.payload["temp_reading"]) > threshold
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id, "over_temperature", True, [h.id for h in hits], now
+    )
+
+
+def rule_equipment_vibration_anomaly(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    threshold: float | None = None,
+) -> DerivedFact | None:
+    threshold = (
+        threshold
+        if threshold is not None
+        else get_settings().vibration_anomaly_threshold
+    )
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and isinstance(e.payload.get("vibration_mm_s"), (int, float))
+        and float(e.payload["vibration_mm_s"]) > threshold
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id,
+        "equipment_vibration_anomaly",
+        True,
+        [h.id for h in hits],
+        now,
+    )
+
+
+def rule_effluent_quality_breach(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    ph_min: float | None = None,
+    ph_max: float | None = None,
+) -> DerivedFact | None:
+    settings = get_settings()
+    ph_min = ph_min if ph_min is not None else settings.effluent_ph_min
+    ph_max = ph_max if ph_max is not None else settings.effluent_ph_max
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and isinstance(e.payload.get("ph"), (int, float))
+        and (
+            float(e.payload["ph"]) < ph_min or float(e.payload["ph"]) > ph_max
+        )
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id,
+        "effluent_quality_breach",
+        True,
+        [h.id for h in hits],
+        now,
+    )
+
+
+def rule_tank_level_critical(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    high_pct: float | None = None,
+    low_pct: float | None = None,
+) -> DerivedFact | None:
+    settings = get_settings()
+    high_pct = high_pct if high_pct is not None else settings.tank_level_high_pct
+    low_pct = low_pct if low_pct is not None else settings.tank_level_low_pct
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and isinstance(e.payload.get("level_pct"), (int, float))
+        and (
+            float(e.payload["level_pct"]) > high_pct
+            or float(e.payload["level_pct"]) < low_pct
+        )
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id, "tank_level_critical", True, [h.id for h in hits], now
+    )
+
+
+def rule_ppe_noncompliance(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+) -> DerivedFact | None:
+    hits = [
+        e
+        for e in entries
+        if e.category == "ppe_status"
+        and e.payload.get("compliant") is False
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id, "ppe_noncompliance", True, [h.id for h in hits], now
+    )
+
+
+def rule_lifting_operation_conflict(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+) -> DerivedFact | None:
+    lifts = [
+        e
+        for e in entries
+        if e.category == "lift_plan" and e.payload.get("status") == "active"
+    ]
+    if len(lifts) < 2:
+        return None
+    return _fact(
+        lifts[0].asset_id,
+        "lifting_operation_conflict",
+        True,
+        [p.id for p in lifts],
+        now,
+    )
+
+
+def rule_weather_hold(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    wind_threshold: float | None = None,
+) -> DerivedFact | None:
+    wind_threshold = (
+        wind_threshold
+        if wind_threshold is not None
+        else get_settings().weather_wind_hold_ms
+    )
+    weather_hits = [
+        e
+        for e in entries
+        if e.category == "weather"
+        and (
+            e.payload.get("lightning") is True
+            or (
+                isinstance(e.payload.get("wind_ms"), (int, float))
+                and float(e.payload["wind_ms"]) >= wind_threshold
+            )
+        )
+    ]
+    if not weather_hits:
+        return None
+
+    exposed = [
+        p
+        for p in _active_permits(entries)
+        if p.payload.get("work_type") in {"hot_work", "lifting"}
+    ]
+    active_lifts = [
+        e
+        for e in entries
+        if e.category == "lift_plan" and e.payload.get("status") == "active"
+    ]
+    if not exposed and not active_lifts:
+        return None
+
+    sources = weather_hits + exposed + active_lifts
+    return _fact(
+        sources[0].asset_id,
+        "weather_hold",
+        True,
+        [s.id for s in sources],
+        now,
+    )
+
+
 def _parse_dt(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)
@@ -242,6 +441,13 @@ DERIVED_FACT_RULES: list[tuple[str, RuleFn]] = [
     ("incomplete_isolation", rule_incomplete_isolation),
     ("simultaneous_ops", rule_simultaneous_ops),
     ("certification_expiring", rule_certification_expiring),
+    ("over_temperature", rule_over_temperature),
+    ("equipment_vibration_anomaly", rule_equipment_vibration_anomaly),
+    ("effluent_quality_breach", rule_effluent_quality_breach),
+    ("tank_level_critical", rule_tank_level_critical),
+    ("ppe_noncompliance", rule_ppe_noncompliance),
+    ("lifting_operation_conflict", rule_lifting_operation_conflict),
+    ("weather_hold", rule_weather_hold),
 ]
 
 
@@ -250,7 +456,7 @@ def evaluate_rules(
     *,
     now: datetime | None = None,
 ) -> dict[str, DerivedFact | None]:
-    """Run all six rules. Returns fact_type → DerivedFact or None (absent/false)."""
+    """Run all derived-fact rules. Returns fact_type → DerivedFact or None."""
     now = now or datetime.now(timezone.utc)
     return {name: fn(entries, now=now) for name, fn in DERIVED_FACT_RULES}
 

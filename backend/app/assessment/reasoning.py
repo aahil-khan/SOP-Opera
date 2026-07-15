@@ -19,6 +19,13 @@ FACT_HEADLINES: dict[str, str] = {
     "incomplete_isolation": "Incomplete isolation",
     "simultaneous_ops": "Simultaneous operations",
     "certification_expiring": "Certification expiring",
+    "over_temperature": "Over temperature",
+    "equipment_vibration_anomaly": "Equipment vibration anomaly",
+    "effluent_quality_breach": "Effluent quality breach",
+    "tank_level_critical": "Tank level critical",
+    "ppe_noncompliance": "PPE noncompliance",
+    "lifting_operation_conflict": "Lifting operation conflict",
+    "weather_hold": "Weather hold",
 }
 
 
