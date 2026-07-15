@@ -7,15 +7,20 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment.orchestrator import PROMPT_VERSION
 from app.assessment.providers import get_provider
+from app.assessment.reasoning import build_reasoning_factors, serialize_factor
 from app.assessment.retrieval import build_retrieval_query, retrieve
+from app.assessment.retrieval.enrich import enrich_references, serialize_ref
+from app.context.derived_facts import load_valid_context
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.realtime.connection_manager import manager
+from app.reviews.ownership import get_zone_owner, resolve_worker_names
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import ReviewEvent
 from shared.python.schemas import DerivedFact, RetrievedReference
@@ -23,17 +28,26 @@ from shared.python.schemas import DerivedFact, RetrievedReference
 logger = logging.getLogger(__name__)
 
 
+def _classify_failure(exc: Exception | None) -> str:
+    if isinstance(exc, ValidationError):
+        return "validation"
+    # Walk cause/context chain for wrapped ValidationError.
+    cursor: BaseException | None = exc
+    seen: set[int] = set()
+    while cursor is not None and id(cursor) not in seen:
+        seen.add(id(cursor))
+        if isinstance(cursor, ValidationError):
+            return "validation"
+        cursor = cursor.__cause__ or cursor.__context__
+    return "provider_error"
+
+
 def _serialize_refs(refs: list[RetrievedReference]) -> list[dict]:
-    return [
-        {
-            "source": r.source,
-            "id": str(r.id),
-            "retrieval_path": r.retrieval_path,
-            "score": r.score,
-            "chunk_id": str(r.chunk_id) if r.chunk_id else None,
-        }
-        for r in refs
-    ]
+    return [serialize_ref(r) for r in refs]
+
+
+def _serialize_factors(factors: list) -> list[dict]:
+    return [serialize_factor(f) for f in factors]
 
 
 async def _load_true_facts(
@@ -118,6 +132,8 @@ async def _persist_metadata(
     retrieval_quality: str,
     retrieval_score: float | None,
     embedding_model: str | None,
+    failure_reason: str | None = None,
+    reasoning_factors: list | None = None,
 ) -> None:
     await session.execute(
         text(
@@ -126,13 +142,15 @@ async def _persist_metadata(
                 assessment_id, provider, model, prompt_version,
                 tokens_in, tokens_out, cost_usd, latency_ms, confidence,
                 retrieved_context_ids, retrieved_evidence_ids, retrieved_references,
-                retrieval_mode, retrieval_quality, retrieval_score, embedding_model
+                retrieval_mode, retrieval_quality, retrieval_score, embedding_model,
+                failure_reason, reasoning_factors
             )
             VALUES (
                 CAST(:aid AS uuid), :provider, :model, :prompt_version,
                 :tokens_in, :tokens_out, :cost_usd, :latency_ms, :confidence,
                 CAST(:ctx AS uuid[]), CAST(:ev AS uuid[]), CAST(:refs AS jsonb),
-                :retrieval_mode, :retrieval_quality, :retrieval_score, :embedding_model
+                :retrieval_mode, :retrieval_quality, :retrieval_score, :embedding_model,
+                :failure_reason, CAST(:factors AS jsonb)
             )
             ON CONFLICT (assessment_id) DO UPDATE SET
                 provider = EXCLUDED.provider,
@@ -149,7 +167,9 @@ async def _persist_metadata(
                 retrieval_mode = EXCLUDED.retrieval_mode,
                 retrieval_quality = EXCLUDED.retrieval_quality,
                 retrieval_score = EXCLUDED.retrieval_score,
-                embedding_model = EXCLUDED.embedding_model
+                embedding_model = EXCLUDED.embedding_model,
+                failure_reason = EXCLUDED.failure_reason,
+                reasoning_factors = EXCLUDED.reasoning_factors
             """
         ),
         {
@@ -169,6 +189,8 @@ async def _persist_metadata(
             "retrieval_quality": retrieval_quality,
             "retrieval_score": retrieval_score,
             "embedding_model": embedding_model,
+            "failure_reason": failure_reason,
+            "factors": json.dumps(_serialize_factors(reasoning_factors or [])),
         },
     )
 
@@ -228,8 +250,40 @@ async def run_assessment_job(
         )
 
         hybrid = await retrieve(session, query=query, fact_types=fact_types)
-        evidence_ids = [r.id for r in hybrid.refs]
+        enriched_refs = await enrich_references(session, hybrid.refs)
+        evidence_ids = [r.id for r in enriched_refs]
         provider = get_provider(provider_name)
+
+        # Resolve context + worker names for structured reasoning factors
+        ctx_views = await load_valid_context(session, review.asset_id)
+        worker_ids = [
+            str(e.payload.get("worker_id"))
+            for e in ctx_views
+            if e.category in ("worker_location", "certification")
+            and e.payload.get("worker_id")
+        ]
+        name_map = await resolve_worker_names(session, worker_ids)
+        context_entries = []
+        for e in ctx_views:
+            payload = dict(e.payload)
+            wid = payload.get("worker_id")
+            if wid and str(wid) in name_map:
+                payload["worker_name"] = name_map[str(wid)]
+            context_entries.append(
+                {
+                    "id": str(e.id),
+                    "category": e.category,
+                    "payload": payload,
+                }
+            )
+        area_owner = await get_zone_owner(session, asset_zone)
+        reasoning_factors = build_reasoning_factors(
+            facts,
+            context_entries,
+            enriched_refs,
+            asset_name=asset_name,
+            area_owner=area_owner,
+        )
 
         generation = None
         last_error: Exception | None = None
@@ -246,7 +300,7 @@ async def run_assessment_job(
                 generation = await provider.generate_assessment(
                     facts,
                     context_ids,
-                    hybrid.refs,
+                    enriched_refs,
                     repair_hint=repair,
                 )
                 last_error = None
@@ -261,6 +315,7 @@ async def run_assessment_job(
                 )
 
         if generation is None or last_error is not None:
+            failure_reason = _classify_failure(last_error)
             await session.execute(
                 text(
                     """
@@ -286,11 +341,18 @@ async def run_assessment_job(
                 confidence=0.0,
                 context_ids=context_ids,
                 evidence_ids=evidence_ids,
-                retrieved_references=hybrid.refs,
+                retrieved_references=enriched_refs,
                 retrieval_mode=hybrid.mode,
                 retrieval_quality=hybrid.quality,
                 retrieval_score=hybrid.best_score,
                 embedding_model=hybrid.embedding_model,
+                failure_reason=failure_reason,
+                reasoning_factors=reasoning_factors,
+            )
+            from app.notifications.service import notify_assessment_failed
+
+            await notify_assessment_failed(
+                session, review_id=review_id, owner_id=review.owner_id
             )
             await session.commit()
             await manager.broadcast(
@@ -299,6 +361,7 @@ async def run_assessment_job(
                     "assessment_id": str(assessment_id),
                     "review_id": str(review_id),
                     "error": str(last_error),
+                    "failure_reason": failure_reason,
                     "ts": datetime.now(timezone.utc).isoformat(),
                 },
             )
@@ -367,11 +430,21 @@ async def run_assessment_job(
             confidence=result.confidence,
             context_ids=context_ids,
             evidence_ids=evidence_ids,
-            retrieved_references=hybrid.refs,
+            retrieved_references=enriched_refs,
             retrieval_mode=hybrid.mode,
             retrieval_quality=hybrid.quality,
             retrieval_score=hybrid.best_score,
             embedding_model=hybrid.embedding_model,
+            failure_reason=None,
+            reasoning_factors=reasoning_factors,
+        )
+        from app.notifications.service import notify_assessment_completed
+
+        await notify_assessment_completed(
+            session,
+            review_id=review_id,
+            owner_id=review.owner_id,
+            risk_level=result.risk_level,
         )
         await session.commit()
 

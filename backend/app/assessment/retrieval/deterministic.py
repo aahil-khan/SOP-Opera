@@ -58,6 +58,7 @@ class DeterministicRetriever:
                             retrieval_path="deterministic",
                             score=None,
                             chunk_id=None,
+                            triggered_by_fact=fact_type,
                         )
                     )
         return refs

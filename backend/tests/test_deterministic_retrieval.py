@@ -72,3 +72,4 @@ async def test_deterministic_each_fact_resolves(session):
         )
         assert all(r.retrieval_path == "deterministic" for r in refs)
         assert all(isinstance(r.id, UUID) for r in refs)
+        assert all(r.triggered_by_fact == fact_type for r in refs)

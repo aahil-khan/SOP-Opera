@@ -33,6 +33,12 @@ async def _cleanup_vessel() -> None:
             await conn.execute(
                 "DELETE FROM decisions WHERE review_id = ANY($1::uuid[])", rids
             )
+            await conn.execute(
+                "DELETE FROM reports WHERE review_id = ANY($1::uuid[])", rids
+            )
+            await conn.execute(
+                "DELETE FROM notifications WHERE review_id = ANY($1::uuid[])", rids
+            )
             if assessment_ids:
                 await conn.execute(
                     "DELETE FROM recommendations WHERE assessment_id = ANY($1::uuid[])",
@@ -163,7 +169,10 @@ async def test_assessment_pipeline_compound_risk(client: AsyncClient):
     for payload in (
         {
             "category": "worker_location",
-            "payload": {"worker_id": "w-1", "zone": "hazardous"},
+            "payload": {
+                "worker_id": "55555555-5555-5555-5555-555555555551",
+                "zone": "hazardous",
+            },
             "confidence": 0.95,
         },
         {
@@ -218,13 +227,27 @@ async def test_assessment_pipeline_compound_risk(client: AsyncClient):
     assert latest["metadata"]["retrieval_mode"] in ("rag", "deterministic", "skipped")
     assert latest["metadata"]["provider"] == "mock"
     assert "retrieved_references" in latest
+    assert "reasoning_factors" in latest
+    assert latest["reasoning_factors"], "expected structured why factors"
+    assert all(
+        f.get("headline") and f.get("detail") for f in latest["reasoning_factors"]
+    )
     if latest["metadata"]["retrieval_mode"] != "skipped":
         assert latest["retrieved_references"]
         assert all("retrieval_path" in r for r in latest["retrieved_references"])
+        # Enrichment should surface human-readable titles for deterministic/RAG refs
+        assert any(r.get("title") or r.get("snippet") for r in latest["retrieved_references"])
 
     detail = await client.get(f"/reviews/{review_id}")
     assert detail.status_code == 200
-    assert detail.json()["review"]["state"] == "pending_decision"
-    assert detail.json()["asset"]["name"] == "Vessel A"
-    detail_types = {f["fact_type"] for f in detail.json()["derived_facts"]}
+    body = detail.json()
+    assert body["review"]["state"] == "pending_decision"
+    assert body["asset"]["name"] == "Vessel A"
+    assert body["area_owner"] is not None
+    assert body["area_owner"]["name"] == "Asha Rao"
+    # Worker location context should resolve to a display name
+    worker_ctx = [c for c in body["context"] if c["category"] == "worker_location"]
+    assert worker_ctx
+    assert worker_ctx[0]["payload"].get("worker_name") == "Asha Rao"
+    detail_types = {f["fact_type"] for f in body["derived_facts"]}
     assert {"elevated_gas", "zone_occupied", "permit_conflict"} <= detail_types

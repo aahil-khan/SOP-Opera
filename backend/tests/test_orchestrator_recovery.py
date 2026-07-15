@@ -42,6 +42,10 @@ async def session():
         await s.execute(text("DELETE FROM assessment_metadata"))
         await s.execute(text("DELETE FROM recommendations"))
         await s.execute(text("DELETE FROM assessments"))
+        await s.execute(text("DELETE FROM notifications"))
+        await s.execute(text("DELETE FROM reports"))
+        await s.execute(text("DELETE FROM evidence"))
+        await s.execute(text("DELETE FROM decisions"))
         await s.execute(
             text("DELETE FROM reviews WHERE asset_id = CAST(:aid AS uuid)"),
             {"aid": str(VESSEL_A)},
@@ -51,6 +55,10 @@ async def session():
         await s.execute(text("DELETE FROM assessment_metadata"))
         await s.execute(text("DELETE FROM recommendations"))
         await s.execute(text("DELETE FROM assessments"))
+        await s.execute(text("DELETE FROM notifications"))
+        await s.execute(text("DELETE FROM reports"))
+        await s.execute(text("DELETE FROM evidence"))
+        await s.execute(text("DELETE FROM decisions"))
         await s.execute(
             text("DELETE FROM reviews WHERE asset_id = CAST(:aid AS uuid)"),
             {"aid": str(VESSEL_A)},

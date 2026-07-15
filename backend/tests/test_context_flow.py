@@ -61,6 +61,19 @@ async def client():
                     assessment_ids,
                 )
             await conn.execute(
+                "DELETE FROM evidence WHERE review_id = ANY($1::uuid[])", review_ids
+            )
+            await conn.execute(
+                "DELETE FROM decisions WHERE review_id = ANY($1::uuid[])", review_ids
+            )
+            await conn.execute(
+                "DELETE FROM reports WHERE review_id = ANY($1::uuid[])", review_ids
+            )
+            await conn.execute(
+                "DELETE FROM notifications WHERE review_id = ANY($1::uuid[])",
+                review_ids,
+            )
+            await conn.execute(
                 "DELETE FROM reviews WHERE id = ANY($1::uuid[])", review_ids
             )
         await conn.execute("DELETE FROM audit_entries")
@@ -117,7 +130,10 @@ async def test_compound_risk_context_flow(client: AsyncClient):
         json={
             "asset_id": str(VESSEL_A),
             "category": "worker_location",
-            "payload": {"worker_id": "w-1", "zone": "hazardous"},
+            "payload": {
+                "worker_id": "55555555-5555-5555-5555-555555555551",
+                "zone": "hazardous",
+            },
             "provider": "simulator",
             "valid_from": frm,
             "valid_until": until,

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from datetime import datetime, timezone
 from uuid import UUID
@@ -10,6 +11,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment.orchestrator import PROMPT_VERSION, _true_fact_ids
+from app.assessment.retrieval.enrich import enrich_references, serialize_ref
 from app.realtime.connection_manager import manager
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
@@ -44,7 +46,6 @@ async def create_manual_assessment(
     )
     version = int(ver_row.scalar_one()) + 1
 
-    # Supersede prior complete
     await session.execute(
         text(
             """
@@ -118,12 +119,14 @@ async def create_manual_assessment(
             INSERT INTO assessment_metadata (
                 assessment_id, provider, model, prompt_version,
                 tokens_in, tokens_out, cost_usd, latency_ms, confidence,
-                retrieved_references, retrieval_mode, retrieval_quality
+                retrieved_references, retrieval_mode, retrieval_quality,
+                reasoning_factors
             )
             VALUES (
                 CAST(:aid AS uuid), 'manual', 'human', :pv,
                 0, 0, 0, 0, 1.0,
-                '[]'::jsonb, 'skipped', 'n_a'
+                '[]'::jsonb, 'skipped', 'n_a',
+                '[]'::jsonb
             )
             """
         ),
@@ -157,11 +160,44 @@ async def create_manual_assessment(
         assessment_type="manual",
         status="complete",
         risk_level=body.risk_level,
-        summary=body.summary,
         recommendations=recommendations,
+        summary=body.summary,
         derived_fact_ids=fact_ids,
         metadata=None,
+        reasoning_factors=[],
     )
+
+
+def _parse_reasoning_factors(raw) -> list[dict]:
+    if raw is None:
+        return []
+    if isinstance(raw, str):
+        try:
+            raw = json.loads(raw)
+        except json.JSONDecodeError:
+            return []
+    if not isinstance(raw, list):
+        return []
+    out: list[dict] = []
+    for item in raw:
+        if not isinstance(item, dict):
+            continue
+        evidence = item.get("evidence") or []
+        if isinstance(evidence, str):
+            try:
+                evidence = json.loads(evidence)
+            except json.JSONDecodeError:
+                evidence = []
+        out.append(
+            {
+                "fact_type": item.get("fact_type", ""),
+                "headline": item.get("headline", ""),
+                "detail": item.get("detail", ""),
+                "evidence": evidence if isinstance(evidence, list) else [],
+                "context_ids": [str(x) for x in (item.get("context_ids") or [])],
+            }
+        )
+    return out
 
 
 async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]:
@@ -175,7 +211,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                    m.retrieved_context_ids, m.retrieved_evidence_ids,
                    m.retrieved_references,
                    m.retrieval_mode, m.retrieval_quality, m.retrieval_score,
-                   m.embedding_model
+                   m.embedding_model, m.reasoning_factors
             FROM assessments a
             LEFT JOIN assessment_metadata m ON m.assessment_id = a.id
             WHERE a.review_id = CAST(:review_id AS uuid)
@@ -210,10 +246,17 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
         ]
         raw_refs = m.get("retrieved_references") or []
         if isinstance(raw_refs, str):
-            import json
-
             raw_refs = json.loads(raw_refs)
-        retrieved_references = list(raw_refs) if isinstance(raw_refs, list) else []
+        stub_refs = list(raw_refs) if isinstance(raw_refs, list) else []
+        enriched = await enrich_references(session, stub_refs)
+        retrieved_references = [serialize_ref(r) for r in enriched]
+        reasoning_factors = _parse_reasoning_factors(m.get("reasoning_factors"))
+        for factor in reasoning_factors:
+            ev = factor.get("evidence") or []
+            if ev and not any(isinstance(e, dict) and e.get("title") for e in ev):
+                factor["evidence"] = [
+                    serialize_ref(r) for r in await enrich_references(session, ev)
+                ]
         meta = None
         if m.get("provider") is not None:
             meta = {
@@ -236,6 +279,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 "retrieval_score": m["retrieval_score"],
                 "embedding_model": m["embedding_model"],
                 "assessment_version": m["version"],
+                "reasoning_factors": reasoning_factors,
             }
         out.append(
             {
@@ -250,6 +294,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 "created_at": m["created_at"].isoformat() if m["created_at"] else None,
                 "recommendations": recommendations,
                 "retrieved_references": retrieved_references,
+                "reasoning_factors": reasoning_factors,
                 "metadata": meta,
             }
         )

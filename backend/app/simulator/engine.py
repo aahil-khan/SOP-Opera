@@ -149,13 +149,23 @@ class DemoController:
         self._started_at = None
         self._running = False
 
+        # Drain + pause the assessment worker so an in-flight job cannot re-insert
+        # rows between DELETE statements (FK violation race).
         orchestrator.drain()
+        worker = orchestrator._worker_task
+        orchestrator.stop()
+        if worker is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(worker), timeout=2.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
 
         async with SessionLocal() as session:
             for table in _RESET_DELETE_ORDER:
                 await session.execute(text(f"DELETE FROM {table}"))
             await session.commit()
 
+        orchestrator.start()
         logger.info("demo reset complete — runtime tables wiped")
         return {"status": "reset"}
 
