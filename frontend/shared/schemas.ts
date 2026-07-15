@@ -137,6 +137,7 @@ export interface Asset {
   name: string;
   zone: string;
   plant_id: string;
+  floor: "ground" | "first" | "second";
 }
 
 export interface Report {

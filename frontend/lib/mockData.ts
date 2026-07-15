@@ -54,12 +54,14 @@ export const EXTRA_ASSETS: Asset[] = [
     name: "Compressor B",
     zone: "compressor-yard",
     plant_id: "plant-1",
+    floor: "ground",
   },
   {
     id: "44444444-4444-4444-4444-444444444444",
     name: "Tank Farm C",
     zone: "tank-farm",
     plant_id: "plant-1",
+    floor: "ground",
   },
 ];
 

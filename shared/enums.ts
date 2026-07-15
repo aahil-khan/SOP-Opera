@@ -33,7 +33,16 @@ export type FactType =
   | "zone_occupied"
   | "incomplete_isolation"
   | "simultaneous_ops"
-  | "certification_expiring";
+  | "certification_expiring"
+  | "over_temperature"
+  | "equipment_vibration_anomaly"
+  | "effluent_quality_breach"
+  | "tank_level_critical"
+  | "ppe_noncompliance"
+  | "lifting_operation_conflict"
+  | "weather_hold";
+
+export type PlantFloor = "ground" | "first" | "second";
 
 export type ReferenceSource =
   | "regulations"

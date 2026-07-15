@@ -152,6 +152,7 @@ class Asset(BaseModel):
     name: str
     zone: str
     plant_id: str
+    floor: Literal["ground", "first", "second"] = "ground"
 
 
 class Report(BaseModel):
