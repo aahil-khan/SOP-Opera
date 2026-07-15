@@ -1,9 +1,12 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
+import Link from "next/link";
 import type { Decision } from "@/shared/schemas";
+import type { Report } from "@/shared/schemas";
 import type { DecisionOutcome } from "@/shared/enums";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
+import { fetchReviewReports } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
 import styles from "./DecisionPanel.module.css";
 
@@ -32,13 +35,10 @@ function DecisionForm({
   const [conditions, setConditions] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const initialDispositions = useMemo(() => {
-    const map: Record<string, "accepted" | "rejected"> = {};
-    for (const rec of assessment.recommendations) {
-      map[rec.id] = "accepted";
-    }
-    return map;
-  }, [assessment]);
+  const initialDispositions: Record<string, "accepted" | "rejected"> =
+    Object.fromEntries(
+      assessment.recommendations.map((rec) => [rec.id, "accepted" as const]),
+    );
   const [dispositions, setDispositions] = useState(initialDispositions);
 
   const needsConditions = outcome === "approved_with_conditions";
@@ -127,10 +127,39 @@ function DecisionForm({
       >
         {busy ? "Submitting…" : "Submit decision"}
       </button>
-      {error && (
-        <p style={{ color: "#f07178", fontSize: "0.85rem", marginTop: "0.5rem" }}>
-          {error}
+      {error && <p className={styles.error}>{error}</p>}
+    </div>
+  );
+}
+
+function ClosedReportLink({ reviewId }: { reviewId: string }) {
+  const [report, setReport] = useState<Report | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchReviewReports(reviewId)
+      .then((reports) => {
+        if (!cancelled && reports.length) setReport(reports[0]);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [reviewId]);
+
+  return (
+    <div className={`panel ${styles.panel}`}>
+      <h3 className={styles.title}>Decision</h3>
+      <p className={styles.done}>Review closed</p>
+      {report ? (
+        <p className={styles.hint}>
+          Closure report ready —{" "}
+          <Link href={`/reports/${report.id}`} className={styles.reportLink}>
+            {(report.content?.title as string) ?? `Report #${report.closure_event_seq}`}
+          </Link>
         </p>
+      ) : (
+        <p className={styles.hint}>Generating report…</p>
       )}
     </div>
   );
@@ -142,6 +171,46 @@ export function DecisionPanel({
   assessment,
   existing,
 }: DecisionPanelProps) {
+  const closeReview = useLiveStore((s) => s.closeReview);
+  const [closing, setClosing] = useState(false);
+  const [closeError, setCloseError] = useState<string | null>(null);
+
+  if (reviewState === "closed") {
+    return <ClosedReportLink reviewId={reviewId} />;
+  }
+
+  if (existing && reviewState === "decided") {
+    return (
+      <div className={`panel ${styles.panel}`}>
+        <h3 className={styles.title}>Decision</h3>
+        <p className={styles.done}>
+          Submitted · <strong>{existing.outcome.replaceAll("_", " ")}</strong>
+          {existing.conditions ? ` — ${existing.conditions}` : ""}
+        </p>
+        <p className={styles.hint}>
+          Evidence frozen at {new Date(existing.submitted_at).toLocaleString()}.
+        </p>
+        <button
+          type="button"
+          className="btn btn-primary"
+          disabled={closing}
+          onClick={() => {
+            setClosing(true);
+            setCloseError(null);
+            void closeReview(reviewId)
+              .catch((err) =>
+                setCloseError(err instanceof Error ? err.message : String(err)),
+              )
+              .finally(() => setClosing(false));
+          }}
+        >
+          {closing ? "Closing…" : "Close Review"}
+        </button>
+        {closeError && <p className={styles.error}>{closeError}</p>}
+      </div>
+    );
+  }
+
   if (existing) {
     return (
       <div className={`panel ${styles.panel}`}>

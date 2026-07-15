@@ -1,32 +1,33 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: 0.65rem;
-  padding: 1.25rem;
+  gap: var(--space-3);
+  padding: var(--space-5);
   max-width: 900px;
   margin: 0 auto;
 }
 
 .header {
-  margin-bottom: 0.5rem;
+  margin-bottom: var(--space-2);
 }
 
 .title {
   margin: 0;
-  font-size: 1.4rem;
-  font-weight: 600;
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 
 .subtitle {
-  margin: 0.25rem 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
+  margin: var(--space-1) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .empty {
-  color: var(--muted);
+  color: var(--text-muted);
   font-style: italic;
-  padding: 1rem 0;
+  padding: var(--space-4) 0;
 }
 
 .item {
@@ -34,38 +35,39 @@
   flex-wrap: wrap;
   align-items: center;
   justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.9rem 1rem;
-  background: var(--panel);
-  border: 1px solid var(--border);
-  border-radius: 8px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
   color: inherit;
   text-decoration: none;
-  transition: border-color 0.15s ease;
+  transition: border-color var(--duration-fast) var(--ease-out);
 }
 
 .item:hover {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
   text-decoration: none;
 }
 
 .itemMeta {
   display: flex;
   flex-direction: column;
-  gap: 0.2rem;
+  gap: 2px;
 }
 
 .itemName {
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
 }
 
 .itemZone {
-  color: var(--muted);
-  font-size: 0.8rem;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
 }
 
 .itemBadges {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.4rem;
+  gap: var(--space-2);
 }

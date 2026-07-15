@@ -3,6 +3,7 @@
 import { useState } from "react";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
+import type { ReasoningFactor, RetrievedReference } from "@/shared/schemas";
 import type { RiskLevel } from "@/shared/enums";
 import styles from "./AssessmentPanel.module.css";
 
@@ -10,6 +11,33 @@ interface AssessmentPanelProps {
   reviewId: string;
   reviewState: string;
   assessment: AssessmentHistoryItem | null;
+}
+
+function refLabel(r: RetrievedReference): string {
+  if (r.code && r.title) return `${r.code}: ${r.title}`;
+  if (r.title) return r.title;
+  return r.source.replaceAll("_", " ");
+}
+
+function FactorCards({ factors }: { factors: ReasoningFactor[] }) {
+  if (factors.length === 0) return null;
+  return (
+    <ul className={styles.factorList}>
+      {factors.map((f) => (
+        <li key={f.fact_type} className={styles.factorItem}>
+          <p className={styles.factorHeadline}>{f.headline}</p>
+          <p className={styles.factorDetail}>{f.detail}</p>
+          {f.evidence.length > 0 && (
+            <ul className={styles.factorEvidence}>
+              {f.evidence.map((e) => (
+                <li key={`${e.source}-${e.id}`}>{refLabel(e)}</li>
+              ))}
+            </ul>
+          )}
+        </li>
+      ))}
+    </ul>
+  );
 }
 
 export function AssessmentPanel({
@@ -39,6 +67,10 @@ export function AssessmentPanel({
 
   const failed = assessment.status === "failed";
   const canRecover = failed && reviewState === "assessing";
+  const factors =
+    assessment.reasoning_factors ??
+    assessment.metadata?.reasoning_factors ??
+    [];
 
   async function onRetry() {
     setBusy(true);
@@ -91,29 +123,52 @@ export function AssessmentPanel({
         <span className="badge">{assessment.status}</span>
       </div>
 
-      <p className={styles.summary}>
-        {assessment.summary ||
-          (assessment.status === "pending" || assessment.status === "generating"
-            ? "Generating…"
-            : "—")}
-      </p>
-
-      {assessment.metadata && (
-        <p className={styles.meta}>
-          {assessment.metadata.provider}/{assessment.metadata.model} · retrieval{" "}
-          {assessment.metadata.retrieval_mode} · quality{" "}
-          {assessment.metadata.retrieval_quality}
-          {assessment.metadata.retrieval_score != null
-            ? ` · score ${assessment.metadata.retrieval_score.toFixed(2)}`
-            : ""}{" "}
-          · confidence{" "}
-          {((assessment.metadata.confidence ?? 0) * 100).toFixed(0)}%
+      <section className={styles.section}>
+        <h4 className={styles.sectionTitle}>Why</h4>
+        <p className={styles.summary}>
+          {assessment.summary ||
+            (assessment.status === "pending" ||
+            assessment.status === "generating"
+              ? "Generating…"
+              : "—")}
         </p>
+        <FactorCards factors={factors} />
+        {assessment.metadata && (
+          <p className={styles.meta}>
+            {assessment.metadata.provider}/{assessment.metadata.model} ·
+            retrieval {assessment.metadata.retrieval_mode} · quality{" "}
+            {assessment.metadata.retrieval_quality}
+            {assessment.metadata.retrieval_score != null
+              ? ` · score ${assessment.metadata.retrieval_score.toFixed(2)}`
+              : ""}{" "}
+            · confidence{" "}
+            {((assessment.metadata.confidence ?? 0) * 100).toFixed(0)}%
+          </p>
+        )}
+      </section>
+
+      {assessment.retrieved_references.length > 0 && (
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Cited resources</h4>
+          <ul className={styles.refList}>
+            {assessment.retrieved_references.map((r) => (
+              <li key={`${r.source}-${r.id}`} className={styles.refItem}>
+                <span className={styles.refSource}>
+                  {r.source.replaceAll("_", " ")}
+                </span>
+                <p className={styles.refTitle}>{refLabel(r)}</p>
+                {r.snippet && (
+                  <p className={styles.refSnippet}>{r.snippet}</p>
+                )}
+              </li>
+            ))}
+          </ul>
+        </section>
       )}
 
       {assessment.recommendations.length > 0 && (
-        <div>
-          <h4 className={styles.recTitle}>Recommendations</h4>
+        <section className={styles.section}>
+          <h4 className={styles.sectionTitle}>Recommended action</h4>
           <ul className={styles.recList}>
             {assessment.recommendations.map((rec) => (
               <li key={rec.id} className={styles.recItem}>
@@ -122,15 +177,16 @@ export function AssessmentPanel({
               </li>
             ))}
           </ul>
-        </div>
+        </section>
       )}
 
       {canRecover && (
-        <div style={{ marginTop: "1rem", display: "grid", gap: "0.75rem" }}>
-          <p className={styles.empty} style={{ margin: 0 }}>
-            Assessment failed. Retry AI or author a Manual Assessment to continue.
+        <div className={styles.recover}>
+          <p className={styles.empty}>
+            Assessment failed. Retry AI or author a Manual Assessment to
+            continue.
           </p>
-          <div style={{ display: "flex", gap: "0.5rem", flexWrap: "wrap" }}>
+          <div className={styles.actions}>
             <button
               type="button"
               className="btn btn-primary"
@@ -150,13 +206,13 @@ export function AssessmentPanel({
           </div>
 
           {showManual && (
-            <div style={{ display: "grid", gap: "0.5rem" }}>
-              <label>
+            <div className={styles.manualForm}>
+              <label className={styles.field}>
                 Risk level
                 <select
+                  className={styles.fieldControl}
                   value={riskLevel}
                   onChange={(e) => setRiskLevel(e.target.value as RiskLevel)}
-                  style={{ display: "block", width: "100%", marginTop: 4 }}
                 >
                   <option value="nominal">nominal</option>
                   <option value="elevated">elevated</option>
@@ -164,23 +220,23 @@ export function AssessmentPanel({
                 </select>
               </label>
               <textarea
+                className={styles.fieldControl}
                 placeholder="Summary"
                 value={summary}
                 onChange={(e) => setSummary(e.target.value)}
                 rows={3}
-                style={{ width: "100%" }}
               />
               <input
+                className={styles.fieldControl}
                 placeholder="Recommendation"
                 value={recText}
                 onChange={(e) => setRecText(e.target.value)}
-                style={{ width: "100%" }}
               />
               <input
+                className={styles.fieldControl}
                 placeholder="Rationale"
                 value={recRationale}
                 onChange={(e) => setRecRationale(e.target.value)}
-                style={{ width: "100%" }}
               />
               <button
                 type="button"
@@ -195,11 +251,7 @@ export function AssessmentPanel({
         </div>
       )}
 
-      {error && (
-        <p style={{ color: "#f07178", marginTop: "0.75rem", fontSize: "0.85rem" }}>
-          {error}
-        </p>
-      )}
+      {error && <p className={styles.error}>{error}</p>}
     </div>
   );
 }

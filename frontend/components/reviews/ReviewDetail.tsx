@@ -18,6 +18,7 @@ interface ReviewDetailProps {
 
 function toTraceAssessment(a: AssessmentHistoryItem | null) {
   if (!a) return null;
+  const factors = a.reasoning_factors ?? a.metadata?.reasoning_factors ?? [];
   return {
     id: a.id,
     review_id: a.review_id,
@@ -30,6 +31,7 @@ function toTraceAssessment(a: AssessmentHistoryItem | null) {
     summary: a.summary ?? "",
     recommendations: a.recommendations,
     derived_fact_ids: a.derived_fact_ids,
+    reasoning_factors: factors,
     metadata: a.metadata
       ? {
           provider: a.metadata.provider,
@@ -49,6 +51,7 @@ function toTraceAssessment(a: AssessmentHistoryItem | null) {
           confidence: a.metadata.confidence ?? 0,
           assessment_version:
             a.metadata.assessment_version ?? a.version,
+          reasoning_factors: factors,
         }
       : null,
   };
@@ -99,7 +102,7 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
   if (!detail || !view) {
     return (
       <div className={styles.missing}>
-        <p style={{ color: "var(--muted)" }}>Loading review…</p>
+        <p className={styles.loading}>Loading review…</p>
         <Link href="/">← Back to Digital Twin</Link>
       </div>
     );
@@ -111,13 +114,16 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
     <div className={styles.detail}>
       <header className={styles.header}>
         <div>
-          <p style={{ margin: 0, color: "var(--muted)", fontSize: "0.8rem" }}>
+          <p className={styles.crumb}>
             <Link href="/">Digital Twin</Link> / {review.id.slice(0, 8)}…
           </p>
           <h1 className={styles.title}>{asset.name}</h1>
           <p className={styles.subtitle}>
             Triggered by {review.triggered_by} · created{" "}
             {new Date(review.created_at).toLocaleString()}
+            {detail.area_owner
+              ? ` · Area owner ${detail.area_owner.name}`
+              : ""}
           </p>
         </div>
         <div className={styles.badges}>
@@ -130,7 +136,7 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
 
       <div className={styles.grid}>
         <div className="panel">
-          <h3 style={{ marginTop: 0, fontSize: "1rem" }}>Reasoning trace</h3>
+          <h3 className={styles.panelTitle}>Reasoning trace</h3>
           <ReasoningTrace
             asset={asset}
             context={detail.context}
@@ -138,10 +144,11 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
             references={latest?.retrieved_references ?? []}
             assessment={toTraceAssessment(latest)}
             decision={detail.decision}
+            areaOwner={detail.area_owner}
           />
         </div>
 
-        <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
+        <div className={styles.side}>
           <AssessmentPanel
             reviewId={review.id}
             reviewState={review.state}
