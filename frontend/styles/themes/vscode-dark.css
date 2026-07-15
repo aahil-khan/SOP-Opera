@@ -1,0 +1,47 @@
+/**
+ * VS Code Dark — editor chrome grays.
+ */
+
+[data-theme="vscode-dark"] {
+  --surface-app: #1e1e1e;
+  --surface-panel: #252526;
+  --surface-card: #2d2d2d;
+  --surface-overlay: #2a2d2e;
+  --surface-canvas: #181818;
+  --surface-nav: #323233;
+  --surface-demo: #1e1e1e;
+
+  --border-default: #3c3c3c;
+  --border-muted: #2b2b2b;
+  --border-hover: #555555;
+  --border-focus: #007fd4;
+  --border-selected: #094771;
+
+  --text-primary: #cccccc;
+  --text-secondary: #9d9d9d;
+  --text-muted: #6e6e6e;
+  --text-inverse: #1e1e1e;
+  --text-on-accent: #ffffff;
+  --text-link: #3794ff;
+
+  --interactive-default: #2d2d2d;
+  --interactive-hover: #37373d;
+  --interactive-active: #094771;
+  --interactive-disabled: #252526;
+
+  --status-nominal: #89d185;
+  --status-elevated: #cca700;
+  --status-blocking: #f14c4c;
+  --status-info: #3794ff;
+  --status-nominal-muted: color-mix(in srgb, var(--status-nominal) 18%, transparent);
+  --status-elevated-muted: color-mix(in srgb, var(--status-elevated) 18%, transparent);
+  --status-blocking-muted: color-mix(in srgb, var(--status-blocking) 18%, transparent);
+  --status-info-muted: color-mix(in srgb, var(--status-info) 18%, transparent);
+
+  --accent-selection: #007fd4;
+  --accent-ai: #c586c0;
+
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
+  --shadow-drawer: -4px 0 24px rgba(0, 0, 0, 0.45);
+}

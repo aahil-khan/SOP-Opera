@@ -1,0 +1,47 @@
+/**
+ * Light — paper gray enterprise console.
+ */
+
+[data-theme="light"] {
+  --surface-app: #f0f1f3;
+  --surface-panel: #ffffff;
+  --surface-card: #f6f7f9;
+  --surface-overlay: #ffffff;
+  --surface-canvas: #e8eaed;
+  --surface-nav: #ffffff;
+  --surface-demo: #f6f7f9;
+
+  --border-default: #d0d4db;
+  --border-muted: #e2e5ea;
+  --border-hover: #b4bac4;
+  --border-focus: #3b7dd8;
+  --border-selected: #3b7dd8;
+
+  --text-primary: #1a1d21;
+  --text-secondary: #4a515c;
+  --text-muted: #6b7380;
+  --text-inverse: #ffffff;
+  --text-on-accent: #ffffff;
+  --text-link: #2f6fbd;
+
+  --interactive-default: #f6f7f9;
+  --interactive-hover: #eceef2;
+  --interactive-active: #e2e5ea;
+  --interactive-disabled: #f0f1f3;
+
+  --status-nominal: #2f9d63;
+  --status-elevated: #b8860b;
+  --status-blocking: #c23b4a;
+  --status-info: #3b7dd8;
+  --status-nominal-muted: color-mix(in srgb, var(--status-nominal) 14%, transparent);
+  --status-elevated-muted: color-mix(in srgb, var(--status-elevated) 14%, transparent);
+  --status-blocking-muted: color-mix(in srgb, var(--status-blocking) 14%, transparent);
+  --status-info-muted: color-mix(in srgb, var(--status-info) 14%, transparent);
+
+  --accent-selection: #3b7dd8;
+  --accent-ai: #7b5ea7;
+
+  --shadow-sm: 0 1px 2px rgba(20, 24, 32, 0.06);
+  --shadow-md: 0 4px 12px rgba(20, 24, 32, 0.08);
+  --shadow-drawer: -4px 0 20px rgba(20, 24, 32, 0.1);
+}
