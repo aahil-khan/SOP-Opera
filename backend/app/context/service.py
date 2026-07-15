@@ -100,7 +100,9 @@ async def ingest_context(
 
 async def list_assets(session: AsyncSession) -> list[Asset]:
     result = await session.execute(
-        text("SELECT id, name, zone, plant_id FROM assets ORDER BY name")
+        text(
+            "SELECT id, name, zone, plant_id, floor FROM assets ORDER BY floor, name"
+        )
     )
     return [
         Asset(
@@ -108,6 +110,7 @@ async def list_assets(session: AsyncSession) -> list[Asset]:
             name=row._mapping["name"],
             zone=row._mapping["zone"],
             plant_id=row._mapping["plant_id"],
+            floor=row._mapping["floor"] or "ground",
         )
         for row in result.fetchall()
     ]
@@ -117,7 +120,7 @@ async def get_asset(session: AsyncSession, asset_id: UUID) -> Asset | None:
     result = await session.execute(
         text(
             """
-            SELECT id, name, zone, plant_id FROM assets
+            SELECT id, name, zone, plant_id, floor FROM assets
             WHERE id = CAST(:id AS uuid)
             """
         ),
@@ -128,7 +131,11 @@ async def get_asset(session: AsyncSession, asset_id: UUID) -> Asset | None:
         return None
     m = row._mapping
     return Asset(
-        id=m["id"], name=m["name"], zone=m["zone"], plant_id=m["plant_id"]
+        id=m["id"],
+        name=m["name"],
+        zone=m["zone"],
+        plant_id=m["plant_id"],
+        floor=m["floor"] or "ground",
     )
 
 

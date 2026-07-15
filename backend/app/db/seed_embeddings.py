@@ -49,6 +49,55 @@ REGULATIONS = [
         "Personnel with certifications expiring within the warning window must be replaced or re-certified.",
         "certification_expiring",
     ),
+    (
+        "a1111111-1111-1111-1111-111111111106",
+        "API-STD-560",
+        "Fired Heater Temperature Limits",
+        "Process and utility equipment must be held below rated metal temperatures; excursions require immediate intervention.",
+        "over_temperature",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111107",
+        "ISO-10816",
+        "Machinery Vibration Severity",
+        "Vibration above ISO band C requires diagnosis and may force a controlled shutdown.",
+        "equipment_vibration_anomaly",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111108",
+        "CPCB-EFFLUENT",
+        "Effluent Discharge Quality",
+        "pH of treated effluent must remain within the permitted band before release.",
+        "effluent_quality_breach",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111109",
+        "API-STD-2350",
+        "Overfill Protection for Storage Tanks",
+        "Tank levels approaching high-high or low-low setpoints require automatic and manual intervention.",
+        "tank_level_critical",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111110",
+        "OSHA-1910.132",
+        "Personal Protective Equipment",
+        "Workers in hazard-class zones must wear the required PPE ensemble; noncompliance stops entry.",
+        "ppe_noncompliance",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111111",
+        "ASME-B30",
+        "Lifting Operations Coordination",
+        "Overlapping lifts in the same airspace require a single lift coordinator and stop work if paths conflict.",
+        "lifting_operation_conflict",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111112",
+        "NFPA-51B",
+        "Hot Work Weather Hold",
+        "Hot work and outdoor lifting suspend when wind or lightning exceeds site weather-hold criteria.",
+        "weather_hold",
+    ),
 ]
 
 SOPS = [
@@ -76,6 +125,48 @@ SOPS = [
         "Shift supervisors verify worker cert expiry dates at the permit board before authorizing entry.",
         "certification_expiring",
     ),
+    (
+        "b2222222-2222-2222-2222-222222222205",
+        "SOP-Temperature Excursion Response",
+        "On over-temperature alarm, reduce firing rate, notify control, and open a review before restarting production.",
+        "over_temperature",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222206",
+        "SOP-Rotating Equipment Vibration",
+        "Log ISO severity band, schedule balance check, and isolate if vibration persists above band C.",
+        "equipment_vibration_anomaly",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222207",
+        "SOP-Effluent Guard",
+        "Divert out-of-spec effluent to holding; do not discharge until lab confirms remediation.",
+        "effluent_quality_breach",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222208",
+        "SOP-Tank Level Critical",
+        "On high-high or low-low tank level, stop transfers and verify instrumentation before resuming.",
+        "tank_level_critical",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222209",
+        "SOP-PPE Gate",
+        "Refuse zone entry until PPE is compliant; record the noncompliance against the work party.",
+        "ppe_noncompliance",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222210",
+        "SOP-Lift Conflict Clearance",
+        "Suspend both lifts, clear the airspace, and restart under one lift plan only.",
+        "lifting_operation_conflict",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222211",
+        "SOP-Weather Hold",
+        "When weather hold triggers, pause hot work and outdoor lifts; resume only after all-clear from shift lead.",
+        "weather_hold",
+    ),
 ]
 
 INCIDENTS = [
@@ -96,6 +187,18 @@ INCIDENTS = [
         "11111111-1111-1111-1111-111111111111",
         "Zone occupation during elevated H2S led to emergency MUSTER and medical observation of 2 workers.",
         "zone_occupied",
+    ),
+    (
+        "c3333333-3333-3333-3333-333333333304",
+        "77777777-7777-7777-7777-777777777702",
+        "Pump house bearing failure preceded by sustained ISO band-C vibration ignored for one shift.",
+        "equipment_vibration_anomaly",
+    ),
+    (
+        "c3333333-3333-3333-3333-333333333305",
+        "77777777-7777-7777-7777-777777777804",
+        "Two concurrent crane lifts crossed paths; a suspended load narrowly missed a walkway canopy.",
+        "lifting_operation_conflict",
     ),
 ]
 

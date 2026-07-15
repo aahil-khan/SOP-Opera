@@ -14,7 +14,8 @@ CREATE TABLE IF NOT EXISTS assets (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     name TEXT NOT NULL,
     zone TEXT NOT NULL,
-    plant_id TEXT NOT NULL DEFAULT 'plant-1'
+    plant_id TEXT NOT NULL DEFAULT 'plant-1',
+    floor TEXT NOT NULL DEFAULT 'ground'
 );
 
 CREATE TABLE IF NOT EXISTS workers (
@@ -217,7 +218,8 @@ CREATE INDEX IF NOT EXISTS idx_reviews_state ON reviews(state);
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_review ON assessments(review_id);
 
--- Soft migrations for DBs created before Phase 3/4 column additions
+-- Soft migrations for DBs created before Phase 3/4/7 column additions
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS floor TEXT NOT NULL DEFAULT 'ground';
 ALTER TABLE incidents ADD COLUMN IF NOT EXISTS applies_to_category TEXT;
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS created_at TIMESTAMPTZ NOT NULL DEFAULT now();
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_context_ids UUID[] NOT NULL DEFAULT '{}';

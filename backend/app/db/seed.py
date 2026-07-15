@@ -1,4 +1,4 @@
-"""Idempotent seed data for Phase 2 — fixed UUIDs aligned with frontend fixtures."""
+"""Idempotent seed data for Phase 2/7 — fixed UUIDs aligned with frontend fixtures."""
 
 from __future__ import annotations
 
@@ -16,17 +16,38 @@ logger = logging.getLogger(__name__)
 DEPT_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 OWNER_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
+# (id, name, zone, floor)
 ASSETS = [
-    ("11111111-1111-1111-1111-111111111111", "Vessel A", "coke-oven-battery"),
-    ("22222222-2222-2222-2222-222222222222", "Walkway 3", "hazardous"),
-    ("33333333-3333-3333-3333-333333333333", "Compressor B", "compressor-yard"),
-    ("44444444-4444-4444-4444-444444444444", "Tank Farm C", "tank-farm"),
-    ("66666666-6666-6666-6666-666666666661", "By-Product Plant", "byproduct-plant"),
-    ("66666666-6666-6666-6666-666666666662", "Coke Battery B", "coke-oven-battery"),
-    ("66666666-6666-6666-6666-666666666663", "DRI Plant", "dri-plant"),
-    ("66666666-6666-6666-6666-666666666664", "ETP", "etp"),
-    ("66666666-6666-6666-6666-666666666665", "Control Room", "control-room"),
-    ("66666666-6666-6666-6666-666666666666", "Raw Material Yard", "raw-material-yard"),
+    # Ground floor — existing plant process areas
+    ("11111111-1111-1111-1111-111111111111", "Vessel A", "coke-oven-battery", "ground"),
+    ("22222222-2222-2222-2222-222222222222", "Walkway 3", "hazardous", "ground"),
+    ("33333333-3333-3333-3333-333333333333", "Compressor B", "compressor-yard", "ground"),
+    ("44444444-4444-4444-4444-444444444444", "Tank Farm C", "tank-farm", "ground"),
+    ("66666666-6666-6666-6666-666666666661", "By-Product Plant", "byproduct-plant", "ground"),
+    ("66666666-6666-6666-6666-666666666662", "Coke Battery B", "coke-oven-battery", "ground"),
+    ("66666666-6666-6666-6666-666666666663", "DRI Plant", "dri-plant", "ground"),
+    ("66666666-6666-6666-6666-666666666664", "ETP", "etp", "ground"),
+    ("66666666-6666-6666-6666-666666666665", "Control Room", "control-room", "ground"),
+    ("66666666-6666-6666-6666-666666666666", "Raw Material Yard", "raw-material-yard", "ground"),
+    # First floor — process & utility mezzanine
+    ("77777777-7777-7777-7777-777777777701", "Gas Cleaning Plant", "gas-cleaning", "first"),
+    ("77777777-7777-7777-7777-777777777702", "Pump House", "pump-house", "first"),
+    ("77777777-7777-7777-7777-777777777703", "Boiler House", "boiler-house", "first"),
+    ("77777777-7777-7777-7777-777777777704", "Electrical Substation", "substation", "first"),
+    ("77777777-7777-7777-7777-777777777705", "Instrument Air Plant", "instrument-air", "first"),
+    ("77777777-7777-7777-7777-777777777706", "Maintenance Workshop", "workshop", "first"),
+    ("77777777-7777-7777-7777-777777777707", "Pipe Rack Gantry", "pipe-rack", "first"),
+    ("77777777-7777-7777-7777-777777777708", "Weighbridge & Loading Dock", "weighbridge", "first"),
+    ("77777777-7777-7777-7777-777777777709", "Fire Water Pump Station", "fire-water", "first"),
+    # Second floor — elevated ops & control
+    ("77777777-7777-7777-7777-777777777801", "Central Control Room", "central-control", "second"),
+    ("77777777-7777-7777-7777-777777777802", "SCADA Room", "scada", "second"),
+    ("77777777-7777-7777-7777-777777777803", "Admin & Shift Office", "admin-office", "second"),
+    ("77777777-7777-7777-7777-777777777804", "Crane / Hoist Deck", "crane-deck", "second"),
+    ("77777777-7777-7777-7777-777777777805", "Elevated Conveyor Gantry", "conveyor-gantry", "second"),
+    ("77777777-7777-7777-7777-777777777806", "Rooftop Cooling Towers", "cooling-towers", "second"),
+    ("77777777-7777-7777-7777-777777777807", "Muster Point", "muster-point", "second"),
+    ("77777777-7777-7777-7777-777777777808", "HVAC Plant", "hvac", "second"),
 ]
 
 WORKERS = [
@@ -93,6 +114,23 @@ ZONE_OWNERS = [
     ("etp", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
     ("control-room", "55555555-5555-5555-5555-555555555552", "Shift Lead"),
     ("raw-material-yard", "55555555-5555-5555-5555-555555555554", "Area Supervisor"),
+    ("gas-cleaning", "55555555-5555-5555-5555-555555555551", "Area Supervisor"),
+    ("pump-house", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
+    ("boiler-house", "55555555-5555-5555-5555-555555555555", "Area Supervisor"),
+    ("substation", "55555555-5555-5555-5555-555555555554", "Area Supervisor"),
+    ("instrument-air", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
+    ("workshop", "55555555-5555-5555-5555-555555555555", "Area Supervisor"),
+    ("pipe-rack", "55555555-5555-5555-5555-555555555552", "Area Supervisor"),
+    ("weighbridge", "55555555-5555-5555-5555-555555555554", "Area Supervisor"),
+    ("fire-water", "55555555-5555-5555-5555-555555555551", "Area Supervisor"),
+    ("central-control", "55555555-5555-5555-5555-555555555552", "Shift Lead"),
+    ("scada", "55555555-5555-5555-5555-555555555552", "Shift Lead"),
+    ("admin-office", "55555555-5555-5555-5555-555555555555", "Shift Lead"),
+    ("crane-deck", "55555555-5555-5555-5555-555555555551", "Area Supervisor"),
+    ("conveyor-gantry", "55555555-5555-5555-5555-555555555554", "Area Supervisor"),
+    ("cooling-towers", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
+    ("muster-point", "55555555-5555-5555-5555-555555555552", "Area Supervisor"),
+    ("hvac", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
 ]
 
 
@@ -113,17 +151,21 @@ async def seed_minimal(session: AsyncSession | None = None) -> None:
             {"id": DEPT_ID, "name": "Coke Oven Ops"},
         )
 
-        for asset_id, name, zone in ASSETS:
+        for asset_id, name, zone, floor in ASSETS:
             await session.execute(
                 text(
                     """
-                    INSERT INTO assets (id, name, zone, plant_id)
-                    VALUES (CAST(:id AS uuid), :name, :zone, 'plant-1')
+                    INSERT INTO assets (id, name, zone, plant_id, floor)
+                    VALUES (
+                        CAST(:id AS uuid), :name, :zone, 'plant-1', :floor
+                    )
                     ON CONFLICT (id) DO UPDATE
-                      SET name = EXCLUDED.name, zone = EXCLUDED.zone
+                      SET name = EXCLUDED.name,
+                          zone = EXCLUDED.zone,
+                          floor = EXCLUDED.floor
                     """
                 ),
-                {"id": asset_id, "name": name, "zone": zone},
+                {"id": asset_id, "name": name, "zone": zone, "floor": floor},
             )
 
         await session.execute(

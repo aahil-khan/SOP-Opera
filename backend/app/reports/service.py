@@ -32,7 +32,7 @@ async def generate_report_on_closure(
     asset_result = await session.execute(
         text(
             """
-            SELECT id, name, zone, plant_id FROM assets
+            SELECT id, name, zone, plant_id, floor FROM assets
             WHERE id = CAST(:id AS uuid)
             """
         ),
@@ -45,6 +45,7 @@ async def generate_report_on_closure(
             "name": asset_row._mapping["name"],
             "zone": asset_row._mapping["zone"],
             "plant_id": asset_row._mapping["plant_id"],
+            "floor": asset_row._mapping["floor"] or "ground",
         }
         if asset_row
         else {
@@ -52,6 +53,7 @@ async def generate_report_on_closure(
             "name": "unknown",
             "zone": "unknown",
             "plant_id": "unknown",
+            "floor": "ground",
         }
     )
 
