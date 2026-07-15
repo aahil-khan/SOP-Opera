@@ -119,6 +119,7 @@ async def get_review_detail(
 ) -> ReviewDetailOut | None:
     # Deferred to avoid circular import with context.service → reviews.service.
     from app.context.service import get_asset
+    from app.reviews.ownership import get_zone_owner, resolve_worker_names
     from shared.python.schemas import Asset
 
     review = await get_review(session, review_id)
@@ -135,19 +136,32 @@ async def get_review_detail(
         )
 
     entries = await load_valid_context(session, review.asset_id)
-    context = [
-        Context(
-            id=e.id,
-            asset_id=e.asset_id,
-            category=e.category,
-            payload=e.payload,
-            provider=e.provider,
-            valid_from=e.valid_from,
-            valid_until=e.valid_until,
-            confidence=e.confidence,
-        )
+    worker_ids = [
+        str(e.payload.get("worker_id"))
         for e in entries
+        if e.category in ("worker_location", "certification")
+        and e.payload.get("worker_id")
     ]
+    name_map = await resolve_worker_names(session, worker_ids)
+
+    context = []
+    for e in entries:
+        payload = dict(e.payload)
+        wid = payload.get("worker_id")
+        if wid and str(wid) in name_map:
+            payload["worker_name"] = name_map[str(wid)]
+        context.append(
+            Context(
+                id=e.id,
+                asset_id=e.asset_id,
+                category=e.category,
+                payload=payload,
+                provider=e.provider,
+                valid_from=e.valid_from,
+                valid_until=e.valid_until,
+                confidence=e.confidence,
+            )
+        )
 
     facts_result = await session.execute(
         text(
@@ -181,12 +195,14 @@ async def get_review_detail(
         )
 
     decision = await get_decision_for_review(session, review_id)
+    area_owner = await get_zone_owner(session, asset.zone)
     return ReviewDetailOut(
         review=review,
         asset=asset,
         context=context,
         derived_facts=derived,
         decision=decision,
+        area_owner=area_owner,
     )
 
 

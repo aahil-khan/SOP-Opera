@@ -21,6 +21,12 @@ ASSETS = [
     ("22222222-2222-2222-2222-222222222222", "Walkway 3", "hazardous"),
     ("33333333-3333-3333-3333-333333333333", "Compressor B", "compressor-yard"),
     ("44444444-4444-4444-4444-444444444444", "Tank Farm C", "tank-farm"),
+    ("66666666-6666-6666-6666-666666666661", "By-Product Plant", "byproduct-plant"),
+    ("66666666-6666-6666-6666-666666666662", "Coke Battery B", "coke-oven-battery"),
+    ("66666666-6666-6666-6666-666666666663", "DRI Plant", "dri-plant"),
+    ("66666666-6666-6666-6666-666666666664", "ETP", "etp"),
+    ("66666666-6666-6666-6666-666666666665", "Control Room", "control-room"),
+    ("66666666-6666-6666-6666-666666666666", "Raw Material Yard", "raw-material-yard"),
 ]
 
 WORKERS = [
@@ -54,6 +60,39 @@ WORKERS = [
             }
         ],
     ),
+    (
+        "55555555-5555-5555-5555-555555555554",
+        "Dev Patel",
+        [
+            {
+                "name": "hot_work",
+                "expires_at": (datetime.now(timezone.utc) + timedelta(days=120)).isoformat(),
+            }
+        ],
+    ),
+    (
+        "55555555-5555-5555-5555-555555555555",
+        "Meera Joshi",
+        [
+            {
+                "name": "lockout_tagout",
+                "expires_at": (datetime.now(timezone.utc) + timedelta(days=60)).isoformat(),
+            }
+        ],
+    ),
+]
+
+# zone → (worker_id, role) — one named area owner per unique zone label
+ZONE_OWNERS = [
+    ("coke-oven-battery", "55555555-5555-5555-5555-555555555551", "Area Supervisor"),
+    ("hazardous", "55555555-5555-5555-5555-555555555552", "Area Supervisor"),
+    ("compressor-yard", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
+    ("tank-farm", "55555555-5555-5555-5555-555555555554", "Area Supervisor"),
+    ("byproduct-plant", "55555555-5555-5555-5555-555555555555", "Area Supervisor"),
+    ("dri-plant", "55555555-5555-5555-5555-555555555551", "Area Supervisor"),
+    ("etp", "55555555-5555-5555-5555-555555555553", "Area Supervisor"),
+    ("control-room", "55555555-5555-5555-5555-555555555552", "Shift Lead"),
+    ("raw-material-yard", "55555555-5555-5555-5555-555555555554", "Area Supervisor"),
 ]
 
 
@@ -128,8 +167,24 @@ async def seed_minimal(session: AsyncSession | None = None) -> None:
                 },
             )
 
+        for zone, worker_id, role in ZONE_OWNERS:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO zone_owners (zone, worker_id, role)
+                    VALUES (:zone, CAST(:worker_id AS uuid), :role)
+                    ON CONFLICT (zone) DO UPDATE
+                      SET worker_id = EXCLUDED.worker_id,
+                          role = EXCLUDED.role
+                    """
+                ),
+                {"zone": zone, "worker_id": worker_id, "role": role},
+            )
+
         await session.commit()
-        logger.info("seed_minimal: departments, assets, users, workers upserted")
+        logger.info(
+            "seed_minimal: departments, assets, users, workers, zone_owners upserted"
+        )
     finally:
         if owns_session:
             await session.close()

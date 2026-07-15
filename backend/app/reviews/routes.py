@@ -171,3 +171,33 @@ async def reopen_review(
         )
     except IllegalTransitionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/{review_id}/close", response_model=Review)
+async def close_review(
+    review_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> Review:
+    if await get_review(session, review_id) is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    try:
+        return await transition_review(
+            session,
+            review_id,
+            ReviewEvent.CLOSE,
+            "api:close",
+        )
+    except IllegalTransitionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.get("/{review_id}/reports")
+async def get_review_reports(
+    review_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> list[dict]:
+    if await get_review(session, review_id) is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    from app.reports.service import list_reports_for_review
+
+    return await list_reports_for_review(session, review_id)

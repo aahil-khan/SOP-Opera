@@ -80,6 +80,14 @@ async def create_review(
             "state": "opened",
         },
     )
+    from app.notifications.service import notify_review_opened
+
+    await notify_review_opened(
+        session,
+        review_id=review.id,
+        owner_id=owner_id,
+        triggered_by=triggered_by,
+    )
     await session.commit()
     await manager.broadcast(
         "review.status_changed",
@@ -147,6 +155,26 @@ async def transition_review(
         actor=actor,
         payload=audit_payload,
     )
+
+    if event == ReviewEvent.ESCALATE:
+        from app.notifications.service import notify_review_escalated
+
+        await notify_review_escalated(
+            session,
+            review_id=updated.id,
+            owner_id=updated.owner_id,
+            reason=(extra_payload or {}).get("reason"),
+        )
+    elif event == ReviewEvent.SUBMIT_DECISION:
+        from app.notifications.service import notify_decision_submitted
+
+        await notify_decision_submitted(
+            session,
+            review_id=updated.id,
+            owner_id=updated.owner_id,
+            outcome=str((extra_payload or {}).get("outcome") or "unknown"),
+        )
+
     await session.commit()
     await manager.broadcast(
         "review.status_changed",
@@ -163,4 +191,8 @@ async def transition_review(
         from app.assessment.orchestrator import enqueue_for_review
 
         await enqueue_for_review(session, updated)
+    if new_state == "closed":
+        from app.reports.service import generate_report_on_closure
+
+        await generate_report_on_closure(session, updated)
     return updated
