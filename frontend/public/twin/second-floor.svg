@@ -1,0 +1,337 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  viewBox="0 0 2600 2000"
+  role="img"
+  aria-label="Plant 1 second floor — elevated ops and control"
+  class="fps-root"
+>
+  <defs>
+    <filter id="drop-shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="3" dy="6" stdDeviation="5" flood-color="var(--fp-shadow)" flood-opacity="0.15"/>
+    </filter>
+    <filter id="light-shadow" x="-10%" y="-10%" width="130%" height="130%">
+      <feDropShadow dx="2" dy="3" stdDeviation="3" flood-color="var(--fp-shadow)" flood-opacity="0.1"/>
+    </filter>
+
+    <linearGradient id="tank-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="var(--fp-surface)"/>
+      <stop offset="50%" stop-color="var(--fp-line)"/>
+      <stop offset="100%" stop-color="var(--fp-ink-faint)"/>
+    </linearGradient>
+    <linearGradient id="glass-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="var(--fp-surface-mute)"/>
+      <stop offset="50%" stop-color="var(--fp-line)"/>
+      <stop offset="100%" stop-color="var(--fp-line-strong)"/>
+    </linearGradient>
+
+    <pattern id="cooling-grid" width="24" height="24" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="24" height="24" fill="var(--fp-line)" stroke="var(--fp-line-strong)" stroke-width="1.5"/>
+      <circle cx="12" cy="12" r="7.5" fill="var(--fp-ink-mute)" />
+      <circle cx="12" cy="12" r="3" fill="var(--fp-ink)" />
+    </pattern>
+    <pattern id="solar-panel" width="16" height="24" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="16" height="24" fill="var(--fp-ink-mute)" stroke="var(--fp-ink-mute)" stroke-width="1" />
+      <line x1="8" y1="0" x2="8" y2="24" stroke="var(--fp-ink-faint)" stroke-width="1"/>
+      <line x1="0" y1="12" x2="16" y2="12" stroke="var(--fp-ink-faint)" stroke-width="1"/>
+    </pattern>
+    <pattern id="catwalk-grating" width="6" height="6" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <line x1="0" y1="0" x2="0" y2="6" stroke="var(--fp-line-strong)" stroke-width="1" />
+      <line x1="0" y1="0" x2="6" y2="0" stroke="var(--fp-line-strong)" stroke-width="1" />
+    </pattern>
+    <pattern id="hazard-stripes" width="20" height="20" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="20" height="20" fill="var(--fp-surface-mute)" />
+      <rect x="0" y="0" width="10" height="20" fill="var(--fp-line-strong)" />
+    </pattern>
+    <pattern id="stockpile-hatch" width="18" height="18" patternTransform="rotate(45 0 0)" patternUnits="userSpaceOnUse">
+      <rect x="0" y="0" width="18" height="18" fill="var(--fp-line)" />
+      <line x1="0" y1="0" x2="0" y2="18" stroke="var(--fp-line-strong)" stroke-width="4.5" />
+    </pattern>
+
+    <style>
+    .fps-root {
+      --fp-canvas: transparent;
+      --fp-surface: var(--surface-card);
+      --fp-surface-mute: color-mix(in srgb, var(--surface-panel) 75%, transparent);
+      --fp-panel: var(--surface-panel);
+      --fp-panel-soft: color-mix(in srgb, var(--surface-card) 80%, transparent);
+      --fp-line: var(--border-muted);
+      --fp-line-strong: var(--border-default);
+      --fp-ink: var(--text-primary);
+      --fp-ink-mute: var(--text-secondary);
+      --fp-ink-faint: var(--text-muted);
+      --fp-accent: var(--accent-selection);
+      --fp-accent-soft: color-mix(in srgb, var(--accent-selection) 22%, transparent);
+      --fp-hot: color-mix(in srgb, var(--status-blocking) 55%, var(--status-elevated) 45%);
+      --fp-hot-soft: color-mix(in srgb, var(--status-blocking) 18%, transparent);
+      --fp-success: var(--status-nominal);
+      --fp-success-soft: var(--status-nominal-muted);
+      --fp-warn: var(--status-elevated);
+      --fp-info: var(--status-info);
+      --fp-info-soft: var(--status-info-muted);
+      --fp-dot: color-mix(in srgb, var(--border-muted) 55%, transparent);
+      --fp-hazard: color-mix(in srgb, var(--status-elevated) 70%, transparent);
+      --fp-shadow: color-mix(in srgb, var(--surface-app) 55%, transparent);
+    }
+    .fps-bg { fill: var(--fp-canvas); }
+    .ground { fill: var(--fp-surface); stroke: var(--fp-line); stroke-width: 1.5; }
+    .boundary { fill: none; stroke: var(--fp-line-strong); stroke-width: 2.5; stroke-dasharray: 12 6; }
+    .road { fill: var(--fp-surface-mute); stroke: var(--fp-line); stroke-width: 1; }
+    .road-mark { stroke: var(--fp-ink-faint); stroke-width: 1.5; stroke-dasharray: 20 14; opacity: 0.45; }
+    .zone { fill: var(--fp-panel-soft); stroke: var(--fp-line); stroke-width: 1.5; }
+    .zone-alt { fill: var(--fp-panel); stroke: var(--fp-line); stroke-width: 1.5; }
+    .zone-accent { fill: var(--fp-accent-soft); stroke: var(--fp-accent); stroke-width: 1.5; }
+    .zone-hot { fill: var(--fp-hot-soft); stroke: var(--fp-hot); stroke-width: 1.5; }
+    .zone-cool { fill: var(--fp-info-soft); stroke: var(--fp-info); stroke-width: 1.5; }
+    .zone-green { fill: var(--fp-success-soft); stroke: var(--fp-success); stroke-width: 1.5; }
+    .equip { fill: color-mix(in srgb, var(--fp-surface) 70%, var(--fp-ink-faint) 8%); stroke: var(--fp-line-strong); stroke-width: 1.2; }
+    .equip-hot { fill: color-mix(in srgb, var(--fp-hot) 28%, var(--fp-surface)); stroke: var(--fp-hot); stroke-width: 1.2; }
+    .equip-tank { fill: color-mix(in srgb, var(--fp-info) 22%, var(--fp-surface)); stroke: var(--fp-info); stroke-width: 1.5; }
+    .equip-pipe { fill: none; stroke: var(--fp-line-strong); stroke-width: 3; stroke-linecap: round; }
+    .equip-pipe-thin { fill: none; stroke: var(--fp-line); stroke-width: 1.5; stroke-linecap: round; }
+    .door { fill: var(--fp-accent-soft); stroke: var(--fp-accent); stroke-width: 1; }
+    .window { fill: color-mix(in srgb, var(--fp-info) 20%, var(--fp-surface)); stroke: var(--fp-info); stroke-width: 0.8; }
+    .label-title { fill: var(--fp-ink); font-family: var(--font-sans), system-ui, sans-serif; font-size: 9.6px; font-weight: 700; letter-spacing: 0.03em; }
+    .label-sub { fill: var(--fp-ink-mute); font-family: var(--font-sans), system-ui, sans-serif; font-size: 11px; font-weight: 500; letter-spacing: 0.06em; }
+    .label-tiny { fill: var(--fp-ink-faint); font-family: var(--font-mono), ui-monospace, monospace; font-size: 9px; font-weight: 500; letter-spacing: 0.04em; }
+    .label-zone { fill: var(--fp-ink-mute); font-family: var(--font-sans), system-ui, sans-serif; font-size: 13px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; }
+    .north-arrow { fill: var(--fp-ink-mute); stroke: var(--fp-ink-mute); }
+    .grid-dot { fill: var(--fp-dot); }
+    .hazard-hatch { stroke: var(--fp-hazard); stroke-width: 1; opacity: 0.35; }
+    .asset-region { cursor: pointer; transition: opacity 0.15s ease; }
+    .asset-region:hover { opacity: 0.92; }
+    .asset-hit { fill: transparent; stroke: none; pointer-events: all; }
+    .fps-bay { fill: var(--fp-panel); stroke: var(--fp-line); stroke-width: 1.2; }
+    .fps-bay-soft { fill: var(--fp-panel-soft); stroke: var(--fp-line); stroke-width: 1.2; }
+    .fps-bay-accent { fill: var(--fp-accent-soft); stroke: var(--fp-accent); stroke-width: 1.2; }
+    .fps-bay-hot { fill: var(--fp-hot-soft); stroke: var(--fp-hot); stroke-width: 1.2; }
+    .fps-bay-cool { fill: var(--fp-info-soft); stroke: var(--fp-info); stroke-width: 1.2; }
+    .fps-bay-ok { fill: var(--fp-success-soft); stroke: var(--fp-success); stroke-width: 1.2; }
+    .fps-struct { fill: color-mix(in srgb, var(--fp-surface) 75%, var(--fp-ink-faint) 6%); stroke: var(--fp-line-strong); stroke-width: 1.1; }
+    .fps-struct-hot { fill: color-mix(in srgb, var(--fp-hot) 24%, var(--fp-surface)); stroke: var(--fp-hot); stroke-width: 1.1; }
+    .fps-struct-cool { fill: color-mix(in srgb, var(--fp-info) 18%, var(--fp-surface)); stroke: var(--fp-info); stroke-width: 1.2; }
+    .fps-pipe { fill: none; stroke: var(--fp-line-strong); stroke-width: 2.5; stroke-linecap: round; }
+    .fps-pipe-thin { fill: none; stroke: var(--fp-line); stroke-width: 1.4; stroke-linecap: round; }
+    .fps-pipe-accent { fill: none; stroke: var(--fp-accent); stroke-width: 2; stroke-linecap: round; opacity: 0.75; }
+    .fps-label { fill: var(--fp-ink); font-family: var(--font-sans), system-ui, sans-serif; font-size: 14px; font-weight: 600; letter-spacing: 0.03em; }
+    .fps-label-sm { fill: var(--fp-ink-mute); font-family: var(--font-sans), system-ui, sans-serif; font-size: 10px; font-weight: 500; letter-spacing: 0.04em; }
+    .fps-label-xs { fill: var(--fp-ink-faint); font-family: var(--font-mono), ui-monospace, monospace; font-size: 8px; font-weight: 500; }
+
+    .road-base { fill: color-mix(in srgb, var(--fp-panel) 55%, transparent); stroke: none; }
+    .road-line { fill: none; stroke: var(--fp-ink-faint); stroke-width: 1.5; stroke-dasharray: 18 12; opacity: 0.5; }
+    .conveyor { fill: none; stroke: var(--fp-line-strong); stroke-width: 14; stroke-linecap: round; stroke-linejoin: round; opacity: 0.55; }
+    .conveyor-inner { fill: none; stroke: var(--fp-surface); stroke-width: 6; stroke-linecap: round; stroke-linejoin: round; opacity: 0.7; }
+    .pipe { fill: none; stroke: var(--fp-line-strong); stroke-width: 3; stroke-linecap: round; stroke-linejoin: round; }
+    .building-base { fill: var(--fp-panel); stroke: var(--fp-line-strong); stroke-width: 1.5; }
+    .building-roof { fill: color-mix(in srgb, var(--fp-surface) 72%, var(--fp-ink-faint) 10%); stroke: var(--fp-line); stroke-width: 1; }
+    .equipment { fill: color-mix(in srgb, var(--fp-surface) 65%, var(--fp-ink-faint) 12%); stroke: var(--fp-line-strong); stroke-width: 1.1; }
+    .tank { fill: color-mix(in srgb, var(--fp-info) 20%, var(--fp-surface)); stroke: var(--fp-info); stroke-width: 1.4; }
+    .label-bg { fill: color-mix(in srgb, var(--surface-app) 72%, transparent); stroke: none; }
+    .label-title { font-size: 9.6px; font-weight: 700; letter-spacing: 0.03em; }
+    .highlight-zone { fill: transparent; stroke: none; pointer-events: none; }
+    .walkway { fill: color-mix(in srgb, var(--fp-surface-mute) 55%, transparent); stroke: var(--fp-line); stroke-width: 2; }
+
+  </style>
+  </defs>
+
+  <g id="master-scale-group" transform="scale(1.5)">
+    
+    <g id="plant-boundary" transform="translate(-40, -40) scale(1.08)">
+      <path class="boundary" d="M 40,80 L 1450,40 L 1570,300 L 1520,1100 L 1200,1170 L 60,1160 Z" />
+      <rect x="0" y="0" width="1800" height="1400" fill="url(#stockpile-hatch)" opacity="0.03" pointer-events="none"/>
+    </g>
+
+    <g id="road-network">
+      <path class="road-base" d="M 70,70 L 1450,50 L 1550,280 L 1500,1080 L 1200,1180 L 90,1180 Z" />
+      <path class="road-line" d="M 70,70 L 1450,50 L 1550,280 L 1500,1080 L 1200,1180 L 90,1180 Z" />
+
+      <path class="road-base" d="M 450,75 L 450,1150 M 880,75 L 880,1120 M 70,450 L 880,450 M 450,830 L 1470,830" />
+      <path class="road-line" d="M 450,75 L 450,1150 M 880,75 L 880,1120 M 70,450 L 880,450 M 450,830 L 1470,830" />
+    </g>
+
+    <g id="pedestrian-network">
+      <path class="walkway" d="M 370,240 L 450,240 L 450,490 L 520,490" />
+      <path class="walkway" d="M 760,590 L 920,590 L 920,650" />
+      <path class="walkway" d="M 760,400 L 1050,400 L 1050,370" />
+    </g>
+
+    <g id="asset-admin-office" transform="translate(100, 100)">
+      <rect class="building-base" x="120" y="140" width="250" height="200" />
+      <rect x="130" y="150" width="230" height="180" fill="url(#solar-panel)" stroke="var(--fp-ink-mute)" stroke-width="2" />
+      
+      <rect x="130" y="210" width="230" height="20" fill="var(--fp-line)" />
+      <rect class="equipment" x="250" y="212" width="40" height="16" />
+      <rect class="equipment" x="300" y="212" width="40" height="16" />
+      <circle cx="270" cy="220" r="5" fill="var(--fp-ink-mute)" />
+      <circle cx="320" cy="220" r="5" fill="var(--fp-ink-mute)" />
+
+      <rect class="label-bg" x="156" y="360" width="176" height="22" />
+      <text class="label-title" x="166" y="376" font-size="9.6px">ADMIN &amp; SHIFT OFFICE</text>
+      <rect class="highlight-zone" x="120" y="140" width="250" height="200" />
+    </g>
+
+    <g id="asset-scada-room" transform="translate(520, 240)">
+      <rect class="building-base" x="120" y="140" width="180" height="130" />
+      <rect class="building-roof" x="130" y="150" width="160" height="110" />
+      
+      <g transform="translate(140, 160)">
+        <rect class="equipment" x="0" y="0" width="35" height="35" />
+        <circle cx="17.5" cy="17.5" r="12" fill="none" stroke="var(--fp-ink-mute)" stroke-width="2" />
+        <rect class="equipment" x="50" y="0" width="35" height="35" />
+        <circle cx="67.5" cy="17.5" r="12" fill="none" stroke="var(--fp-ink-mute)" stroke-width="2" />
+        <rect class="equipment" x="100" y="0" width="35" height="35" />
+        <circle cx="117.5" cy="17.5" r="12" fill="none" stroke="var(--fp-ink-mute)" stroke-width="2" />
+        
+        <rect class="equipment" x="0" y="50" width="35" height="35" />
+        <circle cx="17.5" cy="67.5" r="12" fill="none" stroke="var(--fp-ink-mute)" stroke-width="2" />
+        <rect class="equipment" x="50" y="50" width="35" height="35" />
+        <circle cx="67.5" cy="67.5" r="12" fill="none" stroke="var(--fp-ink-mute)" stroke-width="2" />
+        <rect class="equipment" x="100" y="50" width="35" height="35" />
+        <circle cx="117.5" cy="67.5" r="12" fill="none" stroke="var(--fp-ink-mute)" stroke-width="2" />
+      </g>
+
+      <rect class="label-bg" x="123" y="290" width="174" height="22" />
+      <text class="label-title" x="133" y="306" font-size="9.6px">SCADA &amp; SERVER ROOM</text>
+      <rect class="highlight-zone" x="120" y="140" width="180" height="130" />
+    </g>
+
+    <g id="asset-central-control-room" transform="translate(500, 370)">
+      <path class="building-base" d="M 160,140 L 360,140 L 420,200 L 420,400 L 360,460 L 160,460 L 100,400 L 100,200 Z" />
+      <path fill="url(#glass-grad)" stroke="var(--fp-line)" stroke-width="2" d="M 170,150 L 350,150 L 410,210 L 410,390 L 350,450 L 170,450 L 110,390 L 110,210 Z" />
+      
+      <circle cx="260" cy="300" r="70" fill="var(--fp-line)" stroke="var(--fp-line-strong)" stroke-width="6" />
+      <circle cx="260" cy="300" r="50" fill="url(#glass-grad)" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <line x1="260" y1="250" x2="260" y2="350" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <line x1="210" y1="300" x2="310" y2="300" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <line x1="225" y1="265" x2="295" y2="335" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <line x1="225" y1="335" x2="295" y2="265" stroke="var(--fp-line-strong)" stroke-width="2" />
+
+      <circle cx="370" cy="200" r="24" fill="var(--fp-line)" stroke="var(--fp-ink-faint)" stroke-width="2" />
+      <circle cx="370" cy="200" r="8" fill="var(--fp-ink-mute)" />
+      <line x1="370" y1="200" x2="355" y2="215" stroke="var(--fp-ink-mute)" stroke-width="3" />
+      
+      <rect class="label-bg" x="160" y="480" width="200" height="22" />
+      <text class="label-title" x="170" y="496" font-size="9.6px">CENTRAL CONTROL ROOM</text>
+      <rect class="highlight-zone" x="100" y="140" width="320" height="320" />
+    </g>
+
+    <g id="asset-hvac-plant" transform="translate(1000, 100)">
+      <rect class="building-base" x="120" y="140" width="220" height="150" />
+      
+      <rect class="equipment" x="130" y="155" width="80" height="120" rx="4" ry="4" />
+      <rect x="140" y="165" width="60" height="20" fill="var(--fp-line)" />
+      <rect x="140" y="195" width="60" height="20" fill="var(--fp-line)" />
+      <rect x="140" y="225" width="60" height="20" fill="var(--fp-line)" />
+      
+      <rect class="equipment" x="250" y="155" width="80" height="120" rx="4" ry="4" />
+      <rect x="260" y="165" width="60" height="20" fill="var(--fp-line)" />
+      <rect x="260" y="195" width="60" height="20" fill="var(--fp-line)" />
+      <rect x="260" y="225" width="60" height="20" fill="var(--fp-line)" />
+
+      <path d="M 210,215 L 250,215" stroke="var(--fp-line-strong)" stroke-width="12" />
+      <path d="M 230,215 L 230,290 L 180,290" stroke="var(--fp-line-strong)" stroke-width="12" stroke-linejoin="round" />
+      <line x1="210" y1="215" x2="250" y2="215" stroke="var(--fp-ink-faint)" stroke-width="2" stroke-dasharray="2,2" />
+
+      <rect class="label-bg" x="132" y="310" width="166" height="22" />
+      <text class="label-title" x="142" y="326" font-size="9.6px">ROOFTOP HVAC PLANT</text>
+      <rect class="highlight-zone" x="120" y="140" width="220" height="150" />
+    </g>
+
+    <g id="asset-muster-point" transform="translate(1000, 780)">
+      <rect x="120" y="140" width="280" height="250" fill="var(--fp-surface)" stroke="url(#hazard-stripes)" stroke-width="12" />
+      <rect x="126" y="146" width="268" height="238" fill="none" stroke="var(--fp-ink-faint)" stroke-width="2" />
+      
+      <circle cx="260" cy="265" r="70" fill="none" stroke="var(--fp-line-strong)" stroke-width="8" stroke-dasharray="16,8" />
+      <circle cx="260" cy="265" r="50" fill="none" stroke="var(--fp-line-strong)" stroke-width="4" />
+      <circle cx="260" cy="265" r="15" fill="var(--fp-line-strong)" />
+      <line x1="260" y1="180" x2="260" y2="350" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <line x1="175" y1="265" x2="345" y2="265" stroke="var(--fp-line-strong)" stroke-width="2" />
+
+      <rect x="150" y="170" width="40" height="40" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <rect x="330" y="170" width="40" height="40" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <rect x="150" y="320" width="40" height="40" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" />
+      <rect x="330" y="320" width="40" height="40" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" />
+
+      <rect class="label-bg" x="194" y="410" width="132" height="22" />
+      <text class="label-title" x="204" y="426" font-size="9.6px">MUSTER POINT</text>
+      <rect class="highlight-zone" x="120" y="140" width="280" height="250" />
+    </g>
+
+    <g id="asset-crane-deck" transform="translate(1050, 400)">
+      <rect class="building-base" x="120" y="140" width="340" height="240" fill="var(--fp-surface-mute)" stroke-dasharray="8,8" />
+      
+      <rect class="equipment" x="140" y="140" width="20" height="240" fill="var(--fp-line)" />
+      <rect class="equipment" x="420" y="140" width="20" height="240" fill="var(--fp-line)" />
+      <line x1="150" y1="140" x2="150" y2="380" stroke="var(--fp-ink-mute)" stroke-width="4" />
+      <line x1="430" y1="140" x2="430" y2="380" stroke="var(--fp-ink-mute)" stroke-width="4" />
+
+      <rect class="tank" x="130" y="240" width="320" height="30" rx="2" ry="2" />
+      <line x1="130" y1="240" x2="450" y2="270" stroke="var(--fp-ink-faint)" stroke-width="2" />
+      <line x1="130" y1="270" x2="450" y2="240" stroke="var(--fp-ink-faint)" stroke-width="2" />
+
+      <rect class="equipment" x="240" y="235" width="50" height="40" rx="4" ry="4" fill="var(--fp-ink-mute)" />
+      <circle cx="265" cy="255" r="14" fill="var(--fp-surface-mute)" stroke="var(--fp-ink)" stroke-width="2" />
+      <circle cx="265" cy="255" r="6" fill="var(--fp-ink)" />
+
+      <rect x="240" y="160" width="100" height="60" fill="var(--fp-ink-mute)" stroke="url(#hazard-stripes)" stroke-width="6" opacity="0.8"/>
+
+      <rect class="label-bg" x="210" y="400" width="160" height="22" />
+      <text class="label-title" x="220" y="416" font-size="9.6px">CRANE / HOIST DECK</text>
+      <rect class="highlight-zone" x="120" y="140" width="340" height="240" />
+    </g>
+
+    <g id="asset-rooftop-cooling" transform="translate(100, 680)">
+      <rect class="building-base" x="120" y="140" width="320" height="150" />
+      
+      <g transform="translate(165, 215)">
+        <circle cx="0" cy="0" r="45" fill="var(--fp-line)" stroke="var(--fp-ink-faint)" stroke-width="6" />
+        <circle cx="0" cy="0" r="42" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" stroke-dasharray="4,4" /> <path d="M 0,0 L 0,-35 M 0,0 L 30,17.5 M 0,0 L -30,17.5" stroke="var(--fp-ink-mute)" stroke-width="8" stroke-linecap="round" />
+        <circle cx="0" cy="0" r="10" fill="var(--fp-ink)" />
+      </g>
+      
+      <g transform="translate(280, 215)">
+        <circle cx="0" cy="0" r="45" fill="var(--fp-line)" stroke="var(--fp-ink-faint)" stroke-width="6" />
+        <circle cx="0" cy="0" r="42" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" stroke-dasharray="4,4" />
+        <path d="M 0,0 L 0,-35 M 0,0 L 30,17.5 M 0,0 L -30,17.5" stroke="var(--fp-ink-mute)" stroke-width="8" stroke-linecap="round" />
+        <circle cx="0" cy="0" r="10" fill="var(--fp-ink)" />
+      </g>
+      
+      <g transform="translate(395, 215)">
+        <circle cx="0" cy="0" r="45" fill="var(--fp-line)" stroke="var(--fp-ink-faint)" stroke-width="6" />
+        <circle cx="0" cy="0" r="42" fill="none" stroke="var(--fp-line-strong)" stroke-width="2" stroke-dasharray="4,4" />
+        <path d="M 0,0 L 0,-35 M 0,0 L 30,17.5 M 0,0 L -30,17.5" stroke="var(--fp-ink-mute)" stroke-width="8" stroke-linecap="round" />
+        <circle cx="0" cy="0" r="10" fill="var(--fp-ink)" />
+      </g>
+
+      <path class="pipe-dark" d="M 120,270 L 440,270" stroke-width="6" />
+      <path class="pipe-dark" d="M 165,270 L 165,260 M 280,270 L 280,260 M 395,270 L 395,260" stroke-width="4" />
+
+      <rect class="label-bg" x="176" y="310" width="208" height="22" />
+      <text class="label-title" x="186" y="326" font-size="9.6px">ROOFTOP COOLING TOWERS</text>
+      <rect class="highlight-zone" x="120" y="140" width="320" height="150" />
+    </g>
+
+    <g id="asset-elevated-conveyor">
+      <path d="M 1250,900 L 400,600" fill="none" stroke="var(--fp-line)" stroke-width="36" />
+      <path d="M 1250,900 L 400,600" fill="none" stroke="var(--fp-ink-faint)" stroke-width="36" stroke-dasharray="8,12" />
+      <path d="M 1250,900 L 400,600" fill="none" stroke="var(--fp-line)" stroke-width="28" />
+      
+      <path d="M 1250,900 L 400,600" fill="none" stroke="var(--fp-ink-mute)" stroke-width="16" />
+      
+      <circle cx="1037" cy="825" r="20" fill="var(--fp-line)" stroke="var(--fp-ink-mute)" stroke-width="2" />
+      <circle cx="825" cy="750" r="20" fill="var(--fp-line)" stroke="var(--fp-ink-mute)" stroke-width="2" />
+      <circle cx="612" cy="675" r="20" fill="var(--fp-line)" stroke="var(--fp-ink-mute)" stroke-width="2" />
+      
+      <rect class="building-roof" x="350" y="550" width="70" height="70" rx="4" ry="4" stroke="var(--fp-line-strong)" stroke-width="3" filter="url(#drop-shadow)"/>
+      <rect class="equipment" x="365" y="565" width="40" height="40" fill="var(--fp-line)" />
+      
+      <rect class="building-roof" x="1230" y="880" width="60" height="60" rx="4" ry="4" stroke="var(--fp-line-strong)" stroke-width="3" filter="url(#drop-shadow)"/>
+
+      <rect class="label-bg" x="850" y="800" width="220" height="22" />
+      <text class="label-title" x="860" y="816" font-size="9.6px">ELEVATED CONVEYOR GANTRY</text>
+      
+      <path class="highlight-zone" d="M 1250,900 L 400,600" fill="none" stroke="transparent" stroke-width="60" />
+      <rect class="highlight-zone" x="350" y="550" width="70" height="70" />
+    </g>
+
+  </g>
+</svg>

@@ -3,12 +3,14 @@
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import type { RiskLevel } from "@/shared/enums";
+import type { PlantFloor } from "@/shared/enums";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { AssetMarker } from "./AssetMarker";
 import { MAP_VIEWBOX, MAP_WORLD } from "./MapViewport";
+import { loadFloorSchematic } from "./floorPlanShared";
 import styles from "./FloorPlan.module.css";
 
-type HitBox = { x: number; y: number; w: number; h: number };
+type HitBox = { x: number; y: number; w: number; h: number; angle?: number };
 
 type FloorEntry = {
   svg_element_id: string;
@@ -17,6 +19,7 @@ type FloorEntry = {
   hit?: HitBox;
   zone: string;
   label: string;
+  floor: PlantFloor;
 };
 
 type HoverTip = {
@@ -29,24 +32,13 @@ type HoverTip = {
 };
 
 interface FloorPlanProps {
+  floor: PlantFloor;
   riskByAsset: Record<string, RiskLevel>;
   selectedAssetId: string | null;
   onSelectAsset: (id: string) => void;
 }
 
 const MAP = floorPlanMap as Record<string, FloorEntry>;
-const PLAN_SRC = "/twin/new-frame.svg";
-
-function extractSvgInner(markup: string): string {
-  const doc = new DOMParser().parseFromString(markup, "image/svg+xml");
-  const root = doc.documentElement;
-  if (root.querySelector("parsererror")) {
-    return "";
-  }
-  return Array.from(root.childNodes)
-    .map((node) => new XMLSerializer().serializeToString(node))
-    .join("");
-}
 
 function tipFromTarget(
   assetId: string,
@@ -67,6 +59,7 @@ function tipFromTarget(
 }
 
 export function FloorPlan({
+  floor,
   riskByAsset,
   selectedAssetId,
   onSelectAsset,
@@ -78,19 +71,20 @@ export function FloorPlan({
   const [mounted, setMounted] = useState(false);
   const rippleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const floorEntries = Object.entries(MAP).filter(
+    ([, entry]) => (entry.floor ?? "ground") === floor,
+  );
+
   useEffect(() => {
     setMounted(true);
   }, []);
 
   useEffect(() => {
     let cancelled = false;
-    void fetch(PLAN_SRC)
-      .then((res) => {
-        if (!res.ok) throw new Error(`Failed to load ${PLAN_SRC}`);
-        return res.text();
-      })
-      .then((text) => {
-        if (!cancelled) setSchematic(extractSvgInner(text));
+    setSchematic("");
+    void loadFloorSchematic(floor)
+      .then((inner) => {
+        if (!cancelled) setSchematic(inner);
       })
       .catch(() => {
         if (!cancelled) setSchematic("");
@@ -98,7 +92,7 @@ export function FloorPlan({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [floor]);
 
   useEffect(() => {
     return () => {
@@ -136,11 +130,11 @@ export function FloorPlan({
         height={MAP_WORLD.height}
         viewBox={`0 0 ${MAP_VIEWBOX.width} ${MAP_VIEWBOX.height}`}
         role="img"
-        aria-label="Plant 1 coke oven complex floor plan"
+        aria-label={`Plant 1 ${floor} floor plan`}
       >
         <defs>
           <pattern
-            id="canvas-dots"
+            id={`canvas-dots-${floor}`}
             width="18"
             height="18"
             patternUnits="userSpaceOnUse"
@@ -164,9 +158,8 @@ export function FloorPlan({
           y={0}
           width={MAP_VIEWBOX.width}
           height={MAP_VIEWBOX.height}
-          fill="url(#canvas-dots)"
+          fill={`url(#canvas-dots-${floor})`}
         />
-        {/* Inlined so SVG styles can use theme design tokens */}
         {schematic ? (
           <g
             className={`${styles.schematic} fps-root`}
@@ -175,26 +168,27 @@ export function FloorPlan({
           />
         ) : null}
 
-        {Object.entries(MAP).map(([assetId, entry]) => {
+        {floorEntries.map(([assetId, entry]) => {
           if (!entry.hit) return null;
           const risk = riskByAsset[assetId] ?? "nominal";
           const selected = selectedAssetId === assetId;
-          return (
+          const { x, y, w, h, angle } = entry.hit;
+          const cx = x + w / 2;
+          const cy = y + h / 2;
+          const hitRect = (
             <rect
-              key={`hit-${assetId}`}
               className={styles.hitRegion}
               data-risk={risk}
               data-selected={selected ? "true" : undefined}
               data-map-marker=""
               data-svg-id={entry.svg_element_id}
-              x={entry.hit.x}
-              y={entry.hit.y}
-              width={entry.hit.w}
-              height={entry.hit.h}
+              x={x}
+              y={y}
+              width={w}
+              height={h}
               role="button"
               aria-label={`${entry.label}, risk ${risk}`}
               onMouseDown={(e) => {
-                // Prevent focus + browser scrollIntoView inside transformed map.
                 e.preventDefault();
               }}
               onMouseEnter={(e) => showTip(assetId, entry, risk, e.currentTarget)}
@@ -206,9 +200,14 @@ export function FloorPlan({
               }}
             />
           );
+          return (
+            <g key={`hit-${assetId}`} transform={angle ? `rotate(${angle} ${cx} ${cy})` : undefined}>
+              {hitRect}
+            </g>
+          );
         })}
 
-        {Object.entries(MAP).map(([assetId, entry]) => {
+        {floorEntries.map(([assetId, entry]) => {
           const risk = riskByAsset[assetId] ?? "nominal";
           if (rippleAssetId === assetId) {
             return (
@@ -226,10 +225,8 @@ export function FloorPlan({
           return null;
         })}
 
-        {Object.entries(MAP).map(([assetId, entry]) => {
+        {floorEntries.map(([assetId, entry]) => {
           const risk = riskByAsset[assetId] ?? "nominal";
-          // Nominal assets use the hit-region wash only (no green dots).
-          // Elevated / blocking keep markers for the pulse affordance.
           if (risk === "nominal" && entry.hit) return null;
           return (
             <AssetMarker
