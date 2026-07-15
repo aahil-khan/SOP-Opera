@@ -1,14 +1,18 @@
 /**
- * Live FastAPI client for Phase 4 — typed against shared contracts.
+ * Live FastAPI client for Phase 4+ — typed against shared contracts.
  */
 
 import type {
+  AreaOwner,
   Assessment,
   Asset,
   Context,
   Decision,
   DerivedFact,
   ManualAssessmentIn,
+  Notification,
+  ReasoningFactor,
+  Report,
   RetrievedReference,
   Review,
 } from "@/shared/schemas";
@@ -21,6 +25,7 @@ export interface ReviewDetail {
   context: Context[];
   derived_facts: DerivedFact[];
   decision: Decision | null;
+  area_owner?: AreaOwner | null;
 }
 
 export interface AssessmentHistoryItem extends Omit<Assessment, "risk_level" | "summary"> {
@@ -29,11 +34,13 @@ export interface AssessmentHistoryItem extends Omit<Assessment, "risk_level" | "
   version: number;
   created_at: string | null;
   retrieved_references: RetrievedReference[];
+  reasoning_factors?: ReasoningFactor[];
   metadata: Assessment["metadata"] & {
     input_tokens?: number;
     output_tokens?: number;
     estimated_cost_usd?: number;
     assessment_version?: number;
+    reasoning_factors?: ReasoningFactor[];
   } | null;
 }
 
@@ -41,6 +48,30 @@ export interface DecisionIn {
   outcome: DecisionOutcome;
   recommendation_dispositions: Record<string, "accepted" | "rejected">;
   conditions: string | null;
+}
+
+export interface ReportSummary {
+  id: string;
+  review_id: string;
+  closure_event_seq: number;
+  generated_at: string;
+  title: string | null;
+  asset_name: string | null;
+  outcome: string | null;
+  risk_level: string | null;
+}
+
+export interface AiOpsSummary {
+  total_assessments: number;
+  complete_count: number;
+  failed_count: number;
+  success_rate: number;
+  validation_failure_count: number;
+  provider_error_count: number;
+  rag_hit_rate: number;
+  rag_fallback_rate: number;
+  mean_retrieval_relevance: number | null;
+  retrieval_ran_count: number;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -103,6 +134,10 @@ export function postDecision(
   });
 }
 
+export function postCloseReview(reviewId: string): Promise<Review> {
+  return request<Review>(`/reviews/${reviewId}/close`, { method: "POST" });
+}
+
 export function postRetryAssessment(
   reviewId: string,
   provider?: "openai_compatible" | "ollama" | "mock" | null,
@@ -121,4 +156,24 @@ export function postManualAssessment(
     method: "POST",
     body: JSON.stringify(body),
   });
+}
+
+export function fetchReports(): Promise<ReportSummary[]> {
+  return request<ReportSummary[]>("/reports");
+}
+
+export function fetchReport(id: string): Promise<Report> {
+  return request<Report>(`/reports/${id}`);
+}
+
+export function fetchReviewReports(reviewId: string): Promise<Report[]> {
+  return request<Report[]>(`/reviews/${reviewId}/reports`);
+}
+
+export function fetchNotifications(limit = 50): Promise<Notification[]> {
+  return request<Notification[]>(`/notifications?limit=${limit}`);
+}
+
+export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
+  return request<AiOpsSummary>("/ai-ops/summary");
 }

@@ -1,0 +1,43 @@
+.toast {
+  --normal-bg: var(--surface-overlay);
+  --normal-border: var(--border-default);
+  --normal-text: var(--text-primary);
+  font-family: var(--font-sans) !important;
+  border-radius: var(--radius-md) !important;
+  border: 1px solid var(--border-default) !important;
+  background: var(--surface-overlay) !important;
+  color: var(--text-primary) !important;
+  box-shadow: var(--shadow-md) !important;
+}
+
+.title {
+  color: var(--text-primary) !important;
+  font-size: var(--text-sm) !important;
+  font-weight: var(--weight-medium) !important;
+}
+
+.description {
+  color: var(--text-muted) !important;
+  font-size: var(--text-xs) !important;
+}
+
+.action {
+  background: var(--accent-selection) !important;
+  color: var(--text-on-accent) !important;
+  font-size: var(--text-xs) !important;
+  font-weight: var(--weight-medium) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.cancel {
+  background: var(--interactive-hover) !important;
+  color: var(--text-secondary) !important;
+  font-size: var(--text-xs) !important;
+  border-radius: var(--radius-sm) !important;
+}
+
+.close {
+  background: var(--surface-panel) !important;
+  border: 1px solid var(--border-muted) !important;
+  color: var(--text-muted) !important;
+}

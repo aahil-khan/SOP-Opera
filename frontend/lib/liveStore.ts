@@ -5,14 +5,17 @@ import type {
   Assessment,
   Asset,
   Decision,
+  Notification,
   Review,
 } from "@/shared/schemas";
 import type { RiskLevel } from "@/shared/enums";
 import {
   fetchAssets,
+  fetchNotifications,
   fetchReviewAssessments,
   fetchReviewDetail,
   fetchReviews,
+  postCloseReview,
   postDecision,
   postManualAssessment,
   postRetryAssessment,
@@ -21,6 +24,13 @@ import {
   type ReviewDetail,
 } from "@/lib/liveApi";
 import type { ManualAssessmentIn } from "@/shared/schemas";
+import {
+  dismissAllNotificationToasts,
+  dismissNotificationToast,
+  showNotificationToast,
+} from "@/lib/notificationToast";
+
+const NOTIFICATION_CAP = 50;
 
 export interface LiveAssetView {
   asset: Asset;
@@ -35,6 +45,9 @@ interface LiveState {
   reviews: Review[];
   reviewDetails: Record<string, ReviewDetail>;
   assessmentsByReview: Record<string, AssessmentHistoryItem[]>;
+  notifications: Notification[];
+  /** Client-side unread ids (bootstrap history starts as read). */
+  unreadNotificationIds: string[];
   selectedAssetId: string | null;
   bootstrapped: boolean;
   loading: boolean;
@@ -43,6 +56,7 @@ interface LiveState {
   refreshOverview: () => Promise<void>;
   loadReviewDetail: (id: string) => Promise<void>;
   submitDecision: (id: string, body: DecisionIn) => Promise<Decision>;
+  closeReview: (id: string) => Promise<Review>;
   retryAssessment: (
     id: string,
     provider?: "openai_compatible" | "ollama" | "mock" | null,
@@ -52,6 +66,10 @@ interface LiveState {
     body: ManualAssessmentIn,
   ) => Promise<Assessment>;
   selectAsset: (id: string | null) => void;
+  loadNotifications: () => Promise<void>;
+  dismissNotification: (id: string) => void;
+  clearNotifications: () => void;
+  markNotificationsRead: () => void;
   handleRealtimeEvent: (type: string, payload: Record<string, unknown>) => void;
 }
 
@@ -84,11 +102,32 @@ function deriveRisk(
   return "nominal";
 }
 
+function asNotification(payload: Record<string, unknown>): Notification | null {
+  if (typeof payload.id !== "string" || typeof payload.summary !== "string") {
+    return null;
+  }
+  return {
+    id: payload.id,
+    review_id: typeof payload.review_id === "string" ? payload.review_id : null,
+    event_type: typeof payload.event_type === "string" ? payload.event_type : "unknown",
+    summary: payload.summary,
+    recipient_ids: Array.isArray(payload.recipient_ids)
+      ? payload.recipient_ids.map(String)
+      : [],
+    created_at:
+      typeof payload.created_at === "string"
+        ? payload.created_at
+        : new Date().toISOString(),
+  };
+}
+
 export const useLiveStore = create<LiveState>((set, get) => ({
   assets: [],
   reviews: [],
   reviewDetails: {},
   assessmentsByReview: {},
+  notifications: [],
+  unreadNotificationIds: [],
   selectedAssetId: null,
   bootstrapped: false,
   loading: false,
@@ -100,13 +139,25 @@ export const useLiveStore = create<LiveState>((set, get) => ({
     if (get().loading) return;
     set({ loading: true, error: null });
     try {
-      const [assets, reviews] = await Promise.all([
+      const [assets, reviews, notifications] = await Promise.all([
         fetchAssets(),
         fetchReviews(),
+        fetchNotifications(),
       ]);
-      set({ assets, reviews, bootstrapped: true, loading: false });
+      set({
+        assets,
+        reviews,
+        notifications,
+        // Existing history should not flood the badge / banners.
+        unreadNotificationIds: [],
+        reviewDetails: {},
+        assessmentsByReview: {},
+        selectedAssetId: null,
+        bootstrapped: true,
+        loading: false,
+        error: null,
+      });
 
-      // Prefetch detail for active (non-closed) reviews so risk highlights work.
       const active = reviews.filter((r) => r.state !== "closed");
       await Promise.all(
         active.slice(0, 12).map(async (r) => {
@@ -134,6 +185,47 @@ export const useLiveStore = create<LiveState>((set, get) => ({
     }
   },
 
+  loadNotifications: async () => {
+    try {
+      const notifications = await fetchNotifications();
+      const existing = new Set(get().notifications.map((n) => n.id));
+      const incomingUnread = notifications
+        .filter((n) => !existing.has(n.id))
+        .map((n) => n.id);
+      set((state) => ({
+        notifications,
+        unreadNotificationIds: [
+          ...incomingUnread,
+          ...state.unreadNotificationIds.filter((id) =>
+            notifications.some((n) => n.id === id),
+          ),
+        ],
+      }));
+    } catch {
+      /* best-effort */
+    }
+  },
+
+  dismissNotification: (id) => {
+    dismissNotificationToast(id);
+    set((state) => ({
+      notifications: state.notifications.filter((n) => n.id !== id),
+      unreadNotificationIds: state.unreadNotificationIds.filter((x) => x !== id),
+    }));
+  },
+
+  clearNotifications: () => {
+    dismissAllNotificationToasts();
+    set({
+      notifications: [],
+      unreadNotificationIds: [],
+    });
+  },
+
+  markNotificationsRead: () => {
+    set({ unreadNotificationIds: [] });
+  },
+
   loadReviewDetail: async (id: string) => {
     const [detail, assessments] = await Promise.all([
       fetchReviewDetail(id),
@@ -153,6 +245,13 @@ export const useLiveStore = create<LiveState>((set, get) => ({
     await get().loadReviewDetail(id);
     await get().refreshOverview();
     return decision;
+  },
+
+  closeReview: async (id) => {
+    const review = await postCloseReview(id);
+    await get().loadReviewDetail(id);
+    await get().refreshOverview();
+    return review;
   },
 
   retryAssessment: async (id, provider) => {
@@ -177,9 +276,32 @@ export const useLiveStore = create<LiveState>((set, get) => ({
       (type === "review.status_changed" ||
         type === "assessment.completed" ||
         type === "assessment.failed" ||
-        type === "decision.submitted")
+        type === "decision.submitted" ||
+        type === "report.generated")
     ) {
       void get().loadReviewDetail(reviewId).catch(() => {});
+    }
+    if (type === "notification.created") {
+      const n = asNotification(payload);
+      if (n) {
+        set((state) => {
+          const notifications = [
+            n,
+            ...state.notifications.filter((x) => x.id !== n.id),
+          ].slice(0, NOTIFICATION_CAP);
+          const unreadNotificationIds = [
+            n.id,
+            ...state.unreadNotificationIds.filter((x) => x !== n.id),
+          ];
+          return {
+            notifications,
+            unreadNotificationIds,
+          };
+        });
+        showNotificationToast(n, {
+          onClear: () => get().dismissNotification(n.id),
+        });
+      }
     }
   },
 }));
