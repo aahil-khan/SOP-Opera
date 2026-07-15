@@ -53,7 +53,7 @@ async def lifespan(_app: FastAPI):
         worker_task.cancel()
 
 
-app = FastAPI(title="SOP Opera API", version="0.5.0", lifespan=lifespan)
+app = FastAPI(title="SOP Opera API", version="0.6.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -67,11 +67,17 @@ from app.context.routes import router as context_router  # noqa: E402
 from app.reviews.routes import router as reviews_router  # noqa: E402
 from app.decisions.routes import router as decisions_router  # noqa: E402
 from app.simulator.routes import router as demo_router  # noqa: E402
+from app.reports.routes import router as reports_router  # noqa: E402
+from app.notifications.routes import router as notifications_router  # noqa: E402
+from app.ai_ops.routes import router as ai_ops_router  # noqa: E402
 
 app.include_router(context_router)
 app.include_router(reviews_router)
 app.include_router(decisions_router)
 app.include_router(demo_router)
+app.include_router(reports_router)
+app.include_router(notifications_router)
+app.include_router(ai_ops_router)
 
 
 @app.get("/health")

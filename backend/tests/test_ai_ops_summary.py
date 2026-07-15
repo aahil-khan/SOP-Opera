@@ -1,0 +1,162 @@
+"""GET /ai-ops/summary aggregate math."""
+
+from __future__ import annotations
+
+from uuid import UUID, uuid4
+
+import pytest
+import pytest_asyncio
+from httpx import ASGITransport, AsyncClient
+from sqlalchemy import text
+
+from tests.test_assessment_pipeline import _cleanup_vessel
+
+VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
+OWNER = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+
+@pytest_asyncio.fixture
+async def client():
+    from app.core.config import get_settings
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
+    from app.db.seed import seed_minimal
+    from app.db.vector import close_vector_pool
+    import asyncpg
+    import os
+
+    settings = get_settings()
+    try:
+        conn = await asyncpg.connect(_asyncpg_dsn(settings.database_url))
+        await conn.close()
+    except Exception as exc:  # noqa: BLE001
+        pytest.skip(f"Postgres unreachable: {exc}")
+
+    os.environ["AI_PROVIDER"] = "mock"
+    os.environ["EMBEDDING_PROVIDER"] = "mock"
+    get_settings.cache_clear()
+
+    await close_vector_pool()
+    await engine.dispose()
+    await apply_schema()
+    await seed_minimal()
+    await _cleanup_vessel()
+
+    from app.main import app
+
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+    await close_vector_pool()
+    await engine.dispose()
+
+
+async def _seed_mixed_assessments() -> None:
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        # Create a review shell
+        rev = await session.execute(
+            text(
+                """
+                INSERT INTO reviews (asset_id, state, owner_id, triggered_by)
+                VALUES (
+                    CAST(:asset AS uuid), 'closed',
+                    CAST(:owner AS uuid), 'test'
+                )
+                RETURNING id
+                """
+            ),
+            {"asset": str(VESSEL_A), "owner": str(OWNER)},
+        )
+        review_id = rev.scalar_one()
+
+        async def insert_assessment(
+            *,
+            status: str,
+            retrieval_mode: str | None,
+            retrieval_score: float | None,
+            failure_reason: str | None,
+        ) -> None:
+            aid = uuid4()
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO assessments (
+                        id, review_id, assessment_type, status, risk_level, summary, version
+                    )
+                    VALUES (
+                        CAST(:id AS uuid), CAST(:review_id AS uuid),
+                        'ai', :status, 'elevated', 'seed', 1
+                    )
+                    """
+                ),
+                {"id": str(aid), "review_id": str(review_id), "status": status},
+            )
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO assessment_metadata (
+                        assessment_id, provider, retrieval_mode, retrieval_score,
+                        failure_reason, retrieved_references
+                    )
+                    VALUES (
+                        CAST(:id AS uuid), 'mock', :mode, :score,
+                        :failure_reason, '[]'::jsonb
+                    )
+                    """
+                ),
+                {
+                    "id": str(aid),
+                    "mode": retrieval_mode,
+                    "score": retrieval_score,
+                    "failure_reason": failure_reason,
+                },
+            )
+
+        # 2 complete (1 rag, 1 deterministic), 1 validation fail, 1 provider fail
+        await insert_assessment(
+            status="complete",
+            retrieval_mode="rag",
+            retrieval_score=0.9,
+            failure_reason=None,
+        )
+        await insert_assessment(
+            status="complete",
+            retrieval_mode="deterministic",
+            retrieval_score=None,
+            failure_reason=None,
+        )
+        await insert_assessment(
+            status="failed",
+            retrieval_mode="rag",
+            retrieval_score=0.2,
+            failure_reason="validation",
+        )
+        await insert_assessment(
+            status="failed",
+            retrieval_mode="deterministic",
+            retrieval_score=None,
+            failure_reason="provider_error",
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
+async def test_ai_ops_summary_math(client: AsyncClient):
+    await _seed_mixed_assessments()
+    resp = await client.get("/ai-ops/summary")
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+
+    assert body["total_assessments"] == 4
+    assert body["complete_count"] == 2
+    assert body["failed_count"] == 2
+    assert body["success_rate"] == 0.5
+    assert body["validation_failure_count"] == 1
+    assert body["provider_error_count"] == 1
+    assert body["retrieval_ran_count"] == 4
+    assert body["rag_hit_rate"] == 0.5
+    assert body["rag_fallback_rate"] == 0.5
+    assert body["mean_retrieval_relevance"] is not None
+    # mean of 0.9 and 0.2
+    assert abs(body["mean_retrieval_relevance"] - 0.55) < 0.01
