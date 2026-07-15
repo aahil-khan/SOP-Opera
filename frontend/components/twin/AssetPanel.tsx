@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import type { LiveAssetView } from "@/lib/liveStore";
+import type { ReasoningFactor, RetrievedReference } from "@/shared/schemas";
 import { ReasoningTrace } from "@/components/trace/ReasoningTrace";
 import styles from "./AssetPanel.module.css";
 
@@ -10,14 +11,66 @@ interface AssetPanelProps {
   onClose: () => void;
 }
 
+function ctxSummary(c: {
+  category: string;
+  payload: Record<string, unknown>;
+}): string {
+  const p = c.payload;
+  if (c.category === "sensor" && typeof p.gas_reading === "number") {
+    return `Gas ${p.gas_reading}${typeof p.unit === "string" ? ` ${p.unit}` : ""}`;
+  }
+  if (c.category === "worker_location") {
+    const name =
+      typeof p.worker_name === "string"
+        ? p.worker_name
+        : `Worker ${String(p.worker_id ?? "?").slice(0, 8)}`;
+    return `${name} in ${String(p.zone ?? "?")}`;
+  }
+  if (c.category === "permit") {
+    const work =
+      typeof p.work_type === "string" ? ` · ${p.work_type.replaceAll("_", " ")}` : "";
+    return `Permit ${String(p.permit_id ?? "?")} · ${String(p.status ?? "")}${work}`;
+  }
+  return c.category;
+}
+
+function refLabel(r: RetrievedReference): string {
+  if (r.code && r.title) return `${r.code}: ${r.title}`;
+  if (r.title) return r.title;
+  return r.source.replaceAll("_", " ");
+}
+
+function matchLabel(r: RetrievedReference): string {
+  if (r.retrieval_path === "rag" && r.score != null) {
+    return `RAG · ${r.score.toFixed(2)}`;
+  }
+  if (r.triggered_by_fact) {
+    return `matched · ${r.triggered_by_fact.replaceAll("_", " ")}`;
+  }
+  return "matched by category";
+}
+
 export function AssetPanel({ view, onClose }: AssetPanelProps) {
   const { asset, risk_level, review, assessment, detail } = view;
   const context = detail?.context ?? [];
   const derivedFacts = detail?.derived_facts ?? [];
   const decision = detail?.decision ?? null;
+  const areaOwner = detail?.area_owner ?? null;
   const references = assessment?.retrieved_references ?? [];
+  const recommendations = assessment?.recommendations ?? [];
+  const factors: ReasoningFactor[] =
+    assessment?.reasoning_factors ??
+    assessment?.metadata?.reasoning_factors ??
+    [];
 
-  // Map history item → Assessment shape for the trace (nullable fields).
+  const summary =
+    assessment?.summary ??
+    (assessment?.status === "pending" || assessment?.status === "generating"
+      ? "Assessment in progress…"
+      : review
+        ? "No assessment summary yet."
+        : "No open review for this asset.");
+
   const assessmentForTrace =
     assessment && assessment.status === "complete" && assessment.risk_level
       ? {
@@ -29,6 +82,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
           summary: assessment.summary ?? "",
           recommendations: assessment.recommendations,
           derived_fact_ids: assessment.derived_fact_ids,
+          reasoning_factors: factors,
           metadata: assessment.metadata
             ? {
                 provider: assessment.metadata.provider,
@@ -51,8 +105,8 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
                 embedding_model: assessment.metadata.embedding_model ?? null,
                 confidence: assessment.metadata.confidence ?? 0,
                 assessment_version:
-                  assessment.metadata.assessment_version ??
-                  assessment.version,
+                  assessment.metadata.assessment_version ?? assessment.version,
+                reasoning_factors: factors,
               }
             : null,
         }
@@ -69,6 +123,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
             summary: assessment.summary ?? "Assessment in progress…",
             recommendations: assessment.recommendations,
             derived_fact_ids: assessment.derived_fact_ids,
+            reasoning_factors: factors,
             metadata: null,
           }
         : null;
@@ -76,14 +131,29 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
   return (
     <aside className={styles.drawer} aria-label={`${asset.name} detail`}>
       <header className={styles.header}>
-        <div>
+        <div className={styles.titleBlock}>
           <h2 className={styles.title}>{asset.name}</h2>
           <p className={styles.subtitle}>
-            {asset.zone} ·{" "}
+            <span>{asset.zone}</span>
             <span className="badge" data-risk={risk_level}>
               {risk_level}
             </span>
+            {review && (
+              <span className="badge">
+                {review.state.replaceAll("_", " ")}
+              </span>
+            )}
           </p>
+          {areaOwner && (
+            <p className={styles.ownerLine}>
+              Area owner · <strong>{areaOwner.name}</strong> ({areaOwner.role})
+            </p>
+          )}
+          {review && (
+            <p className={styles.trigger}>
+              Triggered by {review.triggered_by.replaceAll("_", " ")}
+            </p>
+          )}
         </div>
         <button
           type="button"
@@ -96,8 +166,116 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
       </header>
 
       <div className={styles.body}>
-        <section>
-          <h3 className={styles.sectionTitle}>Reasoning trace</h3>
+        <section className={styles.section} aria-labelledby="why-heading">
+          <h3 id="why-heading" className={styles.sectionTitle}>
+            Why
+          </h3>
+          <p className={styles.summary}>{summary}</p>
+          {factors.length > 0 && (
+            <ul className={styles.factorList}>
+              {factors.map((f) => (
+                <li key={f.fact_type} className={styles.factorItem}>
+                  <strong>{f.headline}</strong>
+                  <p>{f.detail}</p>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <section className={styles.section} aria-labelledby="evidence-heading">
+          <h3 id="evidence-heading" className={styles.sectionTitle}>
+            Evidence
+          </h3>
+          {derivedFacts.length === 0 &&
+          context.length === 0 &&
+          references.length === 0 ? (
+            <p className={styles.muted}>No evidence available yet.</p>
+          ) : (
+            <>
+              {derivedFacts.length > 0 && (
+                <div className={styles.chipRow}>
+                  {derivedFacts.map((f) => (
+                    <span key={f.id} className={styles.chip} data-highlight="true">
+                      {String(f.fact_type).replaceAll("_", " ")}
+                    </span>
+                  ))}
+                </div>
+              )}
+              {context.length > 0 && (
+                <ul className={styles.list}>
+                  {context.map((c) => (
+                    <li
+                      key={c.id}
+                      className={styles.listItem}
+                      data-highlight="true"
+                    >
+                      {ctxSummary(c)}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {references.length > 0 && (
+                <ul className={styles.list}>
+                  {references.map((r) => (
+                    <li
+                      key={`${r.source}-${r.id}`}
+                      className={styles.listItem}
+                      data-highlight="true"
+                    >
+                      <span
+                        className={styles.pathBadge}
+                        data-path={r.retrieval_path}
+                      >
+                        {r.retrieval_path === "rag" ? "RAG" : "Rule match"}
+                      </span>
+                      <span className={styles.refTitle}>{refLabel(r)}</span>
+                      <span className={styles.matchHint}>{matchLabel(r)}</span>
+                      {r.snippet && (
+                        <p className={styles.refSnippet}>{r.snippet}</p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {decision && (
+                <p className={styles.muted}>
+                  Evidence frozen at decision · {context.length} context ·{" "}
+                  {derivedFacts.length} facts ·{" "}
+                  {decision.outcome.replaceAll("_", " ")}
+                </p>
+              )}
+            </>
+          )}
+        </section>
+
+        <section className={styles.section} aria-labelledby="do-heading">
+          <h3 id="do-heading" className={styles.sectionTitle}>
+            Recommended action
+          </h3>
+          {decision ? (
+            <p className={styles.summary}>
+              Decision: {decision.outcome.replaceAll("_", " ")}
+              {decision.conditions ? ` — ${decision.conditions}` : ""}
+            </p>
+          ) : recommendations.length === 0 ? (
+            <p className={styles.muted}>No recommendations yet.</p>
+          ) : (
+            <ul className={styles.list}>
+              {recommendations.map((rec) => (
+                <li key={rec.id} className={styles.recItem}>
+                  <p className={styles.recText}>{rec.text}</p>
+                  {rec.rationale && (
+                    <p className={styles.recRationale}>{rec.rationale}</p>
+                  )}
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+
+        <details className={styles.traceDetails}>
+          <summary className={styles.traceSummary}>Full reasoning trace</summary>
           <ReasoningTrace
             asset={asset}
             context={context}
@@ -105,34 +283,17 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
             references={references}
             assessment={assessmentForTrace}
             decision={decision}
+            areaOwner={areaOwner}
             compact
           />
-        </section>
-
-        {decision && (
-          <section>
-            <h3 className={styles.sectionTitle}>Evidence (frozen)</h3>
-            <p
-              style={{
-                margin: 0,
-                fontSize: "0.85rem",
-                color: "var(--muted)",
-              }}
-            >
-              Context and assessment cited at decision time are frozen as
-              Evidence. {context.length} context · {derivedFacts.length} facts ·
-              decision {decision.outcome.replaceAll("_", " ")}.
-            </p>
-          </section>
-        )}
+        </details>
       </div>
 
       {review && (
         <div className={styles.footer}>
           <Link
-            className="btn btn-primary"
+            className={`btn btn-primary ${styles.footerLink}`}
             href={`/reviews/${review.id}`}
-            style={{ width: "100%" }}
           >
             View full review
           </Link>

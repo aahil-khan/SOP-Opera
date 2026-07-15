@@ -1,0 +1,39 @@
+.viewport {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background-color: var(--surface-canvas);
+  background-image: radial-gradient(
+    circle,
+    var(--border-muted) 1px,
+    transparent 1.2px
+  );
+  background-size: 18px 18px;
+  background-position: 0 0;
+}
+
+.viewport:not([data-ready="true"]) .transformContent {
+  opacity: 0;
+}
+
+.viewport[data-ready="true"] .transformContent {
+  opacity: 1;
+  transition: opacity 120ms ease-out;
+}
+
+.transformWrapper {
+  width: 100% !important;
+  height: 100% !important;
+  cursor: grab;
+}
+
+.transformWrapper:active {
+  cursor: grabbing;
+}
+
+.transformContent {
+  width: fit-content;
+  height: fit-content;
+  will-change: transform;
+  backface-visibility: hidden;
+}

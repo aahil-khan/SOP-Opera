@@ -10,6 +10,7 @@ interface AssetMarkerProps {
   y: number;
   risk: RiskLevel;
   selected: boolean;
+  hovered?: boolean;
   onSelect: (id: string) => void;
 }
 
@@ -20,24 +21,26 @@ export function AssetMarker({
   y,
   risk,
   selected,
+  hovered = false,
   onSelect,
 }: AssetMarkerProps) {
   const pulse = risk !== "nominal";
 
   return (
     <g
-      className={`${styles.marker} ${selected ? styles.selected : ""}`}
+      className={`${styles.marker} ${selected ? styles.selected : ""} ${
+        hovered ? styles.hovered : ""
+      }`}
       transform={`translate(${x}, ${y})`}
+      onMouseDown={(e) => {
+        // Avoid focus scrollIntoView fighting the pan/zoom transform.
+        e.preventDefault();
+      }}
       onClick={() => onSelect(id)}
       role="button"
-      tabIndex={0}
+      tabIndex={-1}
+      data-map-marker=""
       aria-label={`${label}, risk ${risk}`}
-      onKeyDown={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.preventDefault();
-          onSelect(id);
-        }
-      }}
     >
       <circle className={styles.hit} r={22} />
       <circle
@@ -47,9 +50,6 @@ export function AssetMarker({
         r={12}
       />
       <circle className={styles.disk} data-risk={risk} r={10} />
-      <text className={styles.label} x={16} y={4}>
-        {label}
-      </text>
     </g>
   );
 }

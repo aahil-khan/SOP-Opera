@@ -1,30 +1,82 @@
 {
   "11111111-1111-1111-1111-111111111111": {
-    "svg_element_id": "vessel-a",
-    "x": 180,
-    "y": 160,
+    "svg_element_id": "asset-coke-battery-a",
+    "x": 352.5,
+    "y": 1380,
+    "hit": { "x": 120, "y": 1200, "w": 465, "h": 360 },
     "zone": "coke-oven-battery",
     "label": "Vessel A"
   },
   "22222222-2222-2222-2222-222222222222": {
-    "svg_element_id": "walkway-3",
-    "x": 420,
-    "y": 200,
+    "svg_element_id": "asset-quench-area",
+    "x": 352.5,
+    "y": 1717.5,
+    "hit": { "x": 120, "y": 1650, "w": 465, "h": 135 },
     "zone": "hazardous",
     "label": "Walkway 3"
   },
   "33333333-3333-3333-3333-333333333333": {
-    "svg_element_id": "compressor-b",
-    "x": 180,
-    "y": 380,
+    "svg_element_id": "asset-compressor-yard",
+    "x": 1575,
+    "y": 1470,
+    "hit": { "x": 1425, "y": 1320, "w": 300, "h": 300 },
     "zone": "compressor-yard",
     "label": "Compressor B"
   },
   "44444444-4444-4444-4444-444444444444": {
-    "svg_element_id": "tank-farm-c",
-    "x": 480,
-    "y": 400,
+    "svg_element_id": "asset-tank-farm",
+    "x": 975,
+    "y": 330,
+    "hit": { "x": 765, "y": 120, "w": 420, "h": 420 },
     "zone": "tank-farm",
     "label": "Tank Farm C"
+  },
+  "66666666-6666-6666-6666-666666666661": {
+    "svg_element_id": "asset-byproduct-plant",
+    "x": 352.5,
+    "y": 330,
+    "hit": { "x": 120, "y": 120, "w": 465, "h": 420 },
+    "zone": "byproduct-plant",
+    "label": "By-Product Plant"
+  },
+  "66666666-6666-6666-6666-666666666662": {
+    "svg_element_id": "asset-coke-battery-b",
+    "x": 352.5,
+    "y": 885,
+    "hit": { "x": 120, "y": 705, "w": 465, "h": 360 },
+    "zone": "coke-oven-battery",
+    "label": "Coke Battery B"
+  },
+  "66666666-6666-6666-6666-666666666663": {
+    "svg_element_id": "asset-dri-plant",
+    "x": 1020,
+    "y": 915,
+    "hit": { "x": 765, "y": 705, "w": 510, "h": 420 },
+    "zone": "dri-plant",
+    "label": "DRI Plant"
+  },
+  "66666666-6666-6666-6666-666666666664": {
+    "svg_element_id": "asset-etp",
+    "x": 1020,
+    "y": 1447.5,
+    "hit": { "x": 765, "y": 1260, "w": 510, "h": 375 },
+    "zone": "etp",
+    "label": "ETP"
+  },
+  "66666666-6666-6666-6666-666666666665": {
+    "svg_element_id": "asset-control-room",
+    "x": 1312.5,
+    "y": 532.5,
+    "hit": { "x": 1230, "y": 450, "w": 165, "h": 165 },
+    "zone": "control-room",
+    "label": "Control Room"
+  },
+  "66666666-6666-6666-6666-666666666666": {
+    "svg_element_id": "asset-raw-material-yard",
+    "x": 1830,
+    "y": 581.25,
+    "hit": { "x": 1485, "y": 82.5, "w": 690, "h": 997.5 },
+    "zone": "raw-material-yard",
+    "label": "Raw Material Yard"
   }
 }

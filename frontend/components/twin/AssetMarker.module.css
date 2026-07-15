@@ -1,80 +1,105 @@
 .marker {
   cursor: pointer;
+  pointer-events: none;
 }
 
 .marker:focus {
   outline: none;
 }
 
-.marker:focus-visible .hit {
-  stroke: var(--accent);
-  stroke-width: 3;
-}
-
 .hit {
   fill: transparent;
   stroke: transparent;
   stroke-width: 2;
-  transition: stroke 0.15s ease;
+  transition: stroke var(--duration-fast) var(--ease-out);
 }
 
 .disk {
-  transition: fill 0.25s ease, filter 0.25s ease;
+  transform-box: fill-box;
+  transform-origin: center;
+  will-change: transform;
+  transition: fill var(--duration-normal) var(--ease-out);
 }
 
 .disk[data-risk="nominal"] {
-  fill: var(--risk-nominal);
+  fill: var(--status-nominal);
+  filter: none;
 }
 
 .disk[data-risk="elevated"] {
-  fill: var(--risk-elevated);
-  filter: drop-shadow(0 0 6px color-mix(in srgb, var(--risk-elevated) 60%, transparent));
+  fill: var(--status-elevated);
+  filter: drop-shadow(
+    0 0 8px color-mix(in srgb, var(--status-elevated) 60%, transparent)
+  );
+  animation: breathe-scale 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .disk[data-risk="blocking"] {
-  fill: var(--risk-blocking);
-  filter: drop-shadow(0 0 8px color-mix(in srgb, var(--risk-blocking) 70%, transparent));
+  fill: var(--status-blocking);
+  filter: drop-shadow(
+    0 0 10px color-mix(in srgb, var(--status-blocking) 70%, transparent)
+  );
+  animation: breathe-scale-strong 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.marker.hovered .disk {
+  /* Pause the idle breathing loop so the hover grow reads as a deliberate response. */
+  animation: none;
+  transform: scale(1.22);
+  transition: transform var(--duration-fast) var(--ease-out);
 }
 
 .pulse {
   fill: none;
-  stroke-width: 2;
+  stroke-width: 1.5;
   opacity: 0;
   pointer-events: none;
 }
 
 .pulse[data-active="true"] {
-  animation: pulse-ring 1.6s ease-out infinite;
+  animation: pulse-ring 2.2s var(--ease-out) infinite;
 }
 
 .pulse[data-risk="elevated"] {
-  stroke: var(--risk-elevated);
+  stroke: var(--status-elevated);
 }
 
 .pulse[data-risk="blocking"] {
-  stroke: var(--risk-blocking);
-}
-
-.label {
-  fill: var(--fg);
-  font-size: 12px;
-  font-weight: 600;
-  pointer-events: none;
-  user-select: none;
+  stroke: var(--status-blocking);
 }
 
 .selected .hit {
-  stroke: var(--accent);
+  stroke: var(--accent-selection);
   stroke-width: 2.5;
 }
 
 @keyframes pulse-ring {
   0% {
     r: 12;
-    opacity: 0.7;
+    opacity: 0.55;
   }
   100% {
-    r: 28;
+    r: 26;
     opacity: 0;
+  }
+}
+
+@keyframes breathe-scale {
+  0%,
+  100% {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.18);
+  }
+}
+
+@keyframes breathe-scale-strong {
+  0%,
+  100% {
+    transform: scale(0.9);
+  }
+  50% {
+    transform: scale(1.24);
   }
 }

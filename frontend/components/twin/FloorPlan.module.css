@@ -1,52 +1,281 @@
 .plan {
+  position: relative;
   width: 100%;
   height: 100%;
-  min-height: 420px;
-  background:
-    linear-gradient(
-      180deg,
-      color-mix(in srgb, var(--panel) 80%, transparent) 0%,
-      var(--panel) 100%
-    );
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  overflow: hidden;
+  background: transparent;
 }
 
 .svg {
   display: block;
   width: 100%;
-  height: auto;
-  max-height: calc(100vh - var(--nav-height) - var(--demo-bar-height) - 2rem);
+  height: 100%;
 }
 
-.zone {
-  fill: color-mix(in srgb, var(--panel-elevated) 70%, #0a1018);
-  stroke: var(--border);
-  stroke-width: 1.5;
+.canvasBg {
+  fill: var(--surface-canvas);
 }
 
-.zoneLabel {
-  fill: var(--muted);
+.canvasDot {
+  fill: var(--border-muted);
+}
+
+.schematic {
+  pointer-events: none;
+  /* Floor-plan paint tokens — inherit into inlined SVG (outer .fps-root is stripped). */
+  --fp-canvas: transparent;
+  --fp-surface: var(--surface-card);
+  --fp-surface-mute: color-mix(in srgb, var(--surface-panel) 75%, transparent);
+  --fp-panel: var(--surface-panel);
+  --fp-panel-soft: color-mix(in srgb, var(--surface-card) 80%, transparent);
+  --fp-line: var(--border-muted);
+  --fp-line-strong: var(--border-default);
+  --fp-ink: var(--text-primary);
+  --fp-ink-mute: var(--text-secondary);
+  --fp-ink-faint: var(--text-muted);
+  --fp-accent: var(--accent-selection);
+  --fp-accent-soft: color-mix(in srgb, var(--accent-selection) 22%, transparent);
+  --fp-hot: color-mix(in srgb, var(--status-blocking) 55%, var(--status-elevated) 45%);
+  --fp-hot-soft: color-mix(in srgb, var(--status-blocking) 18%, transparent);
+  --fp-success: var(--status-nominal);
+  --fp-success-soft: var(--status-nominal-muted);
+  --fp-warn: var(--status-elevated);
+  --fp-info: var(--status-info);
+  --fp-info-soft: var(--status-info-muted);
+  --fp-dot: color-mix(in srgb, var(--border-muted) 55%, transparent);
+  --fp-hazard: color-mix(in srgb, var(--status-elevated) 70%, transparent);
+  --fp-shadow: color-mix(in srgb, var(--surface-app) 55%, transparent);
+}
+
+.hitRegion {
+  fill: transparent;
+  stroke: transparent;
+  stroke-width: 2;
+  cursor: pointer;
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform var(--duration-fast) var(--ease-out);
+  will-change: opacity;
+}
+
+.hitRegion[data-risk="nominal"] {
+  fill: color-mix(in srgb, var(--status-nominal) 16%, transparent);
+  stroke: color-mix(in srgb, var(--status-nominal) 42%, transparent);
+  animation: breathe-opacity-subtle 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.hitRegion[data-risk="elevated"] {
+  fill: color-mix(in srgb, var(--status-elevated) 32%, transparent);
+  stroke: color-mix(in srgb, var(--status-elevated) 75%, transparent);
+  animation: breathe-opacity 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.hitRegion[data-risk="blocking"] {
+  fill: color-mix(in srgb, var(--status-blocking) 36%, transparent);
+  stroke: color-mix(in srgb, var(--status-blocking) 82%, transparent);
+  animation: breathe-opacity 2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.hitRegion:hover {
+  /* Hover feedback should read instantly, not mid-breath. */
+  animation: none;
+  opacity: 1;
+  transform: scale(1.01);
+}
+
+.hitRegion:hover,
+.hitRegion[data-risk="nominal"]:hover {
+  fill: color-mix(in srgb, var(--status-nominal) 22%, transparent);
+  stroke: color-mix(in srgb, var(--status-nominal) 65%, transparent);
+}
+
+.hitRegion[data-risk="elevated"]:hover {
+  fill: color-mix(in srgb, var(--status-elevated) 22%, transparent);
+  stroke: color-mix(in srgb, var(--status-elevated) 65%, transparent);
+}
+
+.hitRegion[data-risk="blocking"]:hover {
+  fill: color-mix(in srgb, var(--status-blocking) 24%, transparent);
+  stroke: color-mix(in srgb, var(--status-blocking) 70%, transparent);
+}
+
+.hitRegion[data-selected="true"] {
+  animation: none;
+  opacity: 1;
+  stroke: var(--accent-selection);
+  stroke-width: 2.5;
+  fill: color-mix(in srgb, var(--accent-selection) 12%, transparent);
+}
+
+.hitRegion[data-selected="true"]:hover {
+  fill: color-mix(in srgb, var(--accent-selection) 20%, transparent);
+  stroke: var(--accent-selection);
+}
+
+@keyframes breathe-opacity-subtle {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes breathe-opacity {
+  0%,
+  100% {
+    opacity: 0.35;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 40;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: min(280px, calc(100vw - 24px));
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--surface-panel) 92%, transparent);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-md);
+  pointer-events: none;
+  transform: translate(-50%, calc(-100% - 10px));
+  animation: tooltip-in 140ms var(--ease-out);
+  font-family: var(--font-sans);
+  white-space: nowrap;
+}
+
+.tooltip[data-place="below"] {
+  transform: translate(-50%, 12px);
+  animation-name: tooltip-in-below;
+}
+
+.tooltipDot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--status-nominal);
+}
+
+.tooltip[data-risk="nominal"] {
+  border-color: color-mix(in srgb, var(--status-nominal) 40%, var(--border-default));
+}
+
+.tooltip[data-risk="nominal"] .tooltipDot {
+  background: var(--status-nominal);
+}
+
+.tooltip[data-risk="elevated"] {
+  border-color: color-mix(in srgb, var(--status-elevated) 45%, var(--border-default));
+}
+
+.tooltip[data-risk="elevated"] .tooltipDot {
+  background: var(--status-elevated);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-elevated) 55%, transparent);
+}
+
+.tooltip[data-risk="blocking"] {
+  border-color: color-mix(in srgb, var(--status-blocking) 50%, var(--border-default));
+}
+
+.tooltip[data-risk="blocking"] .tooltipDot {
+  background: var(--status-blocking);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--status-blocking) 60%, transparent);
+}
+
+.tooltipName {
   font-size: 13px;
-  font-weight: 600;
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: 1.2;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltipRisk {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  user-select: none;
+  color: var(--text-muted);
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
 }
 
-.walkway {
-  fill: color-mix(in srgb, var(--border) 35%, transparent);
-  stroke: none;
+.tooltip[data-risk="nominal"] .tooltipRisk {
+  color: var(--status-nominal);
+  background: color-mix(in srgb, var(--status-nominal) 14%, transparent);
 }
 
-.title {
-  fill: var(--fg);
-  font-size: 16px;
-  font-weight: 600;
+.tooltip[data-risk="elevated"] .tooltipRisk {
+  color: var(--status-elevated);
+  background: color-mix(in srgb, var(--status-elevated) 16%, transparent);
 }
 
-.subtitle {
-  fill: var(--muted);
-  font-size: 12px;
+.tooltip[data-risk="blocking"] .tooltipRisk {
+  color: var(--status-blocking);
+  background: color-mix(in srgb, var(--status-blocking) 16%, transparent);
+}
+
+@keyframes tooltip-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, calc(-100% - 4px));
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, calc(-100% - 10px));
+  }
+}
+
+@keyframes tooltip-in-below {
+  from {
+    opacity: 0;
+    transform: translate(-50%, 6px);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, 12px);
+  }
+}
+
+.clickRipple {
+  fill: none;
+  stroke-width: 2.5;
+  transform-box: fill-box;
+  transform-origin: center;
+  animation: ripple-burst 480ms var(--ease-out) forwards;
+  pointer-events: none;
+}
+
+.clickRipple[data-risk="nominal"] {
+  stroke: var(--status-nominal);
+}
+
+.clickRipple[data-risk="elevated"] {
+  stroke: var(--status-elevated);
+}
+
+.clickRipple[data-risk="blocking"] {
+  stroke: var(--status-blocking);
+}
+
+@keyframes ripple-burst {
+  0% {
+    r: 10;
+    opacity: 0.7;
+  }
+  100% {
+    r: 60;
+    opacity: 0;
+  }
 }
