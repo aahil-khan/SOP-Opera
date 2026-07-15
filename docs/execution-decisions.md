@@ -50,7 +50,7 @@ The most important technical question judges will ask.
 
 | Layer | Responsibility |
 | --- | --- |
-| **Rules (deterministic)** | Produce facts — six rules, not just the problem statement's three examples: elevated gas, permit conflict, zone occupied, **incomplete isolation**, **simultaneous ops (SIMOPS)**, **certification expiring** |
+| **Rules (deterministic)** | Produce facts — thirteen rules spanning process, people, and environment hazards: elevated gas, permit conflict, zone occupied, incomplete isolation, simultaneous ops (SIMOPS), certification expiring, **over temperature**, **equipment vibration**, **effluent quality**, **tank level critical**, **PPE noncompliance**, **lifting conflict**, **weather hold** |
 | **Retrieval (hybrid)** | Orchestrator builds the query. **RAG** (pgvector) finds matching regs / SOPs / incidents; a **quality gate** grades hits; weak/empty/timeout falls back to deterministic SQL. LLM does not pick tools. |
 | **LLM** | Does **not** detect these facts |
 | **LLM** | Synthesizes facts + retrieved references → operational reasoning, recommendations, explainable assessment, decision record |
@@ -167,7 +167,7 @@ Cut before cutting the above: Escalation, Reopened paths, second AI provider, AI
 - Sits above existing systems; does not replace them
 - AI recommends; humans decide; override is first-class
 - Deterministic rules before LLM; hybrid retrieval with honest fallback
-- More than PS karaoke — six facts + graded RAG, not only the three example signals
+- More than PS karaoke — thirteen facts + graded RAG, not only the three example signals
 - Differentiated from generic dashboard / chatbot / auto-approval products
 - One memorable interaction: Compound Risk + reasoning trace on the twin
 - Buildable in 10 days with documented trade-offs
@@ -181,7 +181,8 @@ Cut before cutting the above: Escalation, Reopened paths, second AI provider, AI
 - Manual Assessment fallback (every Decision backed by an Assessment)
 - Context vs Evidence terminology
 - Connected Mode, compliance versioning, audit tamper-evidence, multi-provider framework — deliberate hackathon simplifications
-- Hybrid retrieval shape (RAG primary + quality gate + deterministic fallback) and six MVP facts — locked pre-build amendment; do not reopen into agentic tool-calling
+- Hybrid retrieval shape (RAG primary + quality gate + deterministic fallback) and the expanded derived-fact catalog (thirteen MVP facts across three floors) — locked pre-build amendment; do not reopen into agentic tool-calling
+- Multi-floor Digital Twin (ground / first / second static SVGs + floor-tab switcher) and Dual Demo Mode (scripted YAML + configurable Random Mode) — presentation/ops enrichment; retrieval architecture unchanged
 
 ---
 

@@ -338,13 +338,13 @@ This table is intentionally collected at a finer grain than the dashboard needs.
 
 ### 5.5 Digital Twin — protected subsystem
 
-Not a simulator. A static SVG floor plan for the single plant, with asset locations authored once as a config file:
+Not a simulator. Static SVG floor plans for the single plant across **three floors** (ground / first / second), with asset locations authored once as a config file. Each map entry includes a `floor` field; the UI switches floors via tabs and loads the matching SVG.
 
 ```json
 // floor_plan_map.json
 {
-  "asset_id_1": { "svg_element_id": "vessel-a", "x": 240, "y": 180 },
-  "asset_id_2": { "svg_element_id": "walkway-3", "x": 310, "y": 220 }
+  "asset_id_1": { "svg_element_id": "vessel-a", "x": 240, "y": 180, "floor": "ground" },
+  "asset_id_2": { "svg_element_id": "pump-house", "x": 310, "y": 220, "floor": "first" }
 }
 
 ```
@@ -355,7 +355,7 @@ Rendering is entirely frontend logic. Clicking an asset opens a side panel showi
 
 ### 5.6 Simulator
 
-A deterministic scenario engine, not a plant model. To make new scenarios easy to author without modifying Python code, the Simulator is driven by a lightweight **Scenario DSL** defined in JSON or YAML.
+A scenario engine, not a plant model. **Scripted mode** is driven by a lightweight **Scenario DSL** defined in YAML (deterministic, replayable demos). **Random Mode** generates combinatorial Context injections across the asset/fact catalog with configurable pace, concurrency, floor pool, and optional seed for reproducibility — both modes share the same `ContextProvider` ingest path and cannot run concurrently.
 
 ```yaml
 # scenarios/compound_risk.yaml
