@@ -1,27 +1,47 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState, startTransition } from "react";
 import {
   findViewByAssetId,
   getLiveAssetViews,
   useLiveStore,
 } from "@/lib/liveStore";
 import floorPlanMap from "@/lib/floor_plan_map.json";
-import type { RiskLevel } from "@/shared/enums";
+import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
+import { FloorOverview } from "./FloorOverview";
+import { FloorNavArrows } from "./FloorNavArrows";
 import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { MapControls } from "./MapControls";
 import { MapViewport, type MapViewportHandle } from "./MapViewport";
+import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
 import styles from "./DigitalTwin.module.css";
 
 type FloorEntry = {
   x: number;
   y: number;
   hit?: { x: number; y: number; w: number; h: number };
+  floor?: PlantFloor;
 };
 
+type ViewMode = "overview" | "detail";
+type SlideDir = "left" | "right" | "in";
+
 const MAP = floorPlanMap as Record<string, FloorEntry>;
+
+function floorOfAsset(assetId: string, assetFloor?: string): PlantFloor {
+  const mapped = MAP[assetId]?.floor;
+  if (mapped) return mapped;
+  if (assetFloor === "first" || assetFloor === "second" || assetFloor === "ground") {
+    return assetFloor;
+  }
+  return "ground";
+}
+
+function floorIndex(floor: PlantFloor): number {
+  return FLOOR_ORDER.indexOf(floor);
+}
 
 export function DigitalTwin() {
   const assets = useLiveStore((s) => s.assets);
@@ -36,7 +56,11 @@ export function DigitalTwin() {
 
   const mapRef = useRef<MapViewportHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [viewMode, setViewMode] = useState<ViewMode>("overview");
+  const [activeFloor, setActiveFloor] = useState<PlantFloor>("ground");
+  const [slideDir, setSlideDir] = useState<SlideDir>("in");
   const lastFocusedRef = useRef<string | null>(null);
+  const pendingFocusRef = useRef<string | null>(null);
 
   const views = getLiveAssetViews({
     assets,
@@ -60,31 +84,199 @@ export function DigitalTwin() {
       (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
   ).length;
 
+  const activityByFloor: Record<PlantFloor, number> = {
+    ground: 0,
+    first: 0,
+    second: 0,
+  };
+  for (const v of views) {
+    const active =
+      v.review != null &&
+      v.review.state !== "closed" &&
+      v.review.state !== "decided";
+    const elevated = v.risk_level !== "nominal";
+    if (!active && !elevated) continue;
+    const floor = floorOfAsset(v.asset.id, v.asset.floor);
+    activityByFloor[floor] += 1;
+  }
+
+  const idx = floorIndex(activeFloor);
+  const prevFloor = idx > 0 ? FLOOR_ORDER[idx - 1] : null;
+  const nextFloor = idx < FLOOR_ORDER.length - 1 ? FLOOR_ORDER[idx + 1] : null;
+
+  const enterFloor = useCallback((floor: PlantFloor, dir: SlideDir = "in") => {
+    setSlideDir(dir);
+    startTransition(() => {
+      setActiveFloor(floor);
+      setViewMode("detail");
+    });
+    lastFocusedRef.current = null;
+  }, []);
+
+  const showOverview = useCallback(() => {
+    setViewMode("overview");
+    lastFocusedRef.current = null;
+    pendingFocusRef.current = null;
+    selectAsset(null);
+  }, [selectAsset]);
+
+  const goPrevFloor = useCallback(() => {
+    if (!prevFloor) return;
+    enterFloor(prevFloor, "right");
+  }, [prevFloor, enterFloor]);
+
+  const goNextFloor = useCallback(() => {
+    if (!nextFloor) return;
+    enterFloor(nextFloor, "left");
+  }, [nextFloor, enterFloor]);
+
+  // Fit the map after switching into detail (viewport remounts per floor key).
+  useEffect(() => {
+    if (viewMode !== "detail") return;
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      if (cancelled) return;
+      mapRef.current?.resetView();
+      const focusId = pendingFocusRef.current;
+      if (!focusId) return;
+      const entry = MAP[focusId];
+      if (!entry) return;
+      pendingFocusRef.current = null;
+      lastFocusedRef.current = focusId;
+      mapRef.current?.focusOn(
+        { x: entry.x, y: entry.y },
+        entry.hit ? { bounds: entry.hit } : undefined,
+      );
+    }, 40);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [viewMode, activeFloor]);
+
   useEffect(() => {
     if (!selectedAssetId) {
       lastFocusedRef.current = null;
       return;
     }
-    if (lastFocusedRef.current === selectedAssetId) return;
     const entry = MAP[selectedAssetId];
+    const floor = floorOfAsset(selectedAssetId, selected?.asset.floor);
+
+    if (viewMode !== "detail" || floor !== activeFloor) {
+      pendingFocusRef.current = selectedAssetId;
+      enterFloor(floor, "in");
+      return;
+    }
+
+    if (lastFocusedRef.current === selectedAssetId) return;
     if (!entry) return;
     lastFocusedRef.current = selectedAssetId;
     mapRef.current?.focusOn(
       { x: entry.x, y: entry.y },
       entry.hit ? { bounds: entry.hit } : undefined,
     );
-  }, [selectedAssetId]);
+  }, [
+    selectedAssetId,
+    activeFloor,
+    viewMode,
+    selected?.asset.floor,
+    enterFloor,
+  ]);
+
+  useEffect(() => {
+    if (viewMode !== "detail") return;
+    const onKey = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement
+      ) {
+        return;
+      }
+      if (e.key === "ArrowLeft") {
+        e.preventDefault();
+        goPrevFloor();
+      } else if (e.key === "ArrowRight") {
+        e.preventDefault();
+        goNextFloor();
+      } else if (e.key === "Escape") {
+        e.preventDefault();
+        showOverview();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [viewMode, goPrevFloor, goNextFloor, showOverview]);
 
   return (
     <div className={styles.wrap}>
       <div className={styles.stage}>
-        <MapViewport ref={mapRef}>
-          <FloorPlan
+        {viewMode === "overview" ? (
+          <FloorOverview
             riskByAsset={riskByAsset}
-            selectedAssetId={selectedAssetId}
-            onSelectAsset={selectAsset}
+            activityByFloor={activityByFloor}
+            onSelectFloor={(floor) => enterFloor(floor, "in")}
           />
-        </MapViewport>
+        ) : (
+          <div
+            key={activeFloor}
+            className={styles.detailPane}
+            data-slide={slideDir}
+          >
+            <MapViewport ref={mapRef}>
+              <FloorPlan
+                floor={activeFloor}
+                riskByAsset={riskByAsset}
+                selectedAssetId={selectedAssetId}
+                onSelectAsset={selectAsset}
+              />
+            </MapViewport>
+          </div>
+        )}
+
+        <div className={styles.floorTabs} role="tablist" aria-label="Plant floors">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === "overview"}
+            className={styles.floorTab}
+            data-active={viewMode === "overview" ? "true" : undefined}
+            onClick={showOverview}
+          >
+            All
+          </button>
+          {FLOOR_ORDER.map((id) => (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={viewMode === "detail" && activeFloor === id}
+              className={styles.floorTab}
+              data-active={
+                viewMode === "detail" && activeFloor === id ? "true" : undefined
+              }
+              onClick={() => {
+                if (viewMode === "detail" && activeFloor === id) {
+                  mapRef.current?.resetView();
+                  return;
+                }
+                const from = floorIndex(activeFloor);
+                const to = floorIndex(id);
+                const dir: SlideDir =
+                  viewMode === "overview"
+                    ? "in"
+                    : to > from
+                      ? "left"
+                      : "right";
+                enterFloor(id, dir);
+              }}
+            >
+              {FLOOR_LABELS[id]}
+              {activityByFloor[id] > 0 ? (
+                <span className={styles.floorBadge}>{activityByFloor[id]}</span>
+              ) : null}
+            </button>
+          ))}
+        </div>
 
         <div className={styles.legend} aria-hidden={false}>
           <span>
@@ -112,16 +304,31 @@ export function DigitalTwin() {
           </span>
         </div>
 
-        <MapControls
-          onZoomIn={() => mapRef.current?.zoomIn()}
-          onZoomOut={() => mapRef.current?.zoomOut()}
-          onReset={() => mapRef.current?.resetView()}
-          shiftForDrawer={Boolean(selected)}
-        />
+        {viewMode === "detail" ? (
+          <FloorNavArrows
+            canGoPrev={Boolean(prevFloor)}
+            canGoNext={Boolean(nextFloor)}
+            prevLabel={prevFloor ? FLOOR_LABELS[prevFloor] : "Ground"}
+            nextLabel={nextFloor ? FLOOR_LABELS[nextFloor] : "Second"}
+            onPrev={goPrevFloor}
+            onNext={goNextFloor}
+            shiftForDrawer={Boolean(selected)}
+          />
+        ) : null}
 
-        {selected && (
+        {viewMode === "detail" ? (
+          <MapControls
+            onZoomIn={() => mapRef.current?.zoomIn()}
+            onZoomOut={() => mapRef.current?.zoomOut()}
+            onReset={() => mapRef.current?.resetView()}
+            onOverview={showOverview}
+            shiftForDrawer={Boolean(selected)}
+          />
+        ) : null}
+
+        {selected && viewMode === "detail" ? (
           <AssetPanel view={selected} onClose={() => selectAsset(null)} />
-        )}
+        ) : null}
       </div>
 
       <ReviewSidebar

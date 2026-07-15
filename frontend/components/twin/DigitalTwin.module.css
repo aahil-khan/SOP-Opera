@@ -11,6 +11,124 @@
   inset: 0;
 }
 
+.detailPane {
+  position: absolute;
+  inset: 0;
+  animation: detail-in 380ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.detailPane[data-slide="left"] {
+  animation-name: slide-from-right;
+}
+
+.detailPane[data-slide="right"] {
+  animation-name: slide-from-left;
+}
+
+.detailPane[data-slide="in"] {
+  animation-name: zoom-in-detail;
+}
+
+@keyframes detail-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-from-right {
+  from {
+    opacity: 0;
+    transform: translateX(4.5%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-from-left {
+  from {
+    opacity: 0;
+    transform: translateX(-4.5%);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes zoom-in-detail {
+  from {
+    opacity: 0;
+    transform: scale(0.94);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.floorTabs {
+  position: absolute;
+  top: calc(var(--space-3) + 2.75rem);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 4;
+  display: inline-flex;
+  gap: 2px;
+  padding: 2px;
+  background: color-mix(in srgb, var(--surface-panel) 94%, transparent);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-sm);
+}
+
+.floorTab {
+  appearance: none;
+  border: 0;
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 0.4rem 0.7rem;
+  border-radius: calc(var(--radius-md) - 2px);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.floorTab:hover {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--surface-raised, var(--surface-panel)) 70%, transparent);
+}
+
+.floorTab[data-active="true"] {
+  color: var(--text-primary);
+  background: var(--surface-raised, var(--surface-panel));
+  box-shadow: var(--shadow-sm);
+}
+
+.floorBadge {
+  min-width: 1.1rem;
+  height: 1.1rem;
+  padding: 0 0.28rem;
+  border-radius: 999px;
+  background: var(--status-elevated);
+  color: #111;
+  font-size: 0.65rem;
+  font-family: var(--font-mono);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
 .legend {
   position: absolute;
   top: var(--space-3);
@@ -109,6 +227,13 @@
 }
 
 @media (max-width: 640px) {
+  .floorTabs {
+    top: auto;
+    bottom: calc(var(--space-3) + 3.25rem);
+    left: 50%;
+    transform: translateX(-50%);
+  }
+
   .legend {
     left: var(--space-3);
     right: var(--space-3);

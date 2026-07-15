@@ -72,3 +72,12 @@
 .btnReset:hover span {
   transform: rotate(45deg);
 }
+
+.btnOverview svg {
+  display: block;
+  transition: transform var(--duration-normal) var(--ease-out);
+}
+
+.btnOverview:hover svg {
+  transform: scale(1.08);
+}
