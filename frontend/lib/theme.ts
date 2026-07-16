@@ -5,6 +5,7 @@ export const THEMES = [
   { id: "vscode-dark", label: "VS Code Dark" },
   { id: "light", label: "Light" },
   { id: "blueprint", label: "Blueprint" },
+  { id: "catppuccin", label: "Catppuccin" },
 ] as const;
 
 export type ThemeId = (typeof THEMES)[number]["id"];

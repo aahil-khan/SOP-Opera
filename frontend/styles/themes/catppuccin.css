@@ -1,0 +1,48 @@
+/**
+ * Catppuccin Mocha — soft pastel dark palette.
+ * https://github.com/catppuccin/catppuccin
+ */
+
+[data-theme="catppuccin"] {
+  --surface-app: #1e1e2e;
+  --surface-panel: #181825;
+  --surface-card: #313244;
+  --surface-overlay: #313244;
+  --surface-canvas: #11111b;
+  --surface-nav: #181825;
+  --surface-demo: #11111b;
+
+  --border-default: #45475a;
+  --border-muted: #313244;
+  --border-hover: #585b70;
+  --border-focus: #89b4fa;
+  --border-selected: #74c7ec;
+
+  --text-primary: #cdd6f4;
+  --text-secondary: #bac2de;
+  --text-muted: #7f849c;
+  --text-inverse: #1e1e2e;
+  --text-on-accent: #1e1e2e;
+  --text-link: #89dceb;
+
+  --interactive-default: #313244;
+  --interactive-hover: #45475a;
+  --interactive-active: #585b70;
+  --interactive-disabled: #181825;
+
+  --status-nominal: #a6e3a1;
+  --status-elevated: #f9e2af;
+  --status-blocking: #f38ba8;
+  --status-info: #89b4fa;
+  --status-nominal-muted: color-mix(in srgb, var(--status-nominal) 18%, transparent);
+  --status-elevated-muted: color-mix(in srgb, var(--status-elevated) 18%, transparent);
+  --status-blocking-muted: color-mix(in srgb, var(--status-blocking) 18%, transparent);
+  --status-info-muted: color-mix(in srgb, var(--status-info) 18%, transparent);
+
+  --accent-selection: #89b4fa;
+  --accent-ai: #cba6f7;
+
+  --shadow-sm: 0 1px 2px rgba(17, 17, 27, 0.4);
+  --shadow-md: 0 4px 12px rgba(17, 17, 27, 0.45);
+  --shadow-drawer: -4px 0 24px rgba(17, 17, 27, 0.5);
+}

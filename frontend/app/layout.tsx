@@ -31,7 +31,7 @@ const themeInitScript = `
   try {
     var key = ${JSON.stringify(THEME_STORAGE_KEY)};
     var fallback = ${JSON.stringify(DEFAULT_THEME)};
-    var allowed = ["mission-control", "vscode-dark", "light", "blueprint"];
+    var allowed = ["mission-control", "vscode-dark", "light", "blueprint", "catppuccin"];
     var stored = localStorage.getItem(key);
     var theme = allowed.indexOf(stored) !== -1 ? stored : fallback;
     document.documentElement.dataset.theme = theme;
