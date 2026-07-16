@@ -169,7 +169,7 @@
       <rect class="highlight-zone" x="120" y="140" width="250" height="200" />
     </g>
 
-    <g id="asset-scada-room" transform="translate(520, 240)">
+    <g id="asset-scada-room" transform="translate(520, 60)">
       <rect class="building-base" x="120" y="140" width="180" height="130" />
       <rect class="building-roof" x="130" y="150" width="160" height="110" />
       

@@ -92,8 +92,8 @@
   "77777777-7777-7777-7777-777777777707": {
     "svg_element_id": "asset-pipe-rack-gantry",
     "x": 1125,
-    "y": 750,
-    "hit": { "x": 540, "y": 660, "w": 1170, "h": 180 },
+    "y": 755,
+    "hit": { "x": 540, "y": 660, "w": 1170, "h": 120 },
     "zone": "pipe-rack",
     "label": "Pipe Rack Gantry",
     "floor": "first"
@@ -191,8 +191,8 @@
   "77777777-7777-7777-7777-777777777802": {
     "svg_element_id": "asset-scada-room",
     "x": 1095,
-    "y": 699,
-    "hit": { "x": 960, "y": 570, "w": 270, "h": 258 },
+    "y": 429,
+    "hit": { "x": 960, "y": 300, "w": 270, "h": 258 },
     "zone": "scada",
     "label": "SCADA Room",
     "floor": "second"
