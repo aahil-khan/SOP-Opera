@@ -5,7 +5,7 @@
   "scripts": {
     "sync-shared": "bash ../scripts/sync-shared.sh",
     "predev": "npm run sync-shared",
-    "dev": "next dev --turbopack",
+    "dev": "next dev",
     "prebuild": "npm run sync-shared",
     "build": "next build",
     "start": "next start",
@@ -15,8 +15,8 @@
     "next": "^15.3.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "react-toastify": "^11.1.0",
     "react-zoom-pan-pinch": "^4.0.3",
-    "sonner": "^2.0.7",
     "zustand": "^5.0.14"
   },
   "devDependencies": {

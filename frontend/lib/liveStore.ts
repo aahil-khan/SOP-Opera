@@ -29,6 +29,7 @@ import {
   dismissNotificationToast,
   showNotificationToast,
 } from "@/lib/notificationToast";
+import { presentNotification } from "@/lib/notificationPresentation";
 
 const NOTIFICATION_CAP = 50;
 
@@ -207,7 +208,9 @@ export const useLiveStore = create<LiveState>((set, get) => ({
   },
 
   dismissNotification: (id) => {
-    dismissNotificationToast(id);
+    const existing = get().notifications.find((n) => n.id === id);
+    if (existing) dismissNotificationToast(existing);
+    else dismissNotificationToast(id);
     set((state) => ({
       notifications: state.notifications.filter((n) => n.id !== id),
       unreadNotificationIds: state.unreadNotificationIds.filter((x) => x !== id),
@@ -298,9 +301,11 @@ export const useLiveStore = create<LiveState>((set, get) => ({
             unreadNotificationIds,
           };
         });
-        showNotificationToast(n, {
-          onClear: () => get().dismissNotification(n.id),
-        });
+        if (presentNotification(n).toastable) {
+          showNotificationToast(n, {
+            onClear: () => get().dismissNotification(n.id),
+          });
+        }
       }
     }
   },

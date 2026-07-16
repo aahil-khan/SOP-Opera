@@ -1,32 +1,30 @@
 "use client";
 
-import { Toaster } from "sonner";
+import { ToastContainer } from "react-toastify";
+import "react-toastify/dist/ReactToastify.css";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import styles from "./AppToaster.module.css";
 
 export function AppToaster() {
   const { theme } = useTheme();
-  const sonnerTheme = theme === "light" ? "light" : "dark";
+  const toastTheme = theme === "light" ? "light" : "dark";
 
   return (
-    <Toaster
-      theme={sonnerTheme}
+    <ToastContainer
+      className={styles.container}
+      toastClassName={styles.toast}
       position="top-right"
+      theme={toastTheme}
+      limit={2}
+      newestOnTop
+      closeOnClick={false}
+      draggable={false}
+      pauseOnHover
+      pauseOnFocusLoss
+      autoClose={5000}
+      hideProgressBar={false}
       closeButton
-      richColors={false}
-      offset={{ top: "56px", right: "16px" }}
-      mobileOffset={{ top: "56px", right: "12px" }}
-      toastOptions={{
-        className: styles.toast,
-        classNames: {
-          toast: styles.toast,
-          title: styles.title,
-          description: styles.description,
-          actionButton: styles.action,
-          cancelButton: styles.cancel,
-          closeButton: styles.close,
-        },
-      }}
+      style={{ top: "calc(var(--nav-height, 48px) + 8px)", right: 16 }}
     />
   );
 }

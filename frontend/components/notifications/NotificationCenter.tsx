@@ -3,6 +3,7 @@
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
 import { useLiveStore } from "@/lib/liveStore";
+import { presentNotification } from "@/lib/notificationPresentation";
 import styles from "./NotificationCenter.module.css";
 
 function relativeTime(iso: string): string {
@@ -57,9 +58,7 @@ export function NotificationCenter() {
         type="button"
         className={styles.trigger}
         aria-label={
-          unreadCount > 0
-            ? `Notifications, ${unreadCount} unread`
-            : "Notifications"
+          unreadCount > 0 ? `Activity, ${unreadCount} unread` : "Activity"
         }
         aria-expanded={open}
         aria-controls={panelId}
@@ -91,53 +90,62 @@ export function NotificationCenter() {
           id={panelId}
           className={styles.panel}
           role="dialog"
-          aria-label="Notification center"
+          aria-label="Activity"
         >
           <header className={styles.header}>
-            <h2 className={styles.title}>Notifications</h2>
+            <h2 className={styles.title}>Activity</h2>
             {notifications.length > 0 && (
               <button
                 type="button"
                 className={styles.clearAll}
                 onClick={() => clearNotifications()}
               >
-                Clear All
+                Clear all
               </button>
             )}
           </header>
 
           {notifications.length === 0 ? (
-            <p className={styles.empty}>No notifications</p>
+            <p className={styles.empty}>No recent activity</p>
           ) : (
             <ul className={styles.list}>
               {notifications.map((n) => {
                 const unread = unreadIds.includes(n.id);
+                const presentation = presentNotification(n);
                 return (
                   <li
                     key={n.id}
                     className={styles.item}
                     data-unread={unread ? "true" : undefined}
+                    data-severity={presentation.severity}
                   >
                     <div className={styles.body}>
-                      <p className={styles.summary}>{n.summary}</p>
-                      <div className={styles.meta}>
-                        <span className={styles.type}>{n.event_type}</span>
-                        <span>{relativeTime(n.created_at)}</span>
-                        {n.review_id && (
-                          <Link
-                            href={`/reviews/${n.review_id}`}
-                            className={styles.link}
-                            onClick={() => setOpen(false)}
-                          >
-                            Open review
-                          </Link>
-                        )}
+                      <div className={styles.row}>
+                        <span
+                          className={styles.label}
+                          data-severity={presentation.severity}
+                        >
+                          {presentation.label}
+                        </span>
+                        <span className={styles.time}>
+                          {relativeTime(n.created_at)}
+                        </span>
                       </div>
+                      <p className={styles.summary}>{presentation.detail}</p>
+                      {n.review_id && (
+                        <Link
+                          href={`/reviews/${n.review_id}`}
+                          className={styles.link}
+                          onClick={() => setOpen(false)}
+                        >
+                          Open review
+                        </Link>
+                      )}
                     </div>
                     <button
                       type="button"
                       className={styles.dismiss}
-                      aria-label="Dismiss notification"
+                      aria-label="Dismiss"
                       onClick={() => dismissNotification(n.id)}
                     >
                       ×
