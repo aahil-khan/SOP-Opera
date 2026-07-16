@@ -9,25 +9,13 @@
     clamp(2rem, 5vh, 3.5rem);
   align-items: stretch;
   overflow: auto;
-  animation: overview-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: none;
 }
 
 .slot {
   min-height: 0;
   display: flex;
-  animation: card-rise 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.slot:nth-child(1) {
-  animation-delay: 40ms;
-}
-
-.slot:nth-child(2) {
-  animation-delay: 110ms;
-}
-
-.slot:nth-child(3) {
-  animation-delay: 180ms;
+  animation: none;
 }
 
 .card {
@@ -49,14 +37,12 @@
   transition:
     border-color 180ms var(--ease-out),
     box-shadow 220ms var(--ease-out),
-    transform 260ms cubic-bezier(0.22, 1, 0.36, 1),
     background 180ms var(--ease-out);
 }
 
 .card:hover {
   border-color: color-mix(in srgb, var(--accent-selection) 55%, var(--border-default));
-  box-shadow: var(--shadow-md);
-  transform: translateY(-4px) scale(1.012);
+  box-shadow: var(--shadow-sm);
   background: color-mix(in srgb, var(--surface-panel) 96%, transparent);
 }
 
@@ -71,7 +57,6 @@
 }
 
 .card:active {
-  transform: translateY(-1px) scale(0.995);
   transition-duration: 80ms;
 }
 
@@ -117,7 +102,7 @@
   letter-spacing: 0.02em;
   opacity: 0;
   pointer-events: none;
-  backdrop-filter: blur(8px);
+  backdrop-filter: none;
   transition:
     opacity 180ms var(--ease-out),
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1);

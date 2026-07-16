@@ -36,7 +36,10 @@ export function AssetMarker({
         // Avoid focus scrollIntoView fighting the pan/zoom transform.
         e.preventDefault();
       }}
-      onClick={() => onSelect(id)}
+              onClick={(e) => {
+                e.stopPropagation();
+                onSelect(id);
+              }}
       role="button"
       tabIndex={-1}
       data-map-marker=""

@@ -73,7 +73,7 @@
   left: var(--space-3);
   bottom: var(--space-3);
   z-index: 6;
-  width: min(280px, calc(100vw - 1.5rem));
+  width: var(--affected-panel-width, min(280px, calc(100vw - 1.5rem)));
   display: flex;
   flex-direction: column;
   background: var(--surface-panel);

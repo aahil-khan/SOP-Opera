@@ -15,7 +15,6 @@
   color: var(--text-primary);
   box-shadow: var(--shadow-sm);
   cursor: pointer;
-  backdrop-filter: blur(8px);
   transform: translateY(-50%);
   transition:
     background 160ms var(--ease-out),
@@ -24,7 +23,7 @@
     box-shadow 200ms var(--ease-out),
     transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 160ms var(--ease-out);
-  animation: arrow-in 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: none;
 }
 
 .arrow:hover:not(:disabled) {
@@ -51,10 +50,20 @@
 
 .arrowLeft {
   left: var(--space-4);
+  z-index: 7;
+  transition:
+    left var(--duration-normal) var(--ease-out),
+    background 160ms var(--ease-out),
+    border-color 160ms var(--ease-out),
+    color 160ms var(--ease-out),
+    box-shadow 200ms var(--ease-out),
+    transform 200ms cubic-bezier(0.22, 1, 0.36, 1),
+    opacity 160ms var(--ease-out);
 }
 
 .arrowRight {
   right: var(--space-4);
+  z-index: 7;
   transition:
     right var(--duration-normal) var(--ease-out),
     background 160ms var(--ease-out),
@@ -69,14 +78,13 @@
   right: calc(var(--drawer-width) + var(--space-4));
 }
 
-@keyframes arrow-in {
-  from {
-    opacity: 0;
-    transform: translateY(-50%) scale(0.85);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(-50%) scale(1);
+/* Mobile: stage inset is disabled, so nudge clear of the overlay sidebar. */
+@media (max-width: 640px) {
+  .arrowLeft[data-shift="true"] {
+    left: calc(
+      var(--affected-panel-width, min(280px, calc(100vw - 1.5rem))) +
+        var(--space-3) + var(--space-3)
+    );
   }
 }
 

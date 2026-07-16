@@ -50,12 +50,10 @@ export function DigitalTwin() {
   const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
   const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
   const selectAsset = useLiveStore((s) => s.selectAsset);
-  const loading = useLiveStore((s) => s.loading);
-  const error = useLiveStore((s) => s.error);
-  const bootstrapped = useLiveStore((s) => s.bootstrapped);
 
   const mapRef = useRef<MapViewportHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [activeFloor, setActiveFloor] = useState<PlantFloor>("ground");
   const [slideDir, setSlideDir] = useState<SlideDir>("in");
@@ -113,6 +111,16 @@ export function DigitalTwin() {
     lastFocusedRef.current = null;
   }, []);
 
+  /** Manual floor change: leave any selected asset so nav isn't snapped back. */
+  const navigateFloor = useCallback(
+    (floor: PlantFloor, dir: SlideDir = "in") => {
+      selectAsset(null);
+      pendingFocusRef.current = null;
+      enterFloor(floor, dir);
+    },
+    [enterFloor, selectAsset],
+  );
+
   const showOverview = useCallback(() => {
     setViewMode("overview");
     lastFocusedRef.current = null;
@@ -122,13 +130,13 @@ export function DigitalTwin() {
 
   const goPrevFloor = useCallback(() => {
     if (!prevFloor) return;
-    enterFloor(prevFloor, "right");
-  }, [prevFloor, enterFloor]);
+    navigateFloor(prevFloor, "right");
+  }, [prevFloor, navigateFloor]);
 
   const goNextFloor = useCallback(() => {
     if (!nextFloor) return;
-    enterFloor(nextFloor, "left");
-  }, [nextFloor, enterFloor]);
+    navigateFloor(nextFloor, "left");
+  }, [nextFloor, navigateFloor]);
 
   // Fit the map after switching into detail (viewport remounts per floor key).
   useEffect(() => {
@@ -153,6 +161,31 @@ export function DigitalTwin() {
       window.clearTimeout(id);
     };
   }, [viewMode, activeFloor]);
+
+  // Re-center after the affected-areas inset animates open/closed.
+  useEffect(() => {
+    if (viewMode !== "detail") return;
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      if (cancelled) return;
+      const focusId = lastFocusedRef.current;
+      if (focusId) {
+        const entry = MAP[focusId];
+        if (entry) {
+          mapRef.current?.focusOn(
+            { x: entry.x, y: entry.y },
+            entry.hit ? { bounds: entry.hit } : undefined,
+          );
+          return;
+        }
+      }
+      mapRef.current?.resetView();
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [sidebarOpen, viewMode]);
 
   useEffect(() => {
     if (!selectedAssetId) {
@@ -200,16 +233,23 @@ export function DigitalTwin() {
         goNextFloor();
       } else if (e.key === "Escape") {
         e.preventDefault();
-        showOverview();
+        if (selectedAssetId) {
+          selectAsset(null);
+        } else {
+          showOverview();
+        }
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [viewMode, goPrevFloor, goNextFloor, showOverview]);
+  }, [viewMode, goPrevFloor, goNextFloor, showOverview, selectedAssetId, selectAsset]);
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.stage}>
+      <div
+        className={styles.stage}
+        data-affected-inset={sidebarOpen ? "true" : undefined}
+      >
         {viewMode === "overview" ? (
           <FloorOverview
             riskByAsset={riskByAsset}
@@ -234,75 +274,63 @@ export function DigitalTwin() {
         )}
 
         <div className={styles.floorTabs} role="tablist" aria-label="Plant floors">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={viewMode === "overview"}
-            className={styles.floorTab}
-            data-active={viewMode === "overview" ? "true" : undefined}
-            onClick={showOverview}
-          >
-            All
-          </button>
-          {FLOOR_ORDER.map((id) => (
-            <button
-              key={id}
-              type="button"
-              role="tab"
-              aria-selected={viewMode === "detail" && activeFloor === id}
-              className={styles.floorTab}
-              data-active={
-                viewMode === "detail" && activeFloor === id ? "true" : undefined
-              }
-              onClick={() => {
-                if (viewMode === "detail" && activeFloor === id) {
-                  mapRef.current?.resetView();
-                  return;
-                }
-                const from = floorIndex(activeFloor);
-                const to = floorIndex(id);
-                const dir: SlideDir =
-                  viewMode === "overview"
-                    ? "in"
-                    : to > from
-                      ? "left"
-                      : "right";
-                enterFloor(id, dir);
-              }}
-            >
-              {FLOOR_LABELS[id]}
-              {activityByFloor[id] > 0 ? (
-                <span className={styles.floorBadge}>{activityByFloor[id]}</span>
-              ) : null}
-            </button>
-          ))}
+          {FLOOR_ORDER.map((id) => {
+            const selected = viewMode === "detail" && activeFloor === id;
+            return (
+              <button
+                key={id}
+                type="button"
+                role="tab"
+                aria-selected={selected}
+                className={styles.floorTab}
+                data-active={selected ? "true" : undefined}
+                onClick={() => {
+                  if (selected) {
+                    mapRef.current?.resetView();
+                    return;
+                  }
+                  const from = floorIndex(activeFloor);
+                  const to = floorIndex(id);
+                  const dir: SlideDir =
+                    viewMode === "overview"
+                      ? "in"
+                      : to > from
+                        ? "left"
+                        : "right";
+                  navigateFloor(id, dir);
+                }}
+              >
+                {FLOOR_LABELS[id]}
+                {activityByFloor[id] > 0 ? (
+                  <span className={styles.floorBadge}>{activityByFloor[id]}</span>
+                ) : null}
+              </button>
+            );
+          })}
         </div>
 
-        <div className={styles.legend} aria-hidden={false}>
-          <span>
-            <span className={`${styles.swatch} ${styles.swatchNominal}`} />
-            Nominal
-          </span>
-          <span>
-            <span className={`${styles.swatch} ${styles.swatchElevated}`} />
-            Elevated
-          </span>
-          <span>
-            <span className={`${styles.swatch} ${styles.swatchBlocking}`} />
-            Blocking
-          </span>
-          <span className={styles.scenarioTag}>
-            <span
-              className={styles.liveDot}
-              data-live={!(loading && !bootstrapped)}
-            />
-            {loading && !bootstrapped
-              ? "Connecting…"
-              : error
-                ? `Live · ${error}`
-                : "Live"}
-          </span>
-        </div>
+        {legendOpen ? (
+          <div
+            id="twin-legend"
+            className={styles.legend}
+            data-shift={selected && viewMode === "detail" ? "true" : undefined}
+            role="group"
+            aria-label="Risk legend"
+          >
+            <span>
+              <span className={`${styles.swatch} ${styles.swatchNominal}`} />
+              Nominal
+            </span>
+            <span>
+              <span className={`${styles.swatch} ${styles.swatchElevated}`} />
+              Elevated
+            </span>
+            <span>
+              <span className={`${styles.swatch} ${styles.swatchBlocking}`} />
+              Blocking
+            </span>
+          </div>
+        ) : null}
 
         {viewMode === "detail" ? (
           <FloorNavArrows
@@ -312,19 +340,20 @@ export function DigitalTwin() {
             nextLabel={nextFloor ? FLOOR_LABELS[nextFloor] : "Second"}
             onPrev={goPrevFloor}
             onNext={goNextFloor}
+            shiftForSidebar={sidebarOpen}
             shiftForDrawer={Boolean(selected)}
           />
         ) : null}
 
-        {viewMode === "detail" ? (
-          <MapControls
-            onZoomIn={() => mapRef.current?.zoomIn()}
-            onZoomOut={() => mapRef.current?.zoomOut()}
-            onReset={() => mapRef.current?.resetView()}
-            onOverview={showOverview}
-            shiftForDrawer={Boolean(selected)}
-          />
-        ) : null}
+        <MapControls
+          onZoomIn={() => mapRef.current?.zoomIn()}
+          onZoomOut={() => mapRef.current?.zoomOut()}
+          onReset={() => mapRef.current?.resetView()}
+          onOverview={viewMode === "detail" ? showOverview : undefined}
+          legendOpen={legendOpen}
+          onToggleLegend={() => setLegendOpen((open) => !open)}
+          shiftForDrawer={Boolean(selected) && viewMode === "detail"}
+        />
 
         {selected && viewMode === "detail" ? (
           <AssetPanel view={selected} onClose={() => selectAsset(null)} />

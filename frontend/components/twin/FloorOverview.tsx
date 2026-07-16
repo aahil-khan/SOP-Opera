@@ -39,7 +39,7 @@ function FloorThumb({
 
   useEffect(() => {
     let cancelled = false;
-    void loadFloorSchematic(floor)
+    void loadFloorSchematic(floor, { lite: true })
       .then((inner) => {
         if (!cancelled) setSchematic(inner);
       })
@@ -118,7 +118,11 @@ export function FloorOverview({
   onSelectFloor,
 }: FloorOverviewProps) {
   return (
-    <div className={styles.overview} role="list" aria-label="Plant floors overview">
+    <div
+      className={styles.overview}
+      role="list"
+      aria-label="Plant floors overview"
+    >
       {FLOOR_ORDER.map((floor) => (
         <div key={floor} className={styles.slot} role="listitem">
           <FloorThumb

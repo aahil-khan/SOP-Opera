@@ -28,17 +28,11 @@
 
 .disk[data-risk="elevated"] {
   fill: var(--status-elevated);
-  filter: drop-shadow(
-    0 0 8px color-mix(in srgb, var(--status-elevated) 60%, transparent)
-  );
   animation: breathe-scale 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .disk[data-risk="blocking"] {
   fill: var(--status-blocking);
-  filter: drop-shadow(
-    0 0 10px color-mix(in srgb, var(--status-blocking) 70%, transparent)
-  );
   animation: breathe-scale-strong 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 

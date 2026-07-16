@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent,
+  type PointerEvent,
+} from "react";
 import { createPortal } from "react-dom";
 import type { RiskLevel } from "@/shared/enums";
 import type { PlantFloor } from "@/shared/enums";
@@ -35,7 +41,7 @@ interface FloorPlanProps {
   floor: PlantFloor;
   riskByAsset: Record<string, RiskLevel>;
   selectedAssetId: string | null;
-  onSelectAsset: (id: string) => void;
+  onSelectAsset: (id: string | null) => void;
 }
 
 const MAP = floorPlanMap as Record<string, FloorEntry>;
@@ -67,9 +73,8 @@ export function FloorPlan({
   const [schematic, setSchematic] = useState<string>("");
   const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
   const [hoverTip, setHoverTip] = useState<HoverTip | null>(null);
-  const [rippleAssetId, setRippleAssetId] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
-  const rippleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
 
   const floorEntries = Object.entries(MAP).filter(
     ([, entry]) => (entry.floor ?? "ground") === floor,
@@ -94,19 +99,7 @@ export function FloorPlan({
     };
   }, [floor]);
 
-  useEffect(() => {
-    return () => {
-      if (rippleTimer.current) clearTimeout(rippleTimer.current);
-    };
-  }, []);
-
-  const triggerRipple = (assetId: string) => {
-    setRippleAssetId(assetId);
-    if (rippleTimer.current) clearTimeout(rippleTimer.current);
-    rippleTimer.current = setTimeout(() => setRippleAssetId(null), 500);
-  };
-
-  const showTip = (
+  const showTipOnEnter = (
     assetId: string,
     entry: FloorEntry,
     risk: RiskLevel,
@@ -120,6 +113,21 @@ export function FloorPlan({
   const clearTip = (assetId: string) => {
     setHoveredAssetId((cur) => (cur === assetId ? null : cur));
     setHoverTip((cur) => (cur?.assetId === assetId ? null : cur));
+  };
+
+  const onCanvasPointerDown = (e: PointerEvent) => {
+    pointerDownRef.current = { x: e.clientX, y: e.clientY };
+  };
+
+  const onCanvasClick = (e: MouseEvent) => {
+    const start = pointerDownRef.current;
+    pointerDownRef.current = null;
+    if (!start) return;
+    const dx = e.clientX - start.x;
+    const dy = e.clientY - start.y;
+    // Ignore pans — only clear selection on a true click.
+    if (dx * dx + dy * dy > 36) return;
+    onSelectAsset(null);
   };
 
   return (
@@ -139,17 +147,8 @@ export function FloorPlan({
             height="18"
             patternUnits="userSpaceOnUse"
           >
-            <rect
-              width="18"
-              height="18"
-              className={styles.canvasBg}
-            />
-            <circle
-              className={styles.canvasDot}
-              cx="1.5"
-              cy="1.5"
-              r="1.1"
-            />
+            <rect width="18" height="18" className={styles.canvasBg} />
+            <circle className={styles.canvasDot} cx="1.5" cy="1.5" r="1.1" />
           </pattern>
         </defs>
 
@@ -159,6 +158,8 @@ export function FloorPlan({
           width={MAP_VIEWBOX.width}
           height={MAP_VIEWBOX.height}
           fill={`url(#canvas-dots-${floor})`}
+          onPointerDown={onCanvasPointerDown}
+          onClick={onCanvasClick}
         />
         {schematic ? (
           <g
@@ -191,11 +192,12 @@ export function FloorPlan({
               onMouseDown={(e) => {
                 e.preventDefault();
               }}
-              onMouseEnter={(e) => showTip(assetId, entry, risk, e.currentTarget)}
-              onMouseMove={(e) => showTip(assetId, entry, risk, e.currentTarget)}
+              onMouseEnter={(e) =>
+                showTipOnEnter(assetId, entry, risk, e.currentTarget)
+              }
               onMouseLeave={() => clearTip(assetId)}
-              onClick={() => {
-                triggerRipple(assetId);
+              onClick={(e) => {
+                e.stopPropagation();
                 onSelectAsset(assetId);
               }}
             />
@@ -205,24 +207,6 @@ export function FloorPlan({
               {hitRect}
             </g>
           );
-        })}
-
-        {floorEntries.map(([assetId, entry]) => {
-          const risk = riskByAsset[assetId] ?? "nominal";
-          if (rippleAssetId === assetId) {
-            return (
-              <circle
-                key={`ripple-${assetId}`}
-                className={styles.clickRipple}
-                data-risk={risk}
-                cx={entry.x}
-                cy={entry.y}
-                r={10}
-                pointerEvents="none"
-              />
-            );
-          }
-          return null;
         })}
 
         {floorEntries.map(([assetId, entry]) => {

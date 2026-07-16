@@ -54,13 +54,11 @@
   transform-box: fill-box;
   transform-origin: center;
   transition: transform var(--duration-fast) var(--ease-out);
-  will-change: opacity;
 }
 
 .hitRegion[data-risk="nominal"] {
   fill: color-mix(in srgb, var(--status-nominal) 16%, transparent);
   stroke: color-mix(in srgb, var(--status-nominal) 42%, transparent);
-  animation: breathe-opacity-subtle 5.5s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .hitRegion[data-risk="elevated"] {
@@ -111,16 +109,6 @@
   stroke: var(--accent-selection);
 }
 
-@keyframes breathe-opacity-subtle {
-  0%,
-  100% {
-    opacity: 0.72;
-  }
-  50% {
-    opacity: 1;
-  }
-}
-
 @keyframes breathe-opacity {
   0%,
   100% {
@@ -141,8 +129,7 @@
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--border-default);
-  background: color-mix(in srgb, var(--surface-panel) 92%, transparent);
-  backdrop-filter: blur(10px);
+  background: var(--surface-panel);
   box-shadow: var(--shadow-md);
   pointer-events: none;
   transform: translate(-50%, calc(-100% - 10px));
@@ -248,34 +235,3 @@
   }
 }
 
-.clickRipple {
-  fill: none;
-  stroke-width: 2.5;
-  transform-box: fill-box;
-  transform-origin: center;
-  animation: ripple-burst 480ms var(--ease-out) forwards;
-  pointer-events: none;
-}
-
-.clickRipple[data-risk="nominal"] {
-  stroke: var(--status-nominal);
-}
-
-.clickRipple[data-risk="elevated"] {
-  stroke: var(--status-elevated);
-}
-
-.clickRipple[data-risk="blocking"] {
-  stroke: var(--status-blocking);
-}
-
-@keyframes ripple-burst {
-  0% {
-    r: 10;
-    opacity: 0.7;
-  }
-  100% {
-    r: 60;
-    opacity: 0;
-  }
-}

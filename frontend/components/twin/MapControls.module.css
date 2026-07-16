@@ -81,3 +81,12 @@
 .btnOverview:hover svg {
   transform: scale(1.08);
 }
+
+.btnLegend svg {
+  display: block;
+}
+
+.btnLegend[data-active="true"] {
+  color: var(--accent-selection);
+  background: var(--interactive-hover);
+}

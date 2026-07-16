@@ -26,15 +26,31 @@ export function extractSvgInner(markup: string): string {
 }
 
 /** Simple in-memory cache so overview + detail share one SVG fetch per floor. */
-const schematicCache = new Map<PlantFloor, string>();
+const schematicCache = new Map<string, string>();
 
-export async function loadFloorSchematic(floor: PlantFloor): Promise<string> {
-  const cached = schematicCache.get(floor);
+/** Strip GPU-heavy SVG features for overview thumbnails and high-DPI perf mode. */
+export function liteSchematic(inner: string): string {
+  return inner
+    .replace(/\sfilter="[^"]*"/gi, "")
+    .replace(/<filter\b[^>]*>[\s\S]*?<\/filter>/gi, "")
+    .replace(
+      /<rect\b[^>]*fill="url\(#[^"]+\)"[^>]*opacity="0\.03"[^>]*\/>/gi,
+      "",
+    );
+}
+
+export async function loadFloorSchematic(
+  floor: PlantFloor,
+  options?: { lite?: boolean },
+): Promise<string> {
+  const key = options?.lite ? `${floor}:lite` : floor;
+  const cached = schematicCache.get(key);
   if (cached != null) return cached;
 
   const res = await fetch(PLAN_SRC[floor]);
   if (!res.ok) throw new Error(`Failed to load ${PLAN_SRC[floor]}`);
-  const inner = extractSvgInner(await res.text());
-  schematicCache.set(floor, inner);
+  let inner = extractSvgInner(await res.text());
+  if (options?.lite) inner = liteSchematic(inner);
+  schematicCache.set(key, inner);
   return inner;
 }

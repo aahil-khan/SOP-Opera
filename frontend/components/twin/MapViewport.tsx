@@ -121,6 +121,12 @@ export const MapViewport = forwardRef<MapViewportHandle, MapViewportProps>(
     const wrapperRef = useRef<HTMLDivElement>(null);
     const didFitInit = useRef(false);
     const [ready, setReady] = useState(false);
+    const wheelFrameRef = useRef<number | null>(null);
+    const pendingWheelRef = useRef<{
+      cx: number;
+      cy: number;
+      nextScale: number;
+    } | null>(null);
 
     const applyFitView = useCallback((animated: boolean) => {
       const api = transformRef.current;
@@ -226,11 +232,29 @@ export const MapViewport = forwardRef<MapViewportHandle, MapViewportProps>(
       [focusOn, resetView, zoomIn, zoomOut],
     );
 
-    // Custom zoom: gentle mouse wheel + gentle pinch. Two-finger trackpad
-    // scroll is left alone so the library can pan (Excalidraw-style).
     useEffect(() => {
       const el = wrapperRef.current;
       if (!el) return;
+
+      const applyPendingWheel = () => {
+        wheelFrameRef.current = null;
+        const api = transformRef.current;
+        const pending = pendingWheelRef.current;
+        if (!api || !pending) return;
+
+        const { cx, cy, nextScale } = pending;
+        const { scale, positionX, positionY } = api.state;
+        if (Math.abs(nextScale - scale) < 0.0001) return;
+
+        const worldX = (cx - positionX) / scale;
+        const worldY = (cy - positionY) / scale;
+        api.setTransform(
+          cx - worldX * nextScale,
+          cy - worldY * nextScale,
+          nextScale,
+          0,
+        );
+      };
 
       const onWheel = (event: WheelEvent) => {
         const api = transformRef.current;
@@ -249,7 +273,7 @@ export const MapViewport = forwardRef<MapViewportHandle, MapViewportProps>(
         const rect = el.getBoundingClientRect();
         const cx = event.clientX - rect.left;
         const cy = event.clientY - rect.top;
-        const { scale, positionX, positionY } = api.state;
+        const { scale } = api.state;
 
         let nextScale: number;
         if (isPinch) {
@@ -267,16 +291,10 @@ export const MapViewport = forwardRef<MapViewportHandle, MapViewportProps>(
           );
         }
 
-        if (Math.abs(nextScale - scale) < 0.0001) return;
-
-        const worldX = (cx - positionX) / scale;
-        const worldY = (cy - positionY) / scale;
-        api.setTransform(
-          cx - worldX * nextScale,
-          cy - worldY * nextScale,
-          nextScale,
-          0,
-        );
+        pendingWheelRef.current = { cx, cy, nextScale };
+        if (wheelFrameRef.current == null) {
+          wheelFrameRef.current = requestAnimationFrame(applyPendingWheel);
+        }
       };
 
       el.addEventListener("wheel", onWheel, { capture: true, passive: false });
@@ -284,6 +302,9 @@ export const MapViewport = forwardRef<MapViewportHandle, MapViewportProps>(
         el.removeEventListener("wheel", onWheel, {
           capture: true,
         } as AddEventListenerOptions);
+        if (wheelFrameRef.current != null) {
+          cancelAnimationFrame(wheelFrameRef.current);
+        }
       };
     }, []);
 
@@ -323,8 +344,6 @@ export const MapViewport = forwardRef<MapViewportHandle, MapViewportProps>(
           maxScale={MAX_ZOOM}
           centerOnInit={false}
           limitToBounds={false}
-          // Library wheel zoom off — we handle mouse/pinch ourselves (above).
-          // Two-finger trackpad still pans via trackPadPanning.
           wheel={{ disabled: true }}
           trackPadPanning={{ disabled: false, velocityDisabled: false }}
           pinch={{ disabled: true }}

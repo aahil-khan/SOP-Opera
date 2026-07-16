@@ -9,6 +9,8 @@ interface FloorNavArrowsProps {
   nextLabel: string;
   onPrev: () => void;
   onNext: () => void;
+  /** Nudge left arrow clear of the affected-areas sidebar (mobile overlay). */
+  shiftForSidebar?: boolean;
   shiftForDrawer?: boolean;
 }
 
@@ -19,6 +21,7 @@ export function FloorNavArrows({
   nextLabel,
   onPrev,
   onNext,
+  shiftForSidebar = false,
   shiftForDrawer = false,
 }: FloorNavArrowsProps) {
   return (
@@ -26,6 +29,7 @@ export function FloorNavArrows({
       <button
         type="button"
         className={`${styles.arrow} ${styles.arrowLeft}`}
+        data-shift={shiftForSidebar ? "true" : undefined}
         onClick={onPrev}
         disabled={!canGoPrev}
         aria-label={`Previous floor: ${prevLabel}`}
