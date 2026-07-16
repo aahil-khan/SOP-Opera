@@ -68,7 +68,7 @@ async def notify_review_opened(
         session,
         review_id=review_id,
         event_type="review.opened",
-        summary=f"Review opened ({triggered_by})",
+        summary=f"New review started · {triggered_by}",
         recipient_ids=[owner_id],
     )
 
@@ -82,11 +82,16 @@ async def notify_assessment_completed(
 ) -> None:
     if risk_level not in ("elevated", "blocking"):
         return
+    summary = (
+        "Blocking risk — needs a decision"
+        if risk_level == "blocking"
+        else "Elevated risk assessment ready"
+    )
     await create_notification(
         session,
         review_id=review_id,
         event_type="assessment.completed",
-        summary=f"Assessment complete — risk {risk_level}",
+        summary=summary,
         recipient_ids=[owner_id],
     )
 
@@ -101,7 +106,7 @@ async def notify_assessment_failed(
         session,
         review_id=review_id,
         event_type="assessment.failed",
-        summary="Assessment generation failed — retry or submit manual assessment",
+        summary="Assessment failed — submit a manual assessment",
         recipient_ids=[owner_id],
     )
 
@@ -117,7 +122,7 @@ async def notify_decision_submitted(
         session,
         review_id=review_id,
         event_type="decision.submitted",
-        summary=f"Decision submitted: {outcome.replace('_', ' ')}",
+        summary=f"Decision recorded · {outcome.replace('_', ' ')}",
         recipient_ids=[owner_id],
     )
 
@@ -132,7 +137,7 @@ async def notify_review_closed(
         session,
         review_id=review_id,
         event_type="review.closed",
-        summary="Review closed — report generated",
+        summary="Review closed · report ready",
         recipient_ids=[owner_id],
     )
 
