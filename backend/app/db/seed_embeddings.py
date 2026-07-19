@@ -200,6 +200,14 @@ INCIDENTS = [
         "Two concurrent crane lifts crossed paths; a suspended load narrowly missed a walkway canopy.",
         "lifting_operation_conflict",
     ),
+    (
+        "c3333333-3333-3333-3333-333333333306",
+        "11111111-1111-1111-1111-111111111111",
+        "VSP-pattern near-miss (seeded): elevated CO on coke oven battery coincided with active hot-work "
+        "permit and incomplete isolation — pattern later echoed in Visakhapatnam Steel Plant 2025 "
+        "coke oven fatality investigations where gas sensors and PTW existed but were not fused.",
+        "elevated_gas",
+    ),
 ]
 
 

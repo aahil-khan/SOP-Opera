@@ -1,0 +1,245 @@
+{
+  "11111111-1111-1111-1111-111111111111": {
+    "svg_element_id": "asset-coke-battery-a",
+    "x": 352.5,
+    "y": 1380,
+    "hit": { "x": 120, "y": 1200, "w": 465, "h": 360 },
+    "zone": "coke-oven-battery",
+    "label": "Vessel A",
+    "floor": "ground"
+  },
+  "22222222-2222-2222-2222-222222222222": {
+    "svg_element_id": "asset-quench-area",
+    "x": 352.5,
+    "y": 1717.5,
+    "hit": { "x": 120, "y": 1650, "w": 465, "h": 135 },
+    "zone": "hazardous",
+    "label": "Walkway 3",
+    "floor": "ground"
+  },
+  "33333333-3333-3333-3333-333333333333": {
+    "svg_element_id": "asset-compressor-yard",
+    "x": 1575,
+    "y": 1470,
+    "hit": { "x": 1425, "y": 1320, "w": 300, "h": 300 },
+    "zone": "compressor-yard",
+    "label": "Compressor B",
+    "floor": "ground"
+  },
+  "44444444-4444-4444-4444-444444444444": {
+    "svg_element_id": "asset-tank-farm",
+    "x": 975,
+    "y": 330,
+    "hit": { "x": 765, "y": 120, "w": 420, "h": 420 },
+    "zone": "tank-farm",
+    "label": "Tank Farm C",
+    "floor": "ground"
+  },
+  "66666666-6666-6666-6666-666666666661": {
+    "svg_element_id": "asset-byproduct-plant",
+    "x": 352.5,
+    "y": 330,
+    "hit": { "x": 120, "y": 120, "w": 465, "h": 420 },
+    "zone": "byproduct-plant",
+    "label": "By-Product Plant",
+    "floor": "ground"
+  },
+  "66666666-6666-6666-6666-666666666662": {
+    "svg_element_id": "asset-coke-battery-b",
+    "x": 352.5,
+    "y": 885,
+    "hit": { "x": 120, "y": 705, "w": 465, "h": 360 },
+    "zone": "coke-oven-battery",
+    "label": "Coke Battery B",
+    "floor": "ground"
+  },
+  "66666666-6666-6666-6666-666666666663": {
+    "svg_element_id": "asset-dri-plant",
+    "x": 1020,
+    "y": 915,
+    "hit": { "x": 765, "y": 705, "w": 510, "h": 420 },
+    "zone": "dri-plant",
+    "label": "DRI Plant",
+    "floor": "ground"
+  },
+  "66666666-6666-6666-6666-666666666664": {
+    "svg_element_id": "asset-etp",
+    "x": 1020,
+    "y": 1447.5,
+    "hit": { "x": 765, "y": 1260, "w": 510, "h": 375 },
+    "zone": "etp",
+    "label": "ETP",
+    "floor": "ground"
+  },
+  "66666666-6666-6666-6666-666666666665": {
+    "svg_element_id": "asset-control-room",
+    "x": 1312.5,
+    "y": 532.5,
+    "hit": { "x": 1230, "y": 450, "w": 165, "h": 165 },
+    "zone": "control-room",
+    "label": "Control Room",
+    "floor": "ground"
+  },
+  "66666666-6666-6666-6666-666666666666": {
+    "svg_element_id": "asset-raw-material-yard",
+    "x": 1830,
+    "y": 581.25,
+    "hit": { "x": 1485, "y": 82.5, "w": 690, "h": 997.5 },
+    "zone": "raw-material-yard",
+    "label": "Raw Material Yard",
+    "floor": "ground"
+  },
+  "77777777-7777-7777-7777-777777777707": {
+    "svg_element_id": "asset-pipe-rack-gantry",
+    "x": 1125,
+    "y": 755,
+    "hit": { "x": 540, "y": 660, "w": 1170, "h": 120 },
+    "zone": "pipe-rack",
+    "label": "Pipe Rack Gantry",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777701": {
+    "svg_element_id": "asset-gas-cleaning-plant",
+    "x": 525,
+    "y": 360,
+    "hit": { "x": 300, "y": 150, "w": 450, "h": 420 },
+    "zone": "gas-cleaning",
+    "label": "Gas Cleaning Plant",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777703": {
+    "svg_element_id": "asset-boiler-house",
+    "x": 1290,
+    "y": 360,
+    "hit": { "x": 1020, "y": 150, "w": 540, "h": 420 },
+    "zone": "boiler-house",
+    "label": "Boiler House",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777704": {
+    "svg_element_id": "asset-electrical-substation",
+    "x": 360,
+    "y": 1230,
+    "hit": { "x": 120, "y": 990, "w": 480, "h": 480 },
+    "zone": "substation",
+    "label": "Electrical Substation",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777702": {
+    "svg_element_id": "asset-pump-house",
+    "x": 1410,
+    "y": 1126.5,
+    "hit": { "x": 1200, "y": 990, "w": 420, "h": 273 },
+    "zone": "pump-house",
+    "label": "Pump House",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777705": {
+    "svg_element_id": "asset-instrument-air-plant",
+    "x": 900,
+    "y": 1441.5,
+    "hit": { "x": 720, "y": 1290, "w": 360, "h": 303 },
+    "zone": "instrument-air",
+    "label": "Instrument Air Plant",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777709": {
+    "svg_element_id": "asset-fire-water-station",
+    "x": 1410,
+    "y": 1441.5,
+    "hit": { "x": 1200, "y": 1320, "w": 420, "h": 243 },
+    "zone": "fire-water",
+    "label": "Fire Water Pump Station",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777706": {
+    "svg_element_id": "asset-maintenance-workshop",
+    "x": 1890,
+    "y": 435,
+    "hit": { "x": 1650, "y": 150, "w": 480, "h": 570 },
+    "zone": "workshop",
+    "label": "Maintenance Workshop",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777708": {
+    "svg_element_id": "asset-weighbridge",
+    "x": 1890,
+    "y": 1192.5,
+    "hit": { "x": 1635, "y": 915, "w": 510, "h": 555 },
+    "zone": "weighbridge",
+    "label": "Weighbridge & Loading Dock",
+    "floor": "first"
+  },
+  "77777777-7777-7777-7777-777777777805": {
+    "svg_element_id": "asset-elevated-conveyor",
+    "x": 1237.5,
+    "y": 1125,
+    "hit": { "x": 561.5, "y": 1080, "w": 1352, "h": 90, "angle": 19.44 },
+    "zone": "conveyor-gantry",
+    "label": "Elevated Conveyor Gantry",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777803": {
+    "svg_element_id": "asset-admin-office",
+    "x": 517.5,
+    "y": 541.5,
+    "hit": { "x": 330, "y": 360, "w": 375, "h": 363 },
+    "zone": "admin-office",
+    "label": "Admin & Shift Office",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777802": {
+    "svg_element_id": "asset-scada-room",
+    "x": 1095,
+    "y": 429,
+    "hit": { "x": 960, "y": 300, "w": 270, "h": 258 },
+    "zone": "scada",
+    "label": "SCADA Room",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777801": {
+    "svg_element_id": "asset-central-control-room",
+    "x": 1140,
+    "y": 1036.5,
+    "hit": { "x": 900, "y": 765, "w": 480, "h": 543 },
+    "zone": "central-control",
+    "label": "Central Control Room",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777808": {
+    "svg_element_id": "asset-hvac-plant",
+    "x": 1845,
+    "y": 504,
+    "hit": { "x": 1680, "y": 360, "w": 330, "h": 288 },
+    "zone": "hvac",
+    "label": "HVAC Plant",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777807": {
+    "svg_element_id": "asset-muster-point",
+    "x": 1890,
+    "y": 1599,
+    "hit": { "x": 1680, "y": 1380, "w": 420, "h": 438 },
+    "zone": "muster-point",
+    "label": "Muster Point",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777804": {
+    "svg_element_id": "asset-crane-deck",
+    "x": 2010,
+    "y": 990,
+    "hit": { "x": 1755, "y": 810, "w": 510, "h": 360 },
+    "zone": "crane-deck",
+    "label": "Crane / Hoist Deck",
+    "floor": "second"
+  },
+  "77777777-7777-7777-7777-777777777806": {
+    "svg_element_id": "asset-rooftop-cooling",
+    "x": 570,
+    "y": 1374,
+    "hit": { "x": 330, "y": 1230, "w": 480, "h": 288 },
+    "zone": "cooling-towers",
+    "label": "Rooftop Cooling Towers",
+    "floor": "second"
+  }
+}

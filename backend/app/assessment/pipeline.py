@@ -11,14 +11,15 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.graph import run_agent_assessment
 from app.assessment.orchestrator import PROMPT_VERSION
-from app.assessment.providers import get_provider
 from app.assessment.reasoning import build_reasoning_factors, serialize_factor
 from app.assessment.retrieval import build_retrieval_query, retrieve
 from app.assessment.retrieval.enrich import enrich_references, serialize_ref
-from app.context.derived_facts import load_valid_context
+from app.context.derived_facts import load_valid_context, load_valid_context_for_assets
 from app.core.config import get_settings
 from app.db.session import SessionLocal
+from app.graph.kg import neighbors_within_radius, get_plant_graph
 from app.realtime.connection_manager import manager
 from app.reviews.ownership import get_zone_owner, resolve_worker_names
 from app.reviews.repository import get_review, transition_review
@@ -134,6 +135,7 @@ async def _persist_metadata(
     embedding_model: str | None,
     failure_reason: str | None = None,
     reasoning_factors: list | None = None,
+    agent_trace: list | None = None,
 ) -> None:
     await session.execute(
         text(
@@ -143,14 +145,14 @@ async def _persist_metadata(
                 tokens_in, tokens_out, cost_usd, latency_ms, confidence,
                 retrieved_context_ids, retrieved_evidence_ids, retrieved_references,
                 retrieval_mode, retrieval_quality, retrieval_score, embedding_model,
-                failure_reason, reasoning_factors
+                failure_reason, reasoning_factors, agent_trace
             )
             VALUES (
                 CAST(:aid AS uuid), :provider, :model, :prompt_version,
                 :tokens_in, :tokens_out, :cost_usd, :latency_ms, :confidence,
                 CAST(:ctx AS uuid[]), CAST(:ev AS uuid[]), CAST(:refs AS jsonb),
                 :retrieval_mode, :retrieval_quality, :retrieval_score, :embedding_model,
-                :failure_reason, CAST(:factors AS jsonb)
+                :failure_reason, CAST(:factors AS jsonb), CAST(:agent_trace AS jsonb)
             )
             ON CONFLICT (assessment_id) DO UPDATE SET
                 provider = EXCLUDED.provider,
@@ -169,7 +171,8 @@ async def _persist_metadata(
                 retrieval_score = EXCLUDED.retrieval_score,
                 embedding_model = EXCLUDED.embedding_model,
                 failure_reason = EXCLUDED.failure_reason,
-                reasoning_factors = EXCLUDED.reasoning_factors
+                reasoning_factors = EXCLUDED.reasoning_factors,
+                agent_trace = EXCLUDED.agent_trace
             """
         ),
         {
@@ -191,6 +194,7 @@ async def _persist_metadata(
             "embedding_model": embedding_model,
             "failure_reason": failure_reason,
             "factors": json.dumps(_serialize_factors(reasoning_factors or [])),
+            "agent_trace": json.dumps(agent_trace or []),
         },
     )
 
@@ -252,7 +256,6 @@ async def run_assessment_job(
         hybrid = await retrieve(session, query=query, fact_types=fact_types)
         enriched_refs = await enrich_references(session, hybrid.refs)
         evidence_ids = [r.id for r in enriched_refs]
-        provider = get_provider(provider_name)
 
         # Resolve context + worker names for structured reasoning factors
         ctx_views = await load_valid_context(session, review.asset_id)
@@ -272,8 +275,13 @@ async def run_assessment_job(
             context_entries.append(
                 {
                     "id": str(e.id),
+                    "asset_id": str(e.asset_id),
                     "category": e.category,
                     "payload": payload,
+                    "provider": e.provider,
+                    "valid_from": e.valid_from,
+                    "valid_until": e.valid_until,
+                    "confidence": e.confidence,
                 }
             )
         area_owner = await get_zone_owner(session, asset_zone)
@@ -285,30 +293,51 @@ async def run_assessment_job(
             area_owner=area_owner,
         )
 
+        # Neighborhood context for Spatial Agent (focus + NEAR/ABOVE assets)
+        near = neighbors_within_radius(get_plant_graph(), str(review.asset_id))
+        neighbor_ids = [UUID(n["asset_id"]) for n in near]
+        plant_views = await load_valid_context_for_assets(
+            session, [review.asset_id, *neighbor_ids]
+        )
+        plant_context_entries = [
+            {
+                "id": str(e.id),
+                "asset_id": str(e.asset_id),
+                "category": e.category,
+                "payload": dict(e.payload),
+                "provider": e.provider,
+                "valid_from": e.valid_from,
+                "valid_until": e.valid_until,
+                "confidence": e.confidence,
+            }
+            for e in plant_views
+        ]
+
         generation = None
+        agent_trace: list = []
+        spatial_links: list = []
         last_error: Exception | None = None
         max_retries = settings.assessment_max_retries
         for attempt in range(max_retries + 1):
-            repair = None
-            if attempt > 0 and last_error is not None:
-                repair = (
-                    f"Previous output failed validation: {last_error}. "
-                    "Return valid JSON with summary, risk_level "
-                    "(nominal|elevated|blocking), confidence, and recommendations[]."
-                )
             try:
-                generation = await provider.generate_assessment(
-                    facts,
-                    context_ids,
-                    enriched_refs,
-                    repair_hint=repair,
+                generation, agent_trace, spatial_links = await run_agent_assessment(
+                    review_id=review_id,
+                    assessment_id=assessment_id,
+                    asset_id=review.asset_id,
+                    asset_name=asset_name,
+                    asset_zone=asset_zone,
+                    facts=facts,
+                    context_entries=context_entries,
+                    retrieved_references=enriched_refs,
+                    provider_name=provider_name,
+                    plant_context_entries=plant_context_entries,
                 )
                 last_error = None
                 break
             except Exception as exc:  # noqa: BLE001
                 last_error = exc
                 logger.warning(
-                    "provider attempt %d failed for %s: %s",
+                    "langgraph attempt %d failed for %s: %s",
                     attempt + 1,
                     assessment_id,
                     exc,
@@ -348,6 +377,7 @@ async def run_assessment_job(
                 embedding_model=hybrid.embedding_model,
                 failure_reason=failure_reason,
                 reasoning_factors=reasoning_factors,
+                agent_trace=agent_trace,
             )
             from app.notifications.service import notify_assessment_failed
 
@@ -437,6 +467,7 @@ async def run_assessment_job(
             embedding_model=hybrid.embedding_model,
             failure_reason=None,
             reasoning_factors=reasoning_factors,
+            agent_trace=agent_trace,
         )
         from app.notifications.service import notify_assessment_completed
 
@@ -464,6 +495,8 @@ async def run_assessment_job(
                 "risk_level": result.risk_level,
                 "retrieval_mode": hybrid.mode,
                 "provider": generation.provider,
+                "agent_step_count": len(agent_trace),
+                "spatial_link_count": len(spatial_links),
                 "ts": datetime.now(timezone.utc).isoformat(),
             },
         )

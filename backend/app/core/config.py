@@ -52,6 +52,23 @@ class Settings(BaseSettings):
     rag_score_threshold: float = 0.72
     rag_timeout_ms: int = 3000
 
+    # LangGraph / LangSmith
+    langchain_tracing_v2: bool = False
+    langchain_api_key: str = ""
+    langchain_project: str = "sop-opera"
+    agent_spatial_radius_m: float = 15.0
+    # ~0.04 m/px puts Vessel A ↔ Walkway 3 (~337px) inside a 15m radius
+    agent_scale_m_per_px: float = 0.04
+    agent_timeout_seconds: float = 45.0
+    agent_llm_timeout_seconds: float = 20.0
+
+    # Always-on ambient plant telemetry
+    ambient_enabled: bool = True
+    ambient_tick_seconds: float = 1.5
+    ambient_coincidence_probability: float = 0.02
+    ambient_heartbeat_seconds: float = 30.0
+    ambient_batch_size: int = 4
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

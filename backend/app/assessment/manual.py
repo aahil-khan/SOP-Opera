@@ -211,7 +211,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                    m.retrieved_context_ids, m.retrieved_evidence_ids,
                    m.retrieved_references,
                    m.retrieval_mode, m.retrieval_quality, m.retrieval_score,
-                   m.embedding_model, m.reasoning_factors
+                   m.embedding_model, m.reasoning_factors, m.agent_trace
             FROM assessments a
             LEFT JOIN assessment_metadata m ON m.assessment_id = a.id
             WHERE a.review_id = CAST(:review_id AS uuid)
@@ -257,6 +257,10 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 factor["evidence"] = [
                     serialize_ref(r) for r in await enrich_references(session, ev)
                 ]
+        raw_trace = m.get("agent_trace") or []
+        if isinstance(raw_trace, str):
+            raw_trace = json.loads(raw_trace)
+        agent_trace = list(raw_trace) if isinstance(raw_trace, list) else []
         meta = None
         if m.get("provider") is not None:
             meta = {
@@ -280,6 +284,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 "embedding_model": m["embedding_model"],
                 "assessment_version": m["version"],
                 "reasoning_factors": reasoning_factors,
+                "agent_trace": agent_trace,
             }
         out.append(
             {
@@ -295,6 +300,7 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 "recommendations": recommendations,
                 "retrieved_references": retrieved_references,
                 "reasoning_factors": reasoning_factors,
+                "agent_trace": agent_trace,
                 "metadata": meta,
             }
         )

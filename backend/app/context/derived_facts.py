@@ -506,6 +506,53 @@ async def load_valid_context(
     return out
 
 
+async def load_valid_context_for_assets(
+    session: AsyncSession,
+    asset_ids: list[UUID],
+    *,
+    now: datetime | None = None,
+) -> list[ContextEntryView]:
+    """Load currently-valid context entries for many assets (spatial neighborhood)."""
+    if not asset_ids:
+        return []
+    now = now or datetime.now(timezone.utc)
+    result = await session.execute(
+        text(
+            """
+            SELECT id, asset_id, category, payload, provider,
+                   valid_from, valid_until, confidence
+            FROM context_entries
+            WHERE asset_id = ANY(CAST(:asset_ids AS uuid[]))
+              AND valid_from <= :now
+              AND valid_until >= :now
+            ORDER BY valid_from ASC
+            """
+        ),
+        {"asset_ids": [str(a) for a in asset_ids], "now": now},
+    )
+    out: list[ContextEntryView] = []
+    for row in result.fetchall():
+        m = row._mapping
+        payload = m["payload"]
+        if isinstance(payload, str):
+            import json
+
+            payload = json.loads(payload)
+        out.append(
+            ContextEntryView(
+                id=m["id"],
+                asset_id=m["asset_id"],
+                category=m["category"],
+                payload=dict(payload),
+                provider=m["provider"],
+                valid_from=m["valid_from"],
+                valid_until=m["valid_until"],
+                confidence=float(m["confidence"]),
+            )
+        )
+    return out
+
+
 async def _latest_fact_value(
     session: AsyncSession, asset_id: UUID, fact_type: str
 ) -> bool | None:

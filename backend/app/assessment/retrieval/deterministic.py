@@ -13,7 +13,7 @@ from shared.python.schemas import RetrievedReference
 SourceType = Literal["regulations", "historical_incidents", "sops"]
 
 RETRIEVAL_RULES: dict[str, list[SourceType]] = {
-    "elevated_gas": ["regulations"],
+    "elevated_gas": ["regulations", "historical_incidents"],
     "permit_conflict": ["sops", "regulations"],
     "zone_occupied": ["historical_incidents"],
     "incomplete_isolation": ["sops", "regulations"],
@@ -26,6 +26,7 @@ RETRIEVAL_RULES: dict[str, list[SourceType]] = {
     "ppe_noncompliance": ["sops", "regulations"],
     "lifting_operation_conflict": ["sops", "historical_incidents"],
     "weather_hold": ["sops", "regulations"],
+    "spatial_cooccurrence": ["historical_incidents", "regulations"],
 }
 
 

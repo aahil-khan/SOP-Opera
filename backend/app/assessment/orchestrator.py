@@ -14,7 +14,7 @@ from shared.python.schemas import Review
 
 logger = logging.getLogger(__name__)
 
-PROMPT_VERSION = "assessment-v1"
+PROMPT_VERSION = "assessment-v2-langgraph"
 
 
 class AssessmentOrchestrator:

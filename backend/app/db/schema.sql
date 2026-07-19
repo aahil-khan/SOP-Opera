@@ -155,7 +155,8 @@ CREATE TABLE IF NOT EXISTS assessment_metadata (
     retrieval_score REAL,
     embedding_model TEXT,
     failure_reason TEXT,  -- validation | provider_error | NULL on success
-    reasoning_factors JSONB NOT NULL DEFAULT '[]'::jsonb
+    reasoning_factors JSONB NOT NULL DEFAULT '[]'::jsonb,
+    agent_trace JSONB NOT NULL DEFAULT '[]'::jsonb
 );
 
 CREATE TABLE IF NOT EXISTS recommendations (
@@ -226,3 +227,4 @@ ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_context_ids U
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_references JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS failure_reason TEXT;
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS reasoning_factors JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS agent_trace JSONB NOT NULL DEFAULT '[]'::jsonb;
