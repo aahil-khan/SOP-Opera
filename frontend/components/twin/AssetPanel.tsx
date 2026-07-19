@@ -259,7 +259,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
                 <h3 className={styles.happyTitle}>All clear</h3>
                 <p className={styles.happyCopy}>
                   {asset.name} is operating normally. Check domains below for
-                  live sensors and nearby assets.
+                  relevant information.
                 </p>
               </section>
             ) : (
