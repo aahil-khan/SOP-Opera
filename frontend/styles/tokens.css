@@ -45,4 +45,10 @@
   --duration-fast: 150ms;
   --duration-normal: 200ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+
+  /* Scrollbars — thin & theme-aware */
+  --scrollbar-size: 6px;
+  --scrollbar-track: transparent;
+  --scrollbar-thumb: color-mix(in srgb, var(--text-muted) 45%, transparent);
+  --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 70%, transparent);
 }
