@@ -1,0 +1,26 @@
+name: spatial_proximity
+label: Spatial Proximity Risk
+description: >
+  Cross-asset spatial compound. Elevated gas on Vessel A while hot work
+  activates on Walkway 3 (within KG radius) — Spatial Agent flags
+  co-occurrence no single silo would see.
+
+steps:
+  - asset: Vessel A
+    category: sensor
+    payload:
+      gas_reading: 28.0
+      unit: ppm
+    confidence: 0.98
+    delay_seconds: 0
+    valid_for_hours: 4
+
+  - asset: Walkway 3
+    category: permit
+    payload:
+      permit_id: p-spatial-hot-1
+      status: active
+      work_type: hot_work
+    confidence: 1.0
+    delay_seconds: 3
+    valid_for_hours: 4

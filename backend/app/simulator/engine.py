@@ -7,9 +7,9 @@ import logging
 import random
 from datetime import datetime, timezone
 from typing import Any, Literal
+from uuid import UUID
 
 from app.assessment.orchestrator import orchestrator
-from app.context.schemas import ContextIn
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.simulator.dsl import (
@@ -18,7 +18,6 @@ from app.simulator.dsl import (
     load_scenario,
     resolve_asset_id,
 )
-from app.simulator.provider import SimulatorProvider
 from app.simulator.random_engine import (
     RandomModeConfig,
     count_open_reviews,
@@ -28,6 +27,7 @@ from app.simulator.random_engine import (
     load_assets,
     pick_signals,
 )
+from app.simulator.sources import OrchestratorSim, list_sources
 from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
@@ -71,8 +71,26 @@ class DemoController:
         self._random_config: RandomModeConfig | None = None
         self._issues_spawned: int = 0
         self._active_issue_count: int = 0
+        self._orch_sim = OrchestratorSim()
+        self._sources_used: list[str] = []
+        self._locked_asset_ids: set[str] = set()
+
+    @property
+    def locked_asset_ids(self) -> set[str]:
+        return set(self._locked_asset_ids)
+
+    def lock_asset(self, asset_id: str | UUID) -> None:
+        self._locked_asset_ids.add(str(asset_id))
+
+    def unlock_asset(self, asset_id: str | UUID) -> None:
+        self._locked_asset_ids.discard(str(asset_id))
+
+    def clear_locks(self) -> None:
+        self._locked_asset_ids.clear()
 
     def status(self) -> dict[str, Any]:
+        from app.simulator.ambient import ambient_loop
+
         return {
             "mode": self._mode,
             "scenario": self._scenario_name,
@@ -84,6 +102,10 @@ class DemoController:
             ),
             "issues_spawned": self._issues_spawned,
             "active_issue_count": self._active_issue_count,
+            "sources_used": list(self._sources_used),
+            "sources": list_sources(),
+            "ambient_running": ambient_loop.running,
+            "demo_locked_assets": sorted(self._locked_asset_ids),
             "config": (
                 self._random_config.model_dump() if self._random_config else None
             ),
@@ -111,6 +133,20 @@ class DemoController:
         self._random_config = None
         self._issues_spawned = 0
         self._active_issue_count = 0
+        self._sources_used = []
+        self._orch_sim = OrchestratorSim()
+
+        # Pre-lock scenario assets so ambient hard-ingest cannot clear demo facts
+        async with SessionLocal() as session:
+            for step in scenario.steps:
+                try:
+                    aid = await resolve_asset_id(session, step.asset)
+                    self.lock_asset(aid)
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "could not pre-lock scenario asset %s", step.asset
+                    )
+
         self._task = asyncio.create_task(
             self._run(scenario), name=f"demo-{scenario.name}"
         )
@@ -130,6 +166,7 @@ class DemoController:
         self._random_config = cfg
         self._issues_spawned = 0
         self._active_issue_count = 0
+        self._orch_sim = OrchestratorSim()
         self._task = asyncio.create_task(
             self._run_random(cfg), name="demo-random"
         )
@@ -148,31 +185,24 @@ class DemoController:
                     await asyncio.sleep(delay)
 
                 self._step_index = i
-                now = datetime.now(timezone.utc)
-                from datetime import timedelta
-
-                valid_until = now + timedelta(hours=step.valid_for_hours)
-
                 async with SessionLocal() as session:
-                    asset_id = await resolve_asset_id(session, step.asset)
-                    body = ContextIn(
-                        asset_id=asset_id,
-                        category=step.category,
-                        payload=step.payload,
-                        provider="simulator",
-                        valid_from=now,
-                        valid_until=valid_until,
-                        confidence=step.confidence,
+                    result = await self._orch_sim.run_step(
+                        session,
+                        step,
+                        step_index=i,
+                        total_steps=self._total_steps,
                     )
-                    provider = SimulatorProvider(session)
-                    result = await provider.emit(body)
+                    self.lock_asset(result.asset_id)
+                    if result.source not in self._sources_used:
+                        self._sources_used.append(result.source)
                     logger.info(
-                        "demo step %d/%d (%s) → review=%s facts=%s",
+                        "demo step %d/%d via %s (%s) → review=%s facts=%s",
                         i + 1,
                         self._total_steps,
+                        result.source,
                         step.category,
-                        result.review.id if result.review else None,
-                        [f.fact_type for f in result.derived_facts],
+                        result.ingest.review.id if result.ingest.review else None,
+                        [f.fact_type for f in result.ingest.derived_facts],
                     )
                 self._step_index = i + 1
         except asyncio.CancelledError:
@@ -188,6 +218,7 @@ class DemoController:
             self._running = False
             if self._mode == "scripted":
                 self._mode = "idle"
+            # Keep locks until reset so ambient doesn't clear the showcase state
 
     async def _run_random(self, config: RandomModeConfig) -> None:
         rng = random.Random(config.seed)
@@ -224,6 +255,8 @@ class DemoController:
                         break
 
                     busy = set(await list_assets_with_open_reviews(session))
+                    for aid in busy:
+                        self.lock_asset(aid)
                     compound = (
                         busy
                         and rng.random() < config.compound_probability
@@ -241,10 +274,15 @@ class DemoController:
                         signals=signals,
                         rng=rng,
                         valid_for_hours=config.valid_for_hours,
+                        orch=self._orch_sim,
                     )
+                    self.lock_asset(asset.id)
                     self._issues_spawned += 1
                     self._step_index = self._issues_spawned
                     self._active_issue_count = await count_open_reviews(session)
+                    for src in self._orch_sim.last_sources:
+                        if src not in self._sources_used:
+                            self._sources_used.append(src)
                     logger.info(
                         "random issue #%d on %s (%s) signals=%s facts=%s",
                         self._issues_spawned,
@@ -280,6 +318,8 @@ class DemoController:
         self._random_config = None
         self._issues_spawned = 0
         self._active_issue_count = 0
+        self._sources_used = []
+        self.clear_locks()
 
         # Drain + pause the assessment worker so an in-flight job cannot re-insert
         # rows between DELETE statements (FK violation race).

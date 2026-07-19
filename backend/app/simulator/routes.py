@@ -40,6 +40,37 @@ async def get_scenarios() -> list[dict]:
     ]
 
 
+@router.get("/sources")
+async def get_demo_sources() -> list[dict]:
+    """Independent plant-system simulators coordinated by the Orchestrator Sim."""
+    from app.simulator.sources import list_sources
+
+    return list_sources()
+
+
+@router.get("/ambient")
+async def get_ambient_status() -> dict:
+    from app.simulator.ambient import ambient_loop
+
+    return ambient_loop.status()
+
+
+@router.post("/ambient/start", status_code=202)
+async def start_ambient() -> dict:
+    from app.simulator.ambient import ambient_loop
+
+    ambient_loop.start()
+    return ambient_loop.status()
+
+
+@router.post("/ambient/stop")
+async def stop_ambient() -> dict:
+    from app.simulator.ambient import ambient_loop
+
+    await ambient_loop.stop()
+    return ambient_loop.status()
+
+
 @router.post("/scenarios/{name}/start", status_code=202)
 async def start_scenario(name: str) -> dict:
     try:

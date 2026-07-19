@@ -6,16 +6,17 @@ import logging
 import random
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Literal
-from uuid import UUID, uuid4
+from typing import TYPE_CHECKING, Any, Literal
+from uuid import uuid4
 
 from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.context.schemas import ContextIn
 from app.core.config import get_settings
-from app.simulator.provider import SimulatorProvider
+
+if TYPE_CHECKING:
+    from app.simulator.sources import OrchestratorSim
 
 logger = logging.getLogger(__name__)
 
@@ -349,24 +350,26 @@ async def emit_issue(
     signals: list[str],
     rng: random.Random,
     valid_for_hours: float,
+    orch: OrchestratorSim | None = None,
 ) -> list[str]:
-    """Inject context rows for one combinatorial issue. Returns emitted fact types."""
-    now = datetime.now(timezone.utc)
-    valid_until = now + timedelta(hours=valid_for_hours)
-    provider = SimulatorProvider(session)
+    """Inject context rows for one combinatorial issue via OrchestratorSim."""
+    from app.simulator.sources import OrchestratorSim as OrchCls
+
+    coordinator = orch or OrchCls()
     fired: list[str] = []
-    for step in build_steps_for_signals(rng, signals):
-        body = ContextIn(
-            asset_id=UUID(asset.id),
+    steps = build_steps_for_signals(rng, signals)
+    for i, step in enumerate(steps):
+        result = await coordinator.emit_direct(
+            session,
+            asset_name=asset.name,
             category=step["category"],
             payload=step["payload"],
-            provider="simulator",
-            valid_from=now,
-            valid_until=valid_until,
             confidence=1.0,
+            valid_for_hours=valid_for_hours,
+            step_index=i,
+            total_steps=len(steps),
         )
-        result = await provider.emit(body)
-        fired.extend(f.fact_type for f in result.derived_facts)
+        fired.extend(f.fact_type for f in result.ingest.derived_facts)
     return fired
 
 

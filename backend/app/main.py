@@ -18,6 +18,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     from app.assessment.orchestrator import orchestrator
+    from app.simulator.ambient import ambient_loop
 
     try:
         from app.db.session import apply_schema
@@ -40,20 +41,28 @@ async def lifespan(_app: FastAPI):
     worker_task = orchestrator.start()
     logger.info("assessment worker running")
 
+    ambient_task = None
+    if settings.ambient_enabled:
+        ambient_task = ambient_loop.start()
+        logger.info("ambient plant loop running")
+
     yield
 
     try:
         from app.db.vector import close_vector_pool
 
+        await ambient_loop.stop()
         orchestrator.stop()
         await close_vector_pool()
     except Exception:  # noqa: BLE001
         pass
+    if ambient_task is not None:
+        ambient_task.cancel()
     if worker_task is not None:
         worker_task.cancel()
 
 
-app = FastAPI(title="SOP Opera API", version="0.7.0", lifespan=lifespan)
+app = FastAPI(title="SOP Opera API", version="0.9.0", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -70,6 +79,8 @@ from app.simulator.routes import router as demo_router  # noqa: E402
 from app.reports.routes import router as reports_router  # noqa: E402
 from app.notifications.routes import router as notifications_router  # noqa: E402
 from app.ai_ops.routes import router as ai_ops_router  # noqa: E402
+from app.graph.routes import router as graph_router  # noqa: E402
+from app.agents.routes import router as agents_router  # noqa: E402
 
 app.include_router(context_router)
 app.include_router(reviews_router)
@@ -78,6 +89,8 @@ app.include_router(demo_router)
 app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(ai_ops_router)
+app.include_router(graph_router)
+app.include_router(agents_router)
 
 
 @app.get("/health")
