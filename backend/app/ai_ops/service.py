@@ -6,6 +6,17 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_ops.schemas import AiOpsSummary
+from app.core.config import get_settings
+
+
+def _langsmith_fields() -> tuple[bool, str, str | None]:
+    settings = get_settings()
+    enabled = bool(settings.langchain_tracing_v2 and settings.langchain_api_key)
+    project = settings.langchain_project or "sop-opera"
+    if not enabled:
+        return False, project, None
+    url = (settings.langsmith_project_url or "").strip() or "https://smith.langchain.com"
+    return True, project, url
 
 
 async def get_summary(session: AsyncSession) -> AiOpsSummary:
@@ -46,7 +57,35 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
                     WHERE a.assessment_type = 'ai'
                       AND m.retrieval_mode = 'rag'
                       AND m.retrieval_score IS NOT NULL
-                ) AS mean_retrieval_relevance
+                ) AS mean_retrieval_relevance,
+                AVG(m.latency_ms) FILTER (
+                    WHERE a.assessment_type = 'ai'
+                      AND a.status = 'complete'
+                      AND m.latency_ms IS NOT NULL
+                ) AS mean_latency_ms,
+                COALESCE(
+                    SUM(m.tokens_in) FILTER (
+                        WHERE a.assessment_type = 'ai' AND a.status = 'complete'
+                    ),
+                    0
+                ) AS total_input_tokens,
+                COALESCE(
+                    SUM(m.tokens_out) FILTER (
+                        WHERE a.assessment_type = 'ai' AND a.status = 'complete'
+                    ),
+                    0
+                ) AS total_output_tokens,
+                COALESCE(
+                    SUM(m.cost_usd) FILTER (
+                        WHERE a.assessment_type = 'ai' AND a.status = 'complete'
+                    ),
+                    0
+                ) AS total_cost_usd,
+                AVG(m.cost_usd) FILTER (
+                    WHERE a.assessment_type = 'ai'
+                      AND a.status = 'complete'
+                      AND m.cost_usd IS NOT NULL
+                ) AS mean_cost_usd
             FROM assessments a
             LEFT JOIN assessment_metadata m ON m.assessment_id = a.id
             """
@@ -67,6 +106,12 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
     )
     mean_rel = row["mean_retrieval_relevance"]
     mean_retrieval_relevance = float(mean_rel) if mean_rel is not None else None
+    mean_lat = row["mean_latency_ms"]
+    mean_latency_ms = float(mean_lat) if mean_lat is not None else None
+    mean_cost = row["mean_cost_usd"]
+    mean_cost_usd = float(mean_cost) if mean_cost is not None else None
+
+    langsmith_enabled, langsmith_project, langsmith_url = _langsmith_fields()
 
     return AiOpsSummary(
         total_assessments=total,
@@ -83,4 +128,16 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
             else None
         ),
         retrieval_ran_count=retrieval_ran,
+        mean_latency_ms=(
+            round(mean_latency_ms, 2) if mean_latency_ms is not None else None
+        ),
+        total_input_tokens=int(row["total_input_tokens"] or 0),
+        total_output_tokens=int(row["total_output_tokens"] or 0),
+        total_cost_usd=round(float(row["total_cost_usd"] or 0.0), 8),
+        mean_cost_usd=(
+            round(mean_cost_usd, 8) if mean_cost_usd is not None else None
+        ),
+        langsmith_enabled=langsmith_enabled,
+        langsmith_project=langsmith_project,
+        langsmith_url=langsmith_url,
     )

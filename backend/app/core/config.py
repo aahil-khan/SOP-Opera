@@ -56,6 +56,8 @@ class Settings(BaseSettings):
     langchain_tracing_v2: bool = False
     langchain_api_key: str = ""
     langchain_project: str = "sop-opera"
+    # Optional deep-link override; empty → https://smith.langchain.com when enabled
+    langsmith_project_url: str = ""
     agent_spatial_radius_m: float = 15.0
     # ~0.04 m/px puts Vessel A ↔ Walkway 3 (~337px) inside a 15m radius
     agent_scale_m_per_px: float = 0.04

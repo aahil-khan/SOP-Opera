@@ -76,6 +76,10 @@ async def _seed_mixed_assessments() -> None:
             retrieval_mode: str | None,
             retrieval_score: float | None,
             failure_reason: str | None,
+            tokens_in: int | None = None,
+            tokens_out: int | None = None,
+            cost_usd: float | None = None,
+            latency_ms: int | None = None,
         ) -> None:
             aid = uuid4()
             await session.execute(
@@ -97,11 +101,13 @@ async def _seed_mixed_assessments() -> None:
                     """
                     INSERT INTO assessment_metadata (
                         assessment_id, provider, retrieval_mode, retrieval_score,
-                        failure_reason, retrieved_references
+                        failure_reason, retrieved_references,
+                        tokens_in, tokens_out, cost_usd, latency_ms
                     )
                     VALUES (
                         CAST(:id AS uuid), 'mock', :mode, :score,
-                        :failure_reason, '[]'::jsonb
+                        :failure_reason, '[]'::jsonb,
+                        :tokens_in, :tokens_out, :cost_usd, :latency_ms
                     )
                     """
                 ),
@@ -110,6 +116,10 @@ async def _seed_mixed_assessments() -> None:
                     "mode": retrieval_mode,
                     "score": retrieval_score,
                     "failure_reason": failure_reason,
+                    "tokens_in": tokens_in,
+                    "tokens_out": tokens_out,
+                    "cost_usd": cost_usd,
+                    "latency_ms": latency_ms,
                 },
             )
 
@@ -119,12 +129,20 @@ async def _seed_mixed_assessments() -> None:
             retrieval_mode="rag",
             retrieval_score=0.9,
             failure_reason=None,
+            tokens_in=100,
+            tokens_out=40,
+            cost_usd=0.001,
+            latency_ms=200,
         )
         await insert_assessment(
             status="complete",
             retrieval_mode="deterministic",
             retrieval_score=None,
             failure_reason=None,
+            tokens_in=50,
+            tokens_out=20,
+            cost_usd=0.0,
+            latency_ms=100,
         )
         await insert_assessment(
             status="failed",
@@ -160,3 +178,11 @@ async def test_ai_ops_summary_math(client: AsyncClient):
     assert body["mean_retrieval_relevance"] is not None
     # mean of 0.9 and 0.2
     assert abs(body["mean_retrieval_relevance"] - 0.55) < 0.01
+    assert body["total_input_tokens"] == 150
+    assert body["total_output_tokens"] == 60
+    assert abs(body["total_cost_usd"] - 0.001) < 1e-9
+    assert body["mean_latency_ms"] is not None
+    assert abs(body["mean_latency_ms"] - 150.0) < 0.1
+    assert "langsmith_enabled" in body
+    assert "langsmith_project" in body
+    assert body["langsmith_project"] == "sop-opera"
