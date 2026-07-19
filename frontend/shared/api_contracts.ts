@@ -11,7 +11,7 @@ export const REST_GROUPS = {
     "POST /reviews/{id}/escalate",
     "POST /reviews/{id}/reopen",
   ],
-  context: ["POST /context", "GET /assets", "GET /assets/{id}/context"],
+  context: ["POST /context", "GET /assets", "GET /assets/{id}/context", "GET /assets/{id}/owner"],
   assessments: [
     "GET /reviews/{id}/assessments",
     "POST /reviews/{id}/assessments/retry",

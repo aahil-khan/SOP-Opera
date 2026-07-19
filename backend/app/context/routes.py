@@ -7,9 +7,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context.providers.manual import ManualInputProvider
 from app.context.schemas import ContextIn, ContextIngestResult
-from app.context.service import AssetNotFoundError, list_asset_context, list_assets
+from app.context.service import (
+    AssetNotFoundError,
+    get_asset,
+    list_asset_context,
+    list_assets,
+)
 from app.db.session import get_session
-from shared.python.schemas import Asset, Context
+from app.reviews.ownership import get_zone_owner
+from shared.python.schemas import AreaOwner, Asset, Context
 
 router = APIRouter(tags=["context"])
 
@@ -31,6 +37,18 @@ async def get_assets(
     session: AsyncSession = Depends(get_session),
 ) -> list[Asset]:
     return await list_assets(session)
+
+
+@router.get("/assets/{asset_id}/owner", response_model=AreaOwner | None)
+async def get_asset_owner(
+    asset_id: UUID,
+    session: AsyncSession = Depends(get_session),
+) -> AreaOwner | None:
+    """Zone area owner for an asset — available without an open review."""
+    asset = await get_asset(session, asset_id)
+    if asset is None:
+        raise HTTPException(status_code=404, detail=f"Asset {asset_id} not found")
+    return await get_zone_owner(session, asset.zone)
 
 
 @router.get("/assets/{asset_id}/context", response_model=list[Context])
