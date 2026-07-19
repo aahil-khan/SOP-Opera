@@ -57,6 +57,28 @@
   min-height: 0;
 }
 
+.ambientBtn {
+  padding: 0.2rem 0.5rem;
+  font-size: var(--text-xs);
+  font-family: inherit;
+  font-weight: var(--weight-medium);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-muted);
+  background: var(--surface-nav);
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+.ambientBtn[data-on="true"] {
+  border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 50%, var(--border-muted));
+  color: var(--accent-ok, #2f9e6a);
+}
+
+.ambientBtn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 .status {
   max-width: 160px;
   overflow: hidden;

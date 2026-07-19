@@ -2,8 +2,11 @@
 
 import Link from "next/link";
 import type { LiveAssetView } from "@/lib/liveStore";
+import { spatialLinksFromAssessment } from "@/lib/liveStore";
 import type { ReasoningFactor, RetrievedReference } from "@/shared/schemas";
 import { ReasoningTrace } from "@/components/trace/ReasoningTrace";
+import { SpatialGraphPanel } from "./SpatialGraphPanel";
+import { AssetTelemetry } from "./AssetTelemetry";
 import styles from "./AssetPanel.module.css";
 
 interface AssetPanelProps {
@@ -62,6 +65,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
     assessment?.reasoning_factors ??
     assessment?.metadata?.reasoning_factors ??
     [];
+  const spatialLinks = spatialLinksFromAssessment(assessment);
 
   const summary =
     assessment?.summary ??
@@ -183,6 +187,8 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
           )}
         </section>
 
+        <AssetTelemetry assetId={asset.id} />
+
         <section className={styles.section} aria-labelledby="evidence-heading">
           <h3 id="evidence-heading" className={styles.sectionTitle}>
             Evidence
@@ -249,6 +255,12 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
           )}
         </section>
 
+        <SpatialGraphPanel
+          assetId={asset.id}
+          assetName={asset.name}
+          spatialLinks={spatialLinks}
+        />
+
         <section className={styles.section} aria-labelledby="do-heading">
           <h3 id="do-heading" className={styles.sectionTitle}>
             Recommended action
@@ -285,6 +297,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
             decision={decision}
             areaOwner={areaOwner}
             compact
+            spatialLinks={spatialLinks}
           />
         </details>
       </div>

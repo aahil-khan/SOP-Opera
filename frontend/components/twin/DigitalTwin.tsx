@@ -12,6 +12,8 @@ import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
 import { AssetPanel } from "./AssetPanel";
+import { AgentBrainPanel } from "./AgentBrainPanel";
+import { TelemetryStrip } from "./TelemetryStrip";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { MapControls } from "./MapControls";
 import { MapViewport, type MapViewportHandle } from "./MapViewport";
@@ -358,6 +360,14 @@ export function DigitalTwin() {
         {selected && viewMode === "detail" ? (
           <AssetPanel view={selected} onClose={() => selectAsset(null)} />
         ) : null}
+
+        <TelemetryStrip
+          shiftForDrawer={Boolean(selected) && viewMode === "detail"}
+        />
+
+        <AgentBrainPanel
+          shiftForDrawer={Boolean(selected) && viewMode === "detail"}
+        />
       </div>
 
       <ReviewSidebar

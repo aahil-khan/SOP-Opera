@@ -32,6 +32,200 @@ import {
 import { presentNotification } from "@/lib/notificationPresentation";
 
 const NOTIFICATION_CAP = 50;
+const AGENT_STEP_CAP = 100;
+const TELEMETRY_RING_CAP = 60;
+
+export type TelemetrySource = "scada" | "ptw" | "maintenance" | "workforce" | string;
+
+export type TelemetryMetricKey =
+  | "gas_reading"
+  | "temp_reading"
+  | "vibration_mm_s"
+  | "level_pct"
+  | "ph"
+  | "wind_ms";
+
+export interface TelemetryPoint {
+  t: number;
+  v: number;
+}
+
+export interface TelemetrySample {
+  source: TelemetrySource;
+  asset_id: string;
+  asset_name?: string;
+  category: string;
+  payload: Record<string, unknown>;
+  ts: string;
+  mode?: string;
+}
+
+export interface TelemetryStatusChip {
+  source: TelemetrySource;
+  asset_id: string;
+  category: string;
+  label: string;
+  ts: string;
+}
+
+const NUMERIC_METRICS: TelemetryMetricKey[] = [
+  "gas_reading",
+  "temp_reading",
+  "vibration_mm_s",
+  "level_pct",
+  "ph",
+  "wind_ms",
+];
+
+function ringKey(assetId: string, metric: string): string {
+  return `${assetId}::${metric}`;
+}
+
+function statusLabel(category: string, payload: Record<string, unknown>): string {
+  if (category === "permit") {
+    return `Permit ${String(payload.status ?? "?")} · ${String(payload.work_type ?? "").replaceAll("_", " ")}`;
+  }
+  if (category === "isolation_status") {
+    return payload.complete ? "Isolation complete" : "Isolation incomplete";
+  }
+  if (category === "worker_location") {
+    return `Worker · ${String(payload.zone ?? "?")}`;
+  }
+  if (category === "ppe_status") {
+    return payload.compliant === false
+      ? `PPE missing ${String(payload.missing ?? "")}`
+      : "PPE compliant";
+  }
+  if (category === "lift_plan") {
+    return `Lift ${String(payload.status ?? "?")}`;
+  }
+  return category;
+}
+
+function ingestTelemetrySample(
+  state: {
+    telemetrySeries: Record<string, TelemetryPoint[]>;
+    telemetryLatest: Record<string, TelemetrySample>;
+    telemetryBySource: Record<string, TelemetrySample>;
+    telemetryStatus: TelemetryStatusChip[];
+  },
+  sample: TelemetrySample,
+): Partial<{
+  telemetrySeries: Record<string, TelemetryPoint[]>;
+  telemetryLatest: Record<string, TelemetrySample>;
+  telemetryBySource: Record<string, TelemetrySample>;
+  telemetryStatus: TelemetryStatusChip[];
+}> {
+  const t = Date.parse(sample.ts) || Date.now();
+  const series = { ...state.telemetrySeries };
+  let touchedNumeric = false;
+  for (const key of NUMERIC_METRICS) {
+    const raw = sample.payload[key];
+    if (typeof raw !== "number") continue;
+    touchedNumeric = true;
+    const rk = ringKey(sample.asset_id, key);
+    const prev = series[rk] ?? [];
+    series[rk] = [...prev, { t, v: raw }].slice(-TELEMETRY_RING_CAP);
+  }
+
+  const latest = {
+    ...state.telemetryLatest,
+    [sample.asset_id]: sample,
+  };
+  const bySource = {
+    ...state.telemetryBySource,
+    [`${sample.source}:${sample.asset_id}`]: sample,
+    [sample.source]: sample,
+  };
+
+  let status = state.telemetryStatus;
+  if (!touchedNumeric || ["permit", "isolation_status", "worker_location", "ppe_status", "lift_plan"].includes(sample.category)) {
+    if (
+      ["permit", "isolation_status", "worker_location", "ppe_status", "lift_plan"].includes(
+        sample.category,
+      )
+    ) {
+      const chip: TelemetryStatusChip = {
+        source: sample.source,
+        asset_id: sample.asset_id,
+        category: sample.category,
+        label: statusLabel(sample.category, sample.payload),
+        ts: sample.ts,
+      };
+      status = [
+        chip,
+        ...state.telemetryStatus.filter(
+          (c) =>
+            !(
+              c.asset_id === chip.asset_id &&
+              c.category === chip.category
+            ),
+        ),
+      ].slice(0, 40);
+    }
+  }
+
+  return {
+    telemetrySeries: series,
+    telemetryLatest: latest,
+    telemetryBySource: bySource,
+    telemetryStatus: status,
+  };
+}
+
+function asTelemetrySample(
+  payload: Record<string, unknown>,
+): TelemetrySample | null {
+  if (typeof payload.asset_id !== "string") return null;
+  if (typeof payload.category !== "string") return null;
+  const rawPayload = payload.payload;
+  if (!rawPayload || typeof rawPayload !== "object") return null;
+  return {
+    source: typeof payload.source === "string" ? payload.source : "scada",
+    asset_id: payload.asset_id,
+    asset_name:
+      typeof payload.asset_name === "string" ? payload.asset_name : undefined,
+    category: payload.category,
+    payload: rawPayload as Record<string, unknown>,
+    ts:
+      typeof payload.ts === "string"
+        ? payload.ts
+        : new Date().toISOString(),
+    mode: typeof payload.mode === "string" ? payload.mode : undefined,
+  };
+}
+
+
+export type AgentStepKind =
+  | "started"
+  | "tool_call"
+  | "observation"
+  | "local_risk"
+  | "verdict"
+  | "completed"
+  | "error";
+
+export interface AgentStepEvent {
+  id: string;
+  agent: string;
+  kind: AgentStepKind;
+  message: string;
+  review_id: string | null;
+  assessment_id: string | null;
+  detail: Record<string, unknown>;
+  ts: string;
+}
+
+export interface SpatialLinkView {
+  from_asset_id: string;
+  to_asset_id: string;
+  from_label: string;
+  to_label: string;
+  relation: string;
+  distance_m: number;
+  floors_apart: number;
+  reason: string;
+}
 
 export interface LiveAssetView {
   asset: Asset;
@@ -49,6 +243,11 @@ interface LiveState {
   notifications: Notification[];
   /** Client-side unread ids (bootstrap history starts as read). */
   unreadNotificationIds: string[];
+  agentSteps: AgentStepEvent[];
+  telemetrySeries: Record<string, TelemetryPoint[]>;
+  telemetryLatest: Record<string, TelemetrySample>;
+  telemetryBySource: Record<string, TelemetrySample>;
+  telemetryStatus: TelemetryStatusChip[];
   selectedAssetId: string | null;
   bootstrapped: boolean;
   loading: boolean;
@@ -71,6 +270,8 @@ interface LiveState {
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
   markNotificationsRead: () => void;
+  clearAgentSteps: () => void;
+  clearTelemetry: () => void;
   handleRealtimeEvent: (type: string, payload: Record<string, unknown>) => void;
 }
 
@@ -122,6 +323,69 @@ function asNotification(payload: Record<string, unknown>): Notification | null {
   };
 }
 
+function asAgentStep(payload: Record<string, unknown>): AgentStepEvent | null {
+  if (typeof payload.agent !== "string" || typeof payload.message !== "string") {
+    return null;
+  }
+  const kind = typeof payload.kind === "string" ? payload.kind : "observation";
+  return {
+    id: `${payload.agent}-${payload.ts ?? Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+    agent: payload.agent,
+    kind: kind as AgentStepKind,
+    message: payload.message,
+    review_id: typeof payload.review_id === "string" ? payload.review_id : null,
+    assessment_id:
+      typeof payload.assessment_id === "string" ? payload.assessment_id : null,
+    detail:
+      payload.detail && typeof payload.detail === "object"
+        ? (payload.detail as Record<string, unknown>)
+        : {},
+    ts:
+      typeof payload.ts === "string" ? payload.ts : new Date().toISOString(),
+  };
+}
+
+export function spatialLinksFromAssessment(
+  assessment: AssessmentHistoryItem | null | undefined,
+): SpatialLinkView[] {
+  if (!assessment) return [];
+  const trace =
+    (assessment as AssessmentHistoryItem & { agent_trace?: unknown[] }).agent_trace ??
+    (assessment.metadata as { agent_trace?: unknown[] } | null)?.agent_trace ??
+    [];
+  if (!Array.isArray(trace)) return [];
+  const links: SpatialLinkView[] = [];
+  const seen = new Set<string>();
+  for (const raw of trace) {
+    if (!raw || typeof raw !== "object") continue;
+    const step = raw as Record<string, unknown>;
+    const detail =
+      step.detail && typeof step.detail === "object"
+        ? (step.detail as Record<string, unknown>)
+        : {};
+    const arr = detail.spatial_links;
+    if (!Array.isArray(arr)) continue;
+    for (const item of arr) {
+      if (!item || typeof item !== "object") continue;
+      const L = item as Record<string, unknown>;
+      const key = `${L.from_asset_id}-${L.to_asset_id}-${L.relation}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      links.push({
+        from_asset_id: String(L.from_asset_id ?? ""),
+        to_asset_id: String(L.to_asset_id ?? ""),
+        from_label: String(L.from_label ?? L.from_asset_id ?? ""),
+        to_label: String(L.to_label ?? L.to_asset_id ?? ""),
+        relation: String(L.relation ?? "NEAR"),
+        distance_m: Number(L.distance_m ?? 0),
+        floors_apart: Number(L.floors_apart ?? 0),
+        reason: String(L.reason ?? ""),
+      });
+    }
+  }
+  return links;
+}
+
 export const useLiveStore = create<LiveState>((set, get) => ({
   assets: [],
   reviews: [],
@@ -129,6 +393,11 @@ export const useLiveStore = create<LiveState>((set, get) => ({
   assessmentsByReview: {},
   notifications: [],
   unreadNotificationIds: [],
+  agentSteps: [],
+  telemetrySeries: {},
+  telemetryLatest: {},
+  telemetryBySource: {},
+  telemetryStatus: [],
   selectedAssetId: null,
   bootstrapped: false,
   loading: false,
@@ -229,6 +498,19 @@ export const useLiveStore = create<LiveState>((set, get) => ({
     set({ unreadNotificationIds: [] });
   },
 
+  clearAgentSteps: () => {
+    set({ agentSteps: [] });
+  },
+
+  clearTelemetry: () => {
+    set({
+      telemetrySeries: {},
+      telemetryLatest: {},
+      telemetryBySource: {},
+      telemetryStatus: [],
+    });
+  },
+
   loadReviewDetail: async (id: string) => {
     const [detail, assessments] = await Promise.all([
       fetchReviewDetail(id),
@@ -271,6 +553,60 @@ export const useLiveStore = create<LiveState>((set, get) => ({
   },
 
   handleRealtimeEvent: (type, payload) => {
+    if (type === "agent.step") {
+      const step = asAgentStep(payload);
+      if (step) {
+        set((state) => ({
+          agentSteps: [...state.agentSteps, step].slice(-AGENT_STEP_CAP),
+        }));
+      }
+      return;
+    }
+
+    if (type === "telemetry.sample") {
+      const sample = asTelemetrySample(payload);
+      if (sample) {
+        set((state) => ingestTelemetrySample(state, sample));
+      }
+      return;
+    }
+
+    if (type === "sim.source_emit" || type === "sim.orchestrator") {
+      const message =
+        typeof payload.message === "string"
+          ? payload.message
+          : `${type} event`;
+      const source =
+        typeof payload.source === "string" ? payload.source : "sim";
+      const step: AgentStepEvent = {
+        id: `sim-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+        agent: type === "sim.orchestrator" ? "sim_orchestrator" : `sim_${source}`,
+        kind: type === "sim.orchestrator" ? "started" : "tool_call",
+        message,
+        review_id:
+          typeof payload.review_id === "string" ? payload.review_id : null,
+        assessment_id: null,
+        detail: payload,
+        ts: new Date().toISOString(),
+      };
+      set((state) => {
+        const next: Partial<LiveState> = {
+          agentSteps: [...state.agentSteps, step].slice(-AGENT_STEP_CAP),
+        };
+        if (type === "sim.source_emit") {
+          const sample = asTelemetrySample(payload);
+          if (sample) {
+            Object.assign(next, ingestTelemetrySample(state, sample));
+          }
+        }
+        return next;
+      });
+      if (type === "sim.source_emit") {
+        void get().refreshOverview();
+      }
+      return;
+    }
+
     const reviewId =
       typeof payload.review_id === "string" ? payload.review_id : null;
     void get().refreshOverview();
@@ -310,6 +646,18 @@ export const useLiveStore = create<LiveState>((set, get) => ({
     }
   },
 }));
+
+export function telemetryRingKey(assetId: string, metric: string): string {
+  return ringKey(assetId, metric);
+}
+
+export function getAssetMetricSeries(
+  series: Record<string, TelemetryPoint[]>,
+  assetId: string,
+  metric: TelemetryMetricKey,
+): TelemetryPoint[] {
+  return series[ringKey(assetId, metric)] ?? [];
+}
 
 export function getLiveAssetViews(
   state: Pick<

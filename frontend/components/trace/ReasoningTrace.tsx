@@ -10,6 +10,11 @@ import type {
   ReasoningFactor,
   RetrievedReference,
 } from "@/shared/schemas";
+import {
+  spatialLinksFromAssessment,
+  type SpatialLinkView,
+} from "@/lib/liveStore";
+import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { TraceChip, TraceNode } from "./TraceNode";
 import styles from "./ReasoningTrace.module.css";
 
@@ -22,6 +27,7 @@ interface ReasoningTraceProps {
   decision: Decision | null;
   areaOwner?: AreaOwner | null;
   compact?: boolean;
+  spatialLinks?: SpatialLinkView[];
 }
 
 function ctxSummary(c: Context): string {
@@ -169,12 +175,16 @@ export function ReasoningTrace({
   decision,
   areaOwner = null,
   compact = false,
+  spatialLinks: spatialLinksProp,
 }: ReasoningTraceProps) {
   const factors =
     assessment?.reasoning_factors ??
     assessment?.metadata?.reasoning_factors ??
     [];
   const workers = onSiteWorkers(context);
+  const spatialLinks =
+    spatialLinksProp ??
+    spatialLinksFromAssessment(assessment as AssessmentHistoryItem | null);
 
   return (
     <div className={`${styles.trace} ${compact ? styles.compact : ""}`}>
@@ -253,6 +263,28 @@ export function ReasoningTrace({
           <TraceNode label="Retrieved knowledge" filled={references.length > 0}>
             <EvidenceList references={references} />
           </TraceNode>
+          {spatialLinks.length > 0 && (
+            <TraceNode label="Spatial KG links" filled>
+              <ul className={styles.refList}>
+                {spatialLinks.map((L) => (
+                  <li
+                    key={`${L.from_asset_id}-${L.to_asset_id}-${L.relation}`}
+                    className={styles.refCard}
+                  >
+                    <span className={styles.pathBadge} data-path="rag">
+                      {L.relation}
+                    </span>
+                    <span className={styles.refTitle}>
+                      {L.from_label} ↔ {L.to_label} · {L.distance_m.toFixed(1)}m
+                    </span>
+                    {L.reason && (
+                      <p className={styles.refSnippet}>{L.reason}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </TraceNode>
+          )}
         </div>
       </details>
 

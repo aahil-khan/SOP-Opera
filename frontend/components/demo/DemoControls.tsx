@@ -22,6 +22,8 @@ interface DemoStatus {
   started_at: string | null;
   issues_spawned?: number;
   active_issue_count?: number;
+  ambient_running?: boolean;
+  demo_locked_assets?: string[];
 }
 
 type DemoModeKind = "scripted" | "random";
@@ -62,6 +64,8 @@ const FLOOR_OPTIONS: { id: PlantFloor; label: string }[] = [
 export function DemoControls() {
   const bootstrap = useLiveStore((s) => s.bootstrap);
   const refreshOverview = useLiveStore((s) => s.refreshOverview);
+  const clearAgentSteps = useLiveStore((s) => s.clearAgentSteps);
+  const clearTelemetry = useLiveStore((s) => s.clearTelemetry);
 
   const [mode, setMode] = useState<DemoModeKind>("scripted");
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
@@ -69,6 +73,7 @@ export function DemoControls() {
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [ambientBusy, setAmbientBusy] = useState(false);
 
   const [maxIssues, setMaxIssues] = useState("8");
   const [paceMin, setPaceMin] = useState("4");
@@ -103,13 +108,20 @@ export function DemoControls() {
   }, [refreshStatus]);
 
   useEffect(() => {
-    if (!status?.running) return;
+    // Poll ambient even when demo is idle so Live indicator stays accurate
     const id = setInterval(() => {
       void refreshStatus();
+    }, status?.running ? 800 : 2500);
+    return () => clearInterval(id);
+  }, [status?.running, refreshStatus]);
+
+  useEffect(() => {
+    if (!status?.running) return;
+    const id = setInterval(() => {
       void refreshOverview();
     }, 800);
     return () => clearInterval(id);
-  }, [status?.running, refreshStatus, refreshOverview]);
+  }, [status?.running, refreshOverview]);
 
   function toggleFloor(f: PlantFloor) {
     setFloors((prev) => {
@@ -125,6 +137,7 @@ export function DemoControls() {
     setBusy(true);
     setError(null);
     try {
+      clearAgentSteps();
       if (mode === "scripted") {
         const st = await demoRequest<DemoStatus>(
           `/demo/scenarios/${scenario}/start`,
@@ -161,6 +174,8 @@ export function DemoControls() {
     setError(null);
     try {
       await demoRequest("/demo/reset", { method: "POST" });
+      clearAgentSteps();
+      clearTelemetry();
       setStatus({
         running: false,
         mode: "idle",
@@ -180,18 +195,55 @@ export function DemoControls() {
     }
   }
 
+  async function onToggleAmbient() {
+    setAmbientBusy(true);
+    setError(null);
+    try {
+      const path = status?.ambient_running
+        ? "/demo/ambient/stop"
+        : "/demo/ambient/start";
+      const st = await demoRequest<DemoStatus>(path, { method: "POST" });
+      // Ambient endpoints return ambient status shape; refresh full demo status
+      void refreshStatus();
+      if (!status?.ambient_running && "running" in st) {
+        /* started */
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setAmbientBusy(false);
+    }
+  }
+
   const running = Boolean(status?.running);
+  const ambientOn = Boolean(status?.ambient_running);
   const statusText = error
     ? error
     : running
       ? status?.mode === "random"
         ? `random #${status?.issues_spawned ?? 0} · open ${status?.active_issue_count ?? "?"}`
         : `${status?.scenario ?? "…"} ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`
-      : "Idle";
+      : ambientOn
+        ? "Live plant"
+        : "Idle";
 
   return (
     <div className={styles.controls} role="group" aria-label="Demo Mode">
       <span className={styles.label}>Demo</span>
+      <button
+        type="button"
+        className={styles.ambientBtn}
+        data-on={ambientOn ? "true" : undefined}
+        disabled={ambientBusy || busy}
+        onClick={() => void onToggleAmbient()}
+        title={
+          ambientOn
+            ? "Ambient live feed on (rare coincidence failures possible)"
+            : "Start ambient live plant feed"
+        }
+      >
+        {ambientBusy ? "…" : ambientOn ? "Live on" : "Live off"}
+      </button>
       <select
         className={styles.select}
         aria-label="Demo mode"
