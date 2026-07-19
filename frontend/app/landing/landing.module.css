@@ -1,0 +1,19 @@
+.landing {
+  min-height: 100vh;
+  background: var(--surface-app);
+}
+
+/* ── Scroll fade animation ── */
+
+.fadeSection {
+  opacity: 0;
+  transform: translateY(16px);
+  transition:
+    opacity var(--duration-slow) var(--ease-out),
+    transform var(--duration-slow) var(--ease-out);
+}
+
+.visible {
+  opacity: 1;
+  transform: translateY(0);
+}

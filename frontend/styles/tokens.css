@@ -18,6 +18,11 @@
   --space-6: 24px;
   --space-7: 28px;
   --space-8: 32px;
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
 
   /* Typography — Geist UI, Satoshi headings, Plus Jakarta labels */
   --font-sans: var(--font-geist-sans), Geist, system-ui, sans-serif;
@@ -29,6 +34,9 @@
   --text-md: 0.875rem; /* 14px */
   --text-lg: 1rem; /* 16px */
   --text-xl: 1.125rem; /* 18px */
+  --text-2xl: 1.5rem; /* 24px */
+  --text-3xl: 2rem; /* 32px */
+  --text-4xl: 2.75rem; /* 44px */
   --leading-tight: 1.25;
   --leading-normal: 1.45;
   --leading-relaxed: 1.55;
@@ -42,10 +50,12 @@
   --radius-sm: 3px;
   --radius-md: 6px;
   --radius-lg: 8px;
+  --radius-xl: 12px;
 
   /* Motion */
   --duration-fast: 150ms;
   --duration-normal: 200ms;
+  --duration-slow: 400ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 
   /* Scrollbars — thin & theme-aware */

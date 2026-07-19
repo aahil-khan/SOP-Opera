@@ -4,7 +4,7 @@ import { Plus_Jakarta_Sans } from "next/font/google";
 import { GeistMono } from "geist/font/mono";
 import { GeistSans } from "geist/font/sans";
 import "./globals.css";
-import { TopNav } from "@/components/nav/TopNav";
+import { AppShell } from "@/components/nav/AppShell";
 import { AppToaster } from "@/components/notifications/AppToaster";
 import { RealtimeProvider } from "@/components/RealtimeProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
@@ -81,10 +81,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <RealtimeProvider>
-            <div className="app-shell">
-              <TopNav />
-              <main className="app-main">{children}</main>
-            </div>
+            <AppShell>{children}</AppShell>
             <AppToaster />
           </RealtimeProvider>
         </ThemeProvider>

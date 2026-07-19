@@ -1,0 +1,393 @@
+.hero {
+  padding: var(--space-24) 0 var(--space-20);
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 var(--space-8);
+  display: grid;
+  grid-template-columns: 1fr 1.15fr;
+  gap: var(--space-16);
+  align-items: center;
+}
+
+/* ── Left column ── */
+
+.left {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-6);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--text-4xl);
+  font-weight: var(--weight-bold);
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  color: var(--text-primary);
+}
+
+.description {
+  margin: 0;
+  font-size: var(--text-lg);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+  max-width: 480px;
+}
+
+.actions {
+  display: flex;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+
+.trust {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+}
+
+.trustItem {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  font-weight: var(--weight-medium);
+}
+
+.trustSep {
+  color: var(--border-default);
+  font-size: var(--text-xs);
+}
+
+/* ── Right column (preview) ── */
+
+.right {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.previewWrap {
+  position: relative;
+  display: flex;
+  gap: var(--space-3);
+  align-items: flex-start;
+}
+
+.previewWindow {
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  overflow: hidden;
+  width: 420px;
+}
+
+.previewTitleBar {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-card);
+  border-bottom: 1px solid var(--border-muted);
+}
+
+.previewDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--border-default);
+}
+
+.previewDot[data-color="red"] {
+  background: var(--status-blocking);
+  opacity: 0.6;
+}
+
+.previewDot[data-color="yellow"] {
+  background: var(--status-elevated);
+  opacity: 0.6;
+}
+
+.previewDot[data-color="green"] {
+  background: var(--status-nominal);
+  opacity: 0.6;
+}
+
+.previewTitle {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  margin-left: var(--space-2);
+  font-weight: var(--weight-medium);
+}
+
+.previewBody {
+  padding: 0;
+}
+
+.floorSvg {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.svgLabel {
+  font-size: 7px;
+  fill: var(--text-muted);
+  font-family: var(--font-mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.svgAsset {
+  font-size: 7px;
+  fill: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.svgAssetRisk {
+  font-size: 7px;
+  fill: var(--status-blocking);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+}
+
+.svgAssetSm {
+  font-size: 6px;
+  fill: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.svgSensor {
+  font-size: 6px;
+  fill: var(--status-elevated);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+}
+
+.svgPermit {
+  font-size: 5.5px;
+  fill: var(--status-elevated);
+  font-family: var(--font-mono);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.06em;
+}
+
+.riskPulse {
+  animation: riskPulseAnim 2.5s ease-in-out infinite;
+}
+
+@keyframes riskPulseAnim {
+  0%, 100% { stroke-opacity: 1; }
+  50% { stroke-opacity: 0.4; }
+}
+
+.sensorPulse {
+  animation: sensorPulseAnim 2s ease-in-out infinite;
+}
+
+@keyframes sensorPulseAnim {
+  0%, 100% { opacity: 1; r: 5; }
+  50% { opacity: 0.5; r: 7; }
+}
+
+.hazardZone {
+  animation: hazardPulse 3s ease-in-out infinite;
+}
+
+@keyframes hazardPulse {
+  0%, 100% { fill-opacity: 0.06; }
+  50% { fill-opacity: 0.12; }
+}
+
+/* ── Risk panel ── */
+
+.riskPanel {
+  width: 200px;
+  background: var(--surface-panel);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-xl);
+  padding: var(--space-4);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.riskHeader {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--status-blocking);
+}
+
+.riskDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--status-blocking);
+  animation: riskDotPulse 1.5s ease-in-out infinite;
+}
+
+@keyframes riskDotPulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.4; }
+}
+
+.riskList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.riskItem {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.riskIcon {
+  font-size: var(--text-xs);
+  flex-shrink: 0;
+}
+
+.riskIcon[data-status="elevated"] {
+  color: var(--status-elevated);
+}
+
+.riskIcon[data-status="info"] {
+  color: var(--status-info);
+}
+
+.riskActions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  border-top: 1px solid var(--border-muted);
+  padding-top: var(--space-3);
+}
+
+.riskLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  font-weight: var(--weight-semibold);
+}
+
+.riskBtnRow {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.riskBtnBlock {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--status-blocking);
+  background: var(--status-blocking-muted);
+  color: var(--status-blocking);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  text-align: center;
+}
+
+.riskBtnApprove {
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: var(--surface-card);
+  color: var(--text-secondary);
+  font-size: 10px;
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  text-align: center;
+}
+
+.riskScore {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid var(--border-muted);
+  padding-top: var(--space-3);
+}
+
+.riskScoreLabel {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+  font-weight: var(--weight-semibold);
+}
+
+.riskScoreValue {
+  font-size: var(--text-2xl);
+  font-weight: var(--weight-bold);
+  font-family: var(--font-mono);
+}
+
+.riskScoreValue[data-risk="blocking"] {
+  color: var(--status-blocking);
+}
+
+.riskScoreValue[data-risk="elevated"] {
+  color: var(--status-elevated);
+}
+
+/* ── Responsive ── */
+
+@media (max-width: 1024px) {
+  .container {
+    grid-template-columns: 1fr;
+    gap: var(--space-12);
+  }
+
+  .right {
+    justify-content: center;
+  }
+
+  .heading {
+    font-size: var(--text-3xl);
+  }
+}
+
+@media (max-width: 640px) {
+  .hero {
+    padding: var(--space-16) 0 var(--space-12);
+  }
+
+  .previewWrap {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .previewWindow {
+    width: 100%;
+  }
+
+  .riskPanel {
+    width: 100%;
+  }
+
+  .heading {
+    font-size: var(--text-2xl);
+  }
+
+  .trust {
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+
+  .trustSep {
+    display: none;
+  }
+}
