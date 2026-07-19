@@ -1,0 +1,108 @@
+/* Shared chrome for floatable/resizable twin panels (OverviewPanel, ReviewSidebar) */
+
+.rh {
+  position: absolute;
+  z-index: 20;
+}
+
+/* Edges */
+.rhN { top: 0;    left: 10px; right: 10px; height: 6px;  cursor: ns-resize; }
+.rhS { bottom: 0; left: 10px; right: 10px; height: 6px;  cursor: ns-resize; }
+.rhE { right: 0;  top: 10px;  bottom: 10px; width: 6px;  cursor: ew-resize; }
+.rhW { left: 0;   top: 10px;  bottom: 10px; width: 6px;  cursor: ew-resize; }
+
+.rhN:hover, .rhN:active,
+.rhS:hover, .rhS:active,
+.rhE:hover, .rhE:active,
+.rhW:hover, .rhW:active {
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 25%, transparent);
+}
+
+/* Corners — 14×14 hit area, bigger than edges for easy grabbing */
+.rhNE { top: 0;    right: 0;  width: 14px; height: 14px; cursor: nesw-resize; }
+.rhNW { top: 0;    left: 0;   width: 14px; height: 14px; cursor: nwse-resize; }
+.rhSE { bottom: 0; right: 0;  width: 14px; height: 14px; cursor: nwse-resize; }
+.rhSW { bottom: 0; left: 0;   width: 14px; height: 14px; cursor: nesw-resize; }
+
+.rhNE::after, .rhNW::after, .rhSE::after, .rhSW::after {
+  content: "";
+  position: absolute;
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  opacity: 0.5;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              border-color var(--duration-fast) var(--ease-out);
+}
+
+.rhNE::after { top: 3px;    right: 3px;  border-top: 2px solid var(--border-muted); border-right:  2px solid var(--border-muted); }
+.rhNW::after { top: 3px;    left: 3px;   border-top: 2px solid var(--border-muted); border-left:   2px solid var(--border-muted); }
+.rhSE::after { bottom: 3px; right: 3px;  border-bottom: 2px solid var(--border-muted); border-right:  2px solid var(--border-muted); }
+.rhSW::after { bottom: 3px; left: 3px;   border-bottom: 2px solid var(--border-muted); border-left:   2px solid var(--border-muted); }
+
+.rhNE:hover::after, .rhNW:hover::after,
+.rhSE:hover::after, .rhSW:hover::after {
+  opacity: 1;
+  border-color: var(--accent-ok, #2f9e6a);
+}
+
+/* Snap-back-to-default control, shown only while a panel is floating */
+.snapBack {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 14%, transparent);
+  color: var(--accent-ok, #2f9e6a);
+  font-size: 0.7rem;
+  font-family: inherit;
+  width: 1.4rem;
+  height: 1.4rem;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition:
+    background var(--duration-fast) var(--ease-out),
+    transform var(--duration-fast) var(--ease-out);
+}
+
+.snapBack:hover {
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 26%, transparent);
+  transform: scale(1.06);
+}
+
+.snapBack:active {
+  transform: scale(0.96);
+}
+
+@media (max-width: 640px) {
+  .rh {
+    display: none;
+  }
+}
+
+/* Home-position highlight — shown at the default slot while a panel is being
+   dragged, so the drop target is obvious. Rendered as a sibling that shares
+   the real panel's positioning classes, then re-skinned here. */
+.homeGhost {
+  pointer-events: none !important;
+  user-select: none;
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 7%, transparent) !important;
+  border: 1.5px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 45%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-ok, #2f9e6a) 12%, transparent) !important;
+  backdrop-filter: none !important;
+  z-index: 4;
+  animation:
+    home-ghost-in var(--duration-fast, 150ms) var(--ease-out) both,
+    home-ghost-pulse 1.6s var(--ease-out) infinite;
+}
+
+@keyframes home-ghost-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@keyframes home-ghost-pulse {
+  0%, 100% { border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 35%, transparent); }
+  50%      { border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 70%, transparent); }
+}

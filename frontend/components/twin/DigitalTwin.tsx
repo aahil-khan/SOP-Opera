@@ -12,8 +12,7 @@ import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
 import { AssetPanel } from "./AssetPanel";
-import { TelemetryStrip } from "./TelemetryStrip";
-import { ImpactStrip } from "./ImpactStrip";
+import { OverviewPanel } from "./OverviewPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { ShiftGate, hasStartedShift } from "./ShiftGate";
 import { MapControls } from "./MapControls";
@@ -56,6 +55,13 @@ export function DigitalTwin() {
 
   const mapRef = useRef<MapViewportHandle>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  // Sized for just the 2 active columns (Investigating + Awaiting decision:
+  // 2×148px + gap/padding ≈ 320px) by default — "Closed" stays in the board,
+  // just off to the right, reachable by scrolling the board or widening the panel.
+  const [sidebarWidth, setSidebarWidth] = useState(332);
+  const [sidebarFloating, setSidebarFloating] = useState(false);
+  const [splitH, setSplitH] = useState(260);
+  const vSplitRef = useRef<{ startY: number; startH: number } | null>(null);
   const [legendOpen, setLegendOpen] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [activeFloor, setActiveFloor] = useState<PlantFloor>("ground");
@@ -263,10 +269,16 @@ export function DigitalTwin() {
   }, [viewMode, goPrevFloor, goNextFloor, showOverview, selectedAssetId, selectAsset]);
 
   return (
-    <div className={styles.wrap}>
+    <div
+      className={styles.wrap}
+      style={{
+        ["--affected-panel-width" as string]: `${sidebarWidth}px`,
+        ["--left-bottom-h" as string]: sidebarOpen ? `${splitH}px` : "0px",
+      } as React.CSSProperties}
+    >
       <div
         className={styles.stage}
-        data-affected-inset={sidebarOpen ? "true" : undefined}
+        data-affected-inset={sidebarOpen && !sidebarFloating ? "true" : undefined}
       >
         {viewMode === "overview" ? (
           <FloorOverview
@@ -376,20 +388,35 @@ export function DigitalTwin() {
         {selected && viewMode === "detail" ? (
           <AssetPanel view={selected} onClose={() => selectAsset(null)} />
         ) : null}
-
-        <ImpactStrip
-          shiftForDrawer={Boolean(selected) && viewMode === "detail"}
-        />
-
-        <TelemetryStrip
-          shiftForDrawer={Boolean(selected) && viewMode === "detail"}
-        />
       </div>
+
+      {/* Vertical splitter between Open Work and Live Feed (default docked layout only) */}
+      {sidebarOpen && !sidebarFloating && (
+        <div
+          className={styles.leftSplitter}
+          aria-hidden="true"
+          onPointerDown={(e) => {
+            e.currentTarget.setPointerCapture(e.pointerId);
+            vSplitRef.current = { startY: e.clientY, startH: splitH };
+          }}
+          onPointerMove={(e) => {
+            if (!vSplitRef.current) return;
+            const dy = vSplitRef.current.startY - e.clientY;
+            setSplitH(Math.max(140, Math.min(600, vSplitRef.current.startH + dy)));
+          }}
+          onPointerUp={() => { vSplitRef.current = null; }}
+        />
+      )}
+
+      <OverviewPanel docked={sidebarOpen} dockedWidth={sidebarWidth} />
 
       <ReviewSidebar
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
         affectedCount={affectedCount}
+        width={sidebarWidth}
+        onWidthChange={setSidebarWidth}
+        onFloatingChange={setSidebarFloating}
       />
 
       {shiftGateOpen ? <ShiftGate onStartShift={handleStartShift} /> : null}

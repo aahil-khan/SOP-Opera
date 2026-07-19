@@ -183,6 +183,45 @@
   background: var(--status-blocking);
 }
 
+/* ── Left-column vertical splitter ──────────────────────────────────────── */
+
+.leftSplitter {
+  position: absolute;
+  left: var(--space-3);
+  bottom: calc(var(--left-bottom-h, 260px) + var(--space-3));
+  width: var(--affected-panel-width, 360px);
+  height: 8px;
+  z-index: 7;
+  cursor: ns-resize;
+  border-radius: 4px;
+  transition: background var(--duration-fast) var(--ease-out);
+}
+
+.leftSplitter:hover,
+.leftSplitter:active {
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 25%, transparent);
+}
+
+.leftSplitter::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 2.5rem;
+  height: 2px;
+  border-radius: 1px;
+  background: var(--border-muted);
+  opacity: 0.6;
+  transition: opacity var(--duration-fast) var(--ease-out),
+              background var(--duration-fast) var(--ease-out);
+}
+
+.leftSplitter:hover::after {
+  opacity: 1;
+  background: var(--accent-ok, #2f9e6a);
+}
+
 @media (max-width: 820px) {
   .legend[data-shift="true"] {
     right: var(--space-4);

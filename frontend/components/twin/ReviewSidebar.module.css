@@ -71,27 +71,86 @@
   position: absolute;
   top: var(--space-3);
   left: var(--space-3);
-  bottom: var(--space-3);
+  /* bottom and width are set by inline style, or overridden while floating */
   z-index: 6;
-  width: var(--affected-panel-width, min(360px, calc(100vw - 1.5rem)));
   display: flex;
   flex-direction: column;
-  background: var(--surface-panel);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--surface-raised, var(--surface-panel)) 55%, transparent), transparent 40%),
+    var(--surface-panel);
   border: 1px solid var(--border-default);
-  border-radius: var(--radius-md);
-  box-shadow: var(--shadow-md);
+  border-radius: var(--radius-lg, 14px);
+  box-shadow: var(--shadow-md), inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   overflow: hidden;
   transform: translateX(0);
   opacity: 1;
   transition:
     transform var(--duration-normal) var(--ease-out),
-    opacity var(--duration-normal) var(--ease-out);
+    opacity var(--duration-normal) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out),
+    left var(--duration-normal) var(--ease-out),
+    top var(--duration-normal) var(--ease-out),
+    width var(--duration-normal) var(--ease-out),
+    height var(--duration-normal) var(--ease-out);
 }
 
 .sidebar[data-open="false"] {
   transform: translateX(calc(-100% - var(--space-3)));
   opacity: 0;
   pointer-events: none;
+}
+
+/* While actively dragging/resizing, track the pointer 1:1 — no easing lag */
+.sidebar[data-interacting="true"] {
+  transition:
+    transform var(--duration-normal) var(--ease-out),
+    opacity var(--duration-normal) var(--ease-out);
+  box-shadow: var(--shadow-lg, 0 20px 48px rgba(0,0,0,0.45));
+  border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 35%, var(--border-muted));
+}
+
+/* Floating (dragged and/or resized away from its default corner) rides above everything */
+.sidebar[data-floating="true"] {
+  z-index: 20;
+}
+
+/* Resize handle — right edge of sidebar (docked width-only resize) */
+.resizeHandle {
+  position: absolute;
+  top: 0;
+  right: -4px;
+  width: 8px;
+  bottom: 0;
+  cursor: ew-resize;
+  z-index: 10;
+  border-radius: 4px;
+  transition: background var(--duration-fast, 150ms) ease-out;
+}
+
+.resizeHandle:hover,
+.resizeHandle:active {
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 35%, transparent);
+}
+
+.resizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 2px;
+  height: 2.5rem;
+  border-radius: 1px;
+  background: var(--border-muted);
+  opacity: 0.6;
+  transition: opacity var(--duration-fast, 150ms) ease-out,
+              background var(--duration-fast, 150ms) ease-out;
+}
+
+.resizeHandle:hover::after {
+  opacity: 1;
+  background: var(--accent-ok, #2f9e6a);
 }
 
 .header {
@@ -102,10 +161,30 @@
   padding: var(--space-4) var(--space-3) var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-muted);
   flex-shrink: 0;
+  cursor: grab;
+}
+
+.header:active {
+  cursor: grabbing;
+}
+
+.grip {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  opacity: 0.4;
+  flex-shrink: 0;
+  margin-top: 0.15rem;
 }
 
 .headerText {
   min-width: 0;
+}
+
+.headerControls {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-shrink: 0;
 }
 
 .title {
@@ -167,6 +246,9 @@
   flex: 1;
   min-height: 0;
   scroll-snap-type: x proximity;
+  /* Same fade treatment on the trailing column when it doesn't fully fit. */
+  mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to right, black calc(100% - 20px), transparent 100%);
 }
 
 .column {
@@ -215,6 +297,10 @@
   gap: var(--space-1);
   flex: 1;
   min-height: 0;
+  /* Fade the last item toward transparent instead of a hard clip when the
+     column has more cards than fit — reads as "scroll for more", not broken. */
+  mask-image: linear-gradient(to bottom, black calc(100% - 20px), transparent 100%);
+  -webkit-mask-image: linear-gradient(to bottom, black calc(100% - 20px), transparent 100%);
 }
 
 .columnEmpty {
@@ -338,7 +424,7 @@
 }
 
 @media (max-width: 640px) {
-  .sidebar {
+  .sidebar:not([data-floating="true"]) {
     top: auto;
     bottom: 0;
     left: 0;
