@@ -3,9 +3,9 @@
   flex-direction: column;
   max-height: min(42vh, 360px);
   margin-top: var(--space-3);
-  border: 1px solid var(--border-muted);
+  border: 1px solid color-mix(in srgb, var(--accent-ai) 28%, var(--border-muted));
   border-radius: var(--radius-md);
-  background: color-mix(in srgb, var(--surface-canvas) 70%, transparent);
+  background: color-mix(in srgb, var(--accent-ai) 6%, var(--surface-canvas));
   overflow: hidden;
 }
 
@@ -17,6 +17,7 @@
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-muted);
   flex-shrink: 0;
+  background: color-mix(in srgb, var(--accent-ai) 8%, transparent);
 }
 
 .titleBlock {
@@ -31,7 +32,7 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--accent-ai, #6c8cff);
+  color: var(--accent-ai);
 }
 
 .title {
@@ -45,9 +46,10 @@
   font-size: 0.65rem;
   font-family: var(--font-mono);
   padding: 0.1rem 0.35rem;
-  border-radius: 999px;
-  background: var(--surface-raised, var(--surface-panel));
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
   color: var(--text-muted);
+  border: 1px solid var(--border-muted);
 }
 
 .verdictBanner {
@@ -55,8 +57,8 @@
   padding: var(--space-2) var(--space-3);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  color: var(--status-blocking, #c44);
-  background: color-mix(in srgb, var(--status-blocking, #c44) 12%, transparent);
+  color: var(--status-blocking);
+  background: var(--status-blocking-muted);
   border-bottom: 1px solid var(--border-muted);
   flex-shrink: 0;
 }
@@ -64,7 +66,7 @@
 .clearancePin {
   padding: var(--space-2) var(--space-3);
   border-bottom: 1px solid var(--border-muted);
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 8%, transparent);
+  background: var(--status-nominal-muted);
   flex-shrink: 0;
 }
 
@@ -74,7 +76,7 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.05em;
   text-transform: uppercase;
-  color: var(--accent-ok, #2f9e6a);
+  color: var(--status-nominal);
   margin-bottom: 0.25rem;
 }
 
@@ -94,13 +96,13 @@
 }
 
 .kindClearance {
-  color: var(--accent-ok, #2f9e6a);
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 16%, transparent);
+  color: var(--status-nominal);
+  background: var(--status-nominal-muted);
 }
 
 .step[data-finding="clearance"] {
   opacity: 0.78;
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 6%, transparent);
+  background: var(--status-nominal-muted);
 }
 
 .step[data-finding="clearance"] .message {
@@ -134,7 +136,13 @@
   align-items: baseline;
   padding: var(--space-2);
   border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-raised, var(--surface-panel)) 55%, transparent);
+  background: color-mix(in srgb, var(--surface-panel) 55%, transparent);
+  border: 1px solid transparent;
+  transition: border-color var(--duration-fast) var(--ease-out);
+}
+
+.step:hover {
+  border-color: var(--border-muted);
 }
 
 .agent {
@@ -142,36 +150,36 @@
   font-weight: var(--weight-semibold);
   letter-spacing: 0.03em;
   text-transform: uppercase;
-  color: var(--accent-ai, #6c8cff);
+  color: var(--accent-ai);
 }
 
 .kind {
   font-size: 0.6rem;
   font-family: var(--font-mono);
   padding: 0.05rem 0.3rem;
-  border-radius: 999px;
+  border-radius: var(--radius-sm);
   color: var(--text-muted);
   background: var(--surface-panel);
 }
 
 .kindVerdict {
-  color: #111;
-  background: var(--status-blocking, #e88);
+  color: var(--text-on-accent);
+  background: var(--status-blocking);
 }
 
 .kindError {
-  color: #fff;
-  background: #a33;
+  color: var(--text-on-accent);
+  background: var(--status-blocking);
 }
 
 .kindTool {
   color: var(--text-secondary);
-  background: color-mix(in srgb, var(--accent-ai, #6c8cff) 18%, transparent);
+  background: color-mix(in srgb, var(--accent-ai) 18%, transparent);
 }
 
 .kindRisk {
-  color: #111;
-  background: var(--status-elevated, #e6b84d);
+  color: var(--text-inverse);
+  background: var(--status-elevated);
 }
 
 .kindDefault {
