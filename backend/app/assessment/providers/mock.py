@@ -85,21 +85,14 @@ class MockProvider:
     ) -> ProviderGeneration:
         fact_types = {f.fact_type for f in derived_facts}
         risk = _risk_level(fact_types)
-        refs = retrieved_references or []
-        ref_bits = (
-            ", ".join(sorted({f"{r.source}:{r.id}" for r in refs}))
-            if refs
-            else "none"
-        )
-        facts_list = ", ".join(sorted(fact_types)) or "none"
         summary = (
-            f"Mock assessment for active facts [{facts_list}]. "
-            f"Risk classified as {risk}. "
-            f"Retrieved references: {ref_bits}. "
-            f"Context entries cited: {len(context_refs)}."
+            f"Assessment found {len(fact_types)} active condition"
+            f"{'' if len(fact_types) == 1 else 's'}"
+            f"{(': ' + ', '.join(sorted(ft.replace('_', ' ') for ft in fact_types))) if fact_types else ''}."
+            f" Risk classified as {risk}."
         )
         if repair_hint:
-            summary += " (repair pass applied)."
+            summary += " Repair pass applied."
 
         recommendations: list[RecommendationIn] = []
         for ft in sorted(fact_types):

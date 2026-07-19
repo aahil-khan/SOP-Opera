@@ -7,7 +7,7 @@ from typing import Any
 from shared.python.schemas import RecommendationIn
 
 from app.agents.events import make_step
-from app.agents.llm import get_chat_model, model_label, provider_label
+from app.agents.llm import get_chat_model, model_label, provider_label, usage_record
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
 from app.assessment.providers.mock import COMPOUND_TRIO, FACT_RECOMMENDATIONS
@@ -80,37 +80,140 @@ def _recommendations(
     return recs
 
 
+def _pick_citation_refs(
+    refs: list[dict[str, Any]], *, limit: int = 2
+) -> list[dict[str, Any]]:
+    """Prefer one historical incident then one regulation/SOP (max `limit`)."""
+    picked: list[dict[str, Any]] = []
+    incidents = [
+        r
+        for r in refs
+        if r.get("source") in ("historical_incidents", "incidents")
+        and (r.get("title") or r.get("snippet") or r.get("code"))
+    ]
+    standards = [
+        r
+        for r in refs
+        if r.get("source") in ("regulations", "sops")
+        and (r.get("title") or r.get("snippet") or r.get("code"))
+    ]
+    if incidents:
+        picked.append(incidents[0])
+    if standards and len(picked) < limit:
+        picked.append(standards[0])
+    # Fill remaining from leftover if still short
+    if len(picked) < limit:
+        for r in refs:
+            if r in picked:
+                continue
+            if r.get("title") or r.get("snippet") or r.get("code"):
+                picked.append(r)
+            if len(picked) >= limit:
+                break
+    return picked[:limit]
+
+
+def _format_ref_line(r: dict[str, Any]) -> str:
+    label = r.get("code") or r.get("title") or "untitled"
+    snippet = str(r.get("snippet") or "").strip()
+    if len(snippet) > 200:
+        snippet = snippet[:197].rstrip() + "…"
+    bits = [str(r.get("source") or "ref"), str(label)]
+    if snippet:
+        bits.append(snippet)
+    return " | ".join(bits)
+
+
+def _build_summary_prompt(
+    state: AgentState,
+    grounded: list[str],
+    risk: str,
+    observations: list[dict[str, Any]],
+) -> str:
+    """Compose orch LLM prompt: fuse domain narratives; cite retrieved refs."""
+    obs_lines = "\n".join(
+        f"- {o.get('agent')}: {o.get('observation')}" for o in observations
+    )
+    citations = _pick_citation_refs(list(state.get("retrieved_references") or []))
+    if citations:
+        ref_block = "Retrieved context (cite by title/code only if relevant):\n" + "\n".join(
+            f"- {_format_ref_line(r)}" for r in citations
+        )
+    else:
+        ref_block = "Retrieved context: (none)"
+
+    return (
+        "You are an industrial safety orchestrator.\n"
+        "Domain observations below are already domain-specific narratives — "
+        "synthesize the compound risk in 3-5 sentences. "
+        "Do not paste domain observations back verbatim. "
+        "Cite at most the retrieved titles/codes when relevant; "
+        "never invent references or facts not listed.\n\n"
+        f"Asset: {state.get('asset_name')} zone={state.get('asset_zone')}\n"
+        f"Grounded facts: {grounded}\n"
+        f"Fused risk: {risk}\n"
+        f"Observations:\n{obs_lines}\n\n"
+        f"{ref_block}\n"
+    )
+
+
 def _mock_summary(
     state: AgentState,
     grounded: list[str],
     risk: str,
     observations: list[dict[str, Any]],
 ) -> str:
-    agent_bits = [
-        f"[{o.get('agent')}] {o.get('observation')}" for o in observations
-    ]
-    facts_list = ", ".join(grounded) or "none"
-    refs = state.get("retrieved_references") or []
-    ref_bits = (
-        ", ".join(sorted({f"{r.get('source')}:{r.get('id')}" for r in refs}))
-        if refs
-        else "none"
-    )
-    incident_obs = next(
-        (o.get("observation") for o in observations if o.get("agent") == "incident_pattern"),
+    asset = state.get("asset_name") or "Asset"
+    fact_labels = [ft.replace("_", " ") for ft in grounded]
+    if fact_labels:
+        if len(fact_labels) == 1:
+            cause = fact_labels[0]
+        elif len(fact_labels) == 2:
+            cause = f"{fact_labels[0]} and {fact_labels[1]}"
+        else:
+            cause = (
+                f"{', '.join(fact_labels[:-1])}, and {fact_labels[-1]}"
+            )
+        lead = f"{asset} is {risk} due to {cause}."
+    else:
+        lead = f"{asset} assessment completed with {risk} risk."
+
+    highlights: list[str] = []
+    for o in observations:
+        agent = str(o.get("agent") or "")
+        if agent in ("", "orchestrator"):
+            continue
+        obs = str(o.get("observation") or "").strip()
+        if not obs:
+            continue
+        # Keep each agent note short for the panel.
+        if len(obs) > 140:
+            obs = obs[:137].rstrip() + "…"
+        label = {
+            "scada": "SCADA",
+            "permit": "Permit",
+            "maintenance": "Maintenance",
+            "workforce": "Workforce",
+            "spatial": "Spatial",
+            "incident_pattern": "Incident",
+            "shift_handover": "Handover",
+        }.get(agent, agent.replace("_", " ").title())
+        highlights.append(f"{label}: {obs}")
+
+    body = lead if not highlights else lead + " " + " ".join(highlights[:4])
+
+    citations = _pick_citation_refs(list(state.get("retrieved_references") or []))
+    incident = next(
+        (
+            r
+            for r in citations
+            if r.get("source") in ("historical_incidents", "incidents") and r.get("title")
+        ),
         None,
     )
-    summary = (
-        f"Multi-agent assessment for {state.get('asset_name')} "
-        f"({state.get('asset_zone')}). "
-        f"Grounded facts [{facts_list}]. Risk={risk}. "
-        f"Agents: {' | '.join(agent_bits)}. "
-        f"Retrieved references: {ref_bits}."
-    )
-    if incident_obs and "echo" in incident_obs.lower():
-        summary += f" {incident_obs}"
-    return summary
-
+    if incident and incident.get("title"):
+        body = f"{body} Related pattern: {incident['title']}."
+    return body
 
 
 async def _llm_summary(
@@ -119,30 +222,22 @@ async def _llm_summary(
     risk: str,
     observations: list[dict[str, Any]],
     provider_name: str | None,
-) -> str | None:
+) -> tuple[str | None, dict[str, Any] | None]:
     model = get_chat_model(provider_name)
     if model is None:
-        return None
+        return None, None
     try:
-        prompt = (
-            "You are an industrial safety orchestrator. "
-            "Synthesize the agent observations into a concise operational assessment "
-            "(3-5 sentences). Do not invent facts not listed.\n\n"
-            f"Asset: {state.get('asset_name')} zone={state.get('asset_zone')}\n"
-            f"Grounded facts: {grounded}\n"
-            f"Fused risk: {risk}\n"
-            f"Observations:\n"
-            + "\n".join(
-                f"- {o.get('agent')}: {o.get('observation')}" for o in observations
-            )
-        )
+        prompt = _build_summary_prompt(state, grounded, risk, observations)
         result = await model.ainvoke(prompt)
+        usage = usage_record(
+            agent="orchestrator", response=result, provider_name=provider_name
+        )
         content = getattr(result, "content", None)
         if isinstance(content, str) and content.strip():
-            return content.strip()
+            return content.strip(), usage
+        return None, usage
     except Exception:  # noqa: BLE001
-        return None
-    return None
+        return None, None
 
 
 async def orchestrator_agent(
@@ -181,8 +276,10 @@ async def orchestrator_agent(
     risk = require_grounding_for_block(proposed, grounded)
 
     settings = get_settings()
-    pname = provider_name or settings.ai_provider
-    summary = await _llm_summary(state, grounded, risk, observations, pname)
+    pname = provider_name or state.get("provider_name") or settings.ai_provider
+    summary, orch_usage = await _llm_summary(
+        state, grounded, risk, observations, pname
+    )
     if summary is None:
         summary = _mock_summary(state, grounded, risk, observations)
 
@@ -264,7 +361,7 @@ async def orchestrator_agent(
         assessment_id=assessment_id,
     )
 
-    return {
+    out: dict[str, Any] = {
         "verdict": result.model_dump(),
         "grounded_fact_types": grounded,
         "spatial_links": spatial_links,
@@ -275,3 +372,6 @@ async def orchestrator_agent(
             done.model_dump(),
         ],
     }
+    if orch_usage is not None:
+        out["llm_usage"] = [orch_usage]
+    return out

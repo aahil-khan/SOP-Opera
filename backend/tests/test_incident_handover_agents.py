@@ -42,9 +42,37 @@ def _base_state(**overrides) -> AgentState:
         "shift_handover_note": None,
         "verdict": None,
         "grounded_fact_types": [],
+        "provider_name": "mock",
+        "llm_usage": [],
     }
     state.update(overrides)
     return state
+
+
+@pytest.mark.asyncio
+async def test_incident_pattern_prefers_titled_ref():
+    untitled = {
+        "id": str(uuid4()),
+        "source": "historical_incidents",
+        "title": None,
+        "snippet": "untitled snippet",
+        "retrieval_path": "rag",
+        "score": 0.99,
+    }
+    titled = {
+        "id": str(uuid4()),
+        "source": "historical_incidents",
+        "title": "Named near-miss",
+        "snippet": "with a title",
+        "retrieval_path": "rag",
+        "score": 0.8,
+    }
+    out = await incident_pattern_agent(
+        _base_state(retrieved_references=[untitled, titled])
+    )
+    assert "Named near-miss" in out["observations"][0]["observation"]
+    assert out["incident_echoes"][0]["title"] is None  # list order preserved
+    assert "VSP-pattern" not in out["observations"][0]["observation"]
 
 
 @pytest.mark.asyncio

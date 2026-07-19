@@ -5,6 +5,8 @@ from __future__ import annotations
 from typing import Any
 
 from app.agents.events import AgentName, make_step
+from app.agents.llm import get_chat_model, usage_record
+from app.agents.routing import AGENT_CONTEXT_CATEGORIES
 from app.agents.state import AgentObservation, AgentState
 from app.agents.tools.rules import RuleToolkit
 
@@ -47,7 +49,88 @@ def _toolkit(state: AgentState) -> RuleToolkit:
     )
 
 
-def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
+def _template_observation(title: str, active: list[str]) -> str:
+    bits = [FACT_NARRATION.get(ft, ft) for ft in active]
+    return f"{title}: " + "; ".join(bits) + "."
+
+
+def _context_slice_for_agent(
+    agent: str, state: AgentState, *, limit: int = 6
+) -> list[dict[str, Any]]:
+    cats = AGENT_CONTEXT_CATEGORIES.get(agent, frozenset())
+    out: list[dict[str, Any]] = []
+    for e in state.get("context_entries") or []:
+        if e.get("category") not in cats:
+            continue
+        payload = e.get("payload") or {}
+        slim = {
+            k: v
+            for k, v in list(payload.items())[:8]
+            if isinstance(v, (str, int, float, bool)) or v is None
+        }
+        out.append({"category": e.get("category"), "payload": slim})
+        if len(out) >= limit:
+            break
+    return out
+
+
+def _build_narration_prompt(
+    *,
+    title: str,
+    asset: str,
+    active: list[str],
+    context_slice: list[dict[str, Any]],
+) -> str:
+    anchors = [f"- {ft}: {FACT_NARRATION.get(ft, ft)}" for ft in active]
+    return (
+        f"You are the {title} for an industrial plant digital twin.\n"
+        f"Write 1-2 sentences observing hazards on asset '{asset}'. "
+        "Do not invent facts, readings, or permits not listed below. "
+        "Do not mention being an AI.\n\n"
+        f"Confirmed facts:\n" + "\n".join(anchors) + "\n\n"
+        f"Relevant context (category-filtered):\n{context_slice}\n"
+    )
+
+
+async def _narrate_observation(
+    agent: AgentName,
+    title: str,
+    state: AgentState,
+    active: list[str],
+) -> tuple[str, dict[str, Any] | None]:
+    """LLM narration when available; template fallback otherwise.
+
+    Returns (observation_text, usage_record_or_none).
+    """
+    template = _template_observation(title, active)
+    provider_name = state.get("provider_name")
+    model = get_chat_model(provider_name)
+    if model is None:
+        return template, None
+    prompt = _build_narration_prompt(
+        title=title,
+        asset=str(state.get("asset_name") or "asset"),
+        active=active,
+        context_slice=_context_slice_for_agent(agent, state),
+    )
+    try:
+        result = await model.ainvoke(prompt)
+        usage = usage_record(
+            agent=agent, response=result, provider_name=provider_name
+        )
+        content = getattr(result, "content", None)
+        if isinstance(content, str) and content.strip():
+            text = content.strip()
+            # Keep agent identity prefix for the Brain panel when the model omits it
+            if title.split()[0].lower() not in text.lower()[:40]:
+                return f"{title}: {text}", usage
+            return text, usage
+        return template, usage
+    except Exception:  # noqa: BLE001
+        return template, None
+
+
+async def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
     title = AGENT_TITLES[agent]
     toolkit = _toolkit(state)
     review_id = state.get("review_id")
@@ -75,11 +158,14 @@ def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
             ).model_dump()
         )
 
+    usage_entries: list[dict[str, Any]] = []
     if active:
-        bits = [FACT_NARRATION.get(ft, ft) for ft in active]
-        observation = f"{title}: " + "; ".join(bits) + "."
+        observation, usage = await _narrate_observation(agent, title, state, active)
+        if usage is not None:
+            usage_entries.append(usage)
         finding = "risk"
     else:
+        # Clearance: no LLM — keep cheap template
         observation = f"{title}: no active hazards in this domain."
         finding = "clearance"
 
@@ -117,7 +203,7 @@ def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
         assessment_id=assessment_id,
     )
 
-    return {
+    out: dict[str, Any] = {
         "observations": [obs],
         "agent_trace": [
             started.model_dump(),
@@ -127,19 +213,22 @@ def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
             done.model_dump(),
         ],
     }
+    if usage_entries:
+        out["llm_usage"] = usage_entries
+    return out
 
 
 async def scada_agent(state: AgentState) -> dict[str, Any]:
-    return _run_source_agent("scada", state)
+    return await _run_source_agent("scada", state)
 
 
 async def permit_agent(state: AgentState) -> dict[str, Any]:
-    return _run_source_agent("permit", state)
+    return await _run_source_agent("permit", state)
 
 
 async def maintenance_agent(state: AgentState) -> dict[str, Any]:
-    return _run_source_agent("maintenance", state)
+    return await _run_source_agent("maintenance", state)
 
 
 async def workforce_agent(state: AgentState) -> dict[str, Any]:
-    return _run_source_agent("workforce", state)
+    return await _run_source_agent("workforce", state)

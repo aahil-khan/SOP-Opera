@@ -85,9 +85,17 @@ async def incident_pattern_agent(state: AgentState) -> dict[str, Any]:
 
     refs = _incident_refs(state)
     path_note = "rag" if any(r.get("retrieval_path") == "rag" for r in refs) else None
+    used_fallback = False
     if not refs:
         refs = _fallback_echoes(fact_types)
         path_note = "deterministic_fallback"
+        used_fallback = True
+
+    # Prefer a titled hit for the observation headline
+    top = None
+    if refs:
+        titled = [r for r in refs if r.get("title")]
+        top = titled[0] if titled else refs[0]
 
     tool = make_step(
         "incident_pattern",
@@ -101,6 +109,7 @@ async def incident_pattern_agent(state: AgentState) -> dict[str, Any]:
         detail={
             "count": len(refs),
             "path": path_note,
+            "used_fallback": used_fallback,
             "refs": [
                 {
                     "id": r.get("id"),
@@ -115,8 +124,7 @@ async def incident_pattern_agent(state: AgentState) -> dict[str, Any]:
         },
     )
 
-    if refs:
-        top = refs[0]
+    if top is not None:
         title = top.get("title") or "prior near-miss"
         snippet = top.get("snippet") or ""
         score = top.get("score")
