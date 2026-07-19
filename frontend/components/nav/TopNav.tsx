@@ -12,6 +12,7 @@ export function TopNav() {
   const onTwin = pathname === "/";
   const onReports = pathname.startsWith("/reports");
   const onAiOps = pathname.startsWith("/ai-ops");
+  const onHandover = pathname.startsWith("/handover");
   const onReviewDetail = pathname.startsWith("/reviews/");
 
   return (
@@ -28,6 +29,9 @@ export function TopNav() {
         </Link>
         <Link href="/ai-ops" className={styles.link} data-active={onAiOps}>
           AI Ops
+        </Link>
+        <Link href="/handover" className={styles.link} data-active={onHandover}>
+          Shift Handover
         </Link>
         {onReviewDetail && (
           <span className={styles.link} data-active="true">

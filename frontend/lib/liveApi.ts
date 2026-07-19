@@ -35,12 +35,14 @@ export interface AssessmentHistoryItem extends Omit<Assessment, "risk_level" | "
   created_at: string | null;
   retrieved_references: RetrievedReference[];
   reasoning_factors?: ReasoningFactor[];
+  agent_trace?: Array<Record<string, unknown>>;
   metadata: Assessment["metadata"] & {
     input_tokens?: number;
     output_tokens?: number;
     estimated_cost_usd?: number;
     assessment_version?: number;
     reasoning_factors?: ReasoningFactor[];
+    agent_trace?: Array<Record<string, unknown>>;
   } | null;
 }
 
@@ -72,6 +74,17 @@ export interface AiOpsSummary {
   rag_fallback_rate: number;
   mean_retrieval_relevance: number | null;
   retrieval_ran_count: number;
+}
+
+export interface ShiftHandoverBrief {
+  brief: string;
+  window_hours: number;
+  provider: string;
+  model: string;
+  active_facts: string[];
+  open_reviews: string[];
+  signal_count: number;
+  generated_at: string;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -176,4 +189,11 @@ export function fetchNotifications(limit = 50): Promise<Notification[]> {
 
 export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
   return request<AiOpsSummary>("/ai-ops/summary");
+}
+
+export function fetchShiftHandover(windowHours = 12): Promise<ShiftHandoverBrief> {
+  return request<ShiftHandoverBrief>(
+    `/agents/shift-handover?window_hours=${windowHours}`,
+    { method: "POST" },
+  );
 }
