@@ -28,6 +28,8 @@ interface ReasoningGraphProps {
   data: ReasoningGraphData;
   selectedId: string | null;
   onSelect: (node: ReasoningGraphNode | null) => void;
+  /** Shorter height for in-drawer / twin embedding. */
+  compact?: boolean;
 }
 
 const ROW_HEIGHT = 96;
@@ -116,6 +118,7 @@ export function ReasoningGraph({
   data,
   selectedId,
   onSelect,
+  compact = false,
 }: ReasoningGraphProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -131,18 +134,19 @@ export function ReasoningGraph({
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
+    const minH = compact ? 200 : 340;
     const update = () => {
       const r = el.getBoundingClientRect();
       setDimensions({
-        width: Math.max(320, Math.floor(r.width)),
-        height: Math.max(340, Math.floor(r.height)),
+        width: Math.max(compact ? 240 : 320, Math.floor(r.width)),
+        height: Math.max(minH, Math.floor(r.height)),
       });
     };
     update();
     const ro = new ResizeObserver(update);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [compact]);
 
   const { fgNodes, bandRanges } = useMemo(() => {
     void themeTick;
@@ -186,7 +190,11 @@ export function ReasoningGraph({
   }
 
   return (
-    <div className={styles.root} ref={containerRef}>
+    <div
+      className={styles.root}
+      data-compact={compact ? "true" : undefined}
+      ref={containerRef}
+    >
       <div className={styles.controls}>
         <button type="button" className={styles.ctrlBtn} onClick={handleZoomIn}>
           +

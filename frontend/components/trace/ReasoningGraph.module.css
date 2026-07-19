@@ -16,6 +16,11 @@
   overflow: hidden;
 }
 
+.root[data-compact="true"] {
+  min-height: 240px;
+  height: min(36vh, 320px);
+}
+
 .empty {
   display: flex;
   align-items: center;

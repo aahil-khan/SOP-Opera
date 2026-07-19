@@ -1,38 +1,43 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import Link from "next/link";
 import {
   findViewByReviewId,
-  spatialLinksFromAssessment,
   useLiveStore,
 } from "@/lib/liveStore";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
-import {
-  buildReasoningGraphFromDetail,
-  type ReasoningGraphNode,
-} from "@/lib/reasoningGraph";
-import { ReasoningGraph } from "@/components/trace/ReasoningGraph";
-import { ReasoningGraphInspector } from "@/components/trace/ReasoningGraphInspector";
 import { AssessmentPanel } from "@/components/assessment/AssessmentPanel";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
+import { DecisionCard } from "@/components/decision/DecisionCard";
+import { AgentTracePanel } from "@/components/trace/AgentTracePanel";
+import { nextActionForView, ownerNameForView } from "@/lib/openWork";
+import actionStyles from "@/components/decision/RecommendedAction.module.css";
 import styles from "./ReviewDetail.module.css";
 
 interface ReviewDetailProps {
   reviewId: string;
+  /** In-drawer twin embedding: single column, no page chrome. */
+  variant?: "page" | "embedded";
 }
 
-export function ReviewDetail({ reviewId }: ReviewDetailProps) {
+export function ReviewDetail({
+  reviewId,
+  variant = "page",
+}: ReviewDetailProps) {
+  const embedded = variant === "embedded";
   const loadReviewDetail = useLiveStore((s) => s.loadReviewDetail);
-  const assets = useLiveStore((s) => s.assets);
-  const reviews = useLiveStore((s) => s.reviews);
-  const reviewDetails = useLiveStore((s) => s.reviewDetails);
-  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
-  const agentSteps = useLiveStore((s) => s.agentSteps);
-  const [loadError, setLoadError] = useState<string | null>(null);
-  const [selectedNode, setSelectedNode] = useState<ReasoningGraphNode | null>(
-    null,
+  const listReview = useLiveStore((s) =>
+    s.reviews.find((r) => r.id === reviewId) ?? null,
   );
+  const listAsset = useLiveStore((s) => {
+    const r = s.reviews.find((x) => x.id === reviewId);
+    if (!r) return null;
+    return s.assets.find((a) => a.id === r.asset_id) ?? null;
+  });
+  const detail = useLiveStore((s) => s.reviewDetails[reviewId]);
+  const assessments = useLiveStore((s) => s.assessmentsByReview[reviewId]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [otherActionsOpen, setOtherActionsOpen] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -44,115 +49,183 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
     };
   }, [reviewId, loadReviewDetail]);
 
-  const view = findViewByReviewId(
-    { assets, reviews, reviewDetails, assessmentsByReview },
-    reviewId,
-  );
-  const detail = reviewDetails[reviewId];
-  const assessments = assessmentsByReview[reviewId] ?? [];
+  const view = useMemo(() => {
+    if (!listReview || !listAsset) return undefined;
+    return findViewByReviewId(
+      {
+        assets: [listAsset],
+        reviews: [listReview],
+        reviewDetails: detail ? { [reviewId]: detail } : {},
+        assessmentsByReview: assessments
+          ? { [reviewId]: assessments }
+          : {},
+      },
+      reviewId,
+    );
+  }, [listReview, listAsset, detail, assessments, reviewId]);
+
+  const assessmentList = assessments ?? [];
   const latest = useMemo(() => {
-    if (!assessments.length) return null;
+    if (!assessmentList.length) return null;
     return (
-      assessments.find((a) => a.status === "complete") ??
-      assessments.find((a) => a.status === "failed") ??
-      assessments[0]
+      assessmentList.find((a) => a.status === "complete") ??
+      assessmentList.find((a) => a.status === "failed") ??
+      assessmentList[0]
     );
-  }, [assessments]);
-
-  const graphData = useMemo(() => {
-    if (!detail) {
-      return { nodes: [], edges: [] };
-    }
-    const spatialLinks = spatialLinksFromAssessment(latest);
-    const steps = agentSteps.filter((s) => s.review_id === reviewId);
-    return buildReasoningGraphFromDetail(
-      detail,
-      latest,
-      spatialLinks,
-      steps,
-    );
-  }, [detail, latest, agentSteps, reviewId]);
-
-  useEffect(() => {
-    setSelectedNode(null);
-  }, [reviewId]);
+  }, [assessmentList]);
 
   if (loadError && !detail) {
     return (
-      <div className={styles.missing}>
+      <div className={styles.missing} data-variant={variant}>
         <p>Could not load review: {loadError}</p>
-        <Link href="/">← Back to Digital Twin</Link>
       </div>
     );
   }
 
   if (!detail || !view) {
     return (
-      <div className={styles.missing}>
+      <div className={styles.missing} data-variant={variant}>
         <p className={styles.loading}>Loading review…</p>
-        <Link href="/">← Back to Digital Twin</Link>
       </div>
     );
   }
 
   const { review, asset } = detail;
+  const decision = detail.decision ?? null;
+  const recommendations = latest?.recommendations ?? [];
+  const otherRecommendations = recommendations.slice(1);
+  const nextAction = nextActionForView(view);
+  const ownerName = ownerNameForView(view);
+  const showRecommended =
+    latest?.status === "complete" || recommendations.length > 0;
 
   return (
-    <div className={styles.detail}>
-      <header className={styles.header}>
-        <div>
-          <p className={styles.crumb}>
-            <Link href="/">Digital Twin</Link> / {review.id.slice(0, 8)}…
-          </p>
-          <h1 className={styles.title}>{asset.name}</h1>
-          <p className={styles.subtitle}>
-            Triggered by {review.triggered_by} · created{" "}
+    <div className={styles.detail} data-variant={variant}>
+      {!embedded && (
+        <header className={styles.header}>
+          <div>
+            <h1 className={styles.title}>{asset.name}</h1>
+            <p className={styles.subtitle}>
+              Triggered by {review.triggered_by.replaceAll("_", " ")} · created{" "}
+              {new Date(review.created_at).toLocaleString()}
+              {detail.area_owner
+                ? ` · Area owner ${detail.area_owner.name}`
+                : ""}
+            </p>
+          </div>
+          <div className={styles.badges}>
+            <span className="badge">{review.state.replaceAll("_", " ")}</span>
+            <span className="badge" data-risk={view.risk_level}>
+              {view.risk_level}
+            </span>
+          </div>
+        </header>
+      )}
+
+      {embedded && (
+        <header className={styles.embeddedMeta} data-risk={view.risk_level}>
+          <p className={styles.embeddedSub}>
+            Triggered by {review.triggered_by.replaceAll("_", " ")} ·{" "}
             {new Date(review.created_at).toLocaleString()}
-            {detail.area_owner
-              ? ` · Area owner ${detail.area_owner.name}`
-              : ""}
+            {detail.area_owner ? ` · ${detail.area_owner.name}` : ""}
           </p>
-        </div>
-        <div className={styles.badges}>
-          <span className="badge">{review.state.replaceAll("_", " ")}</span>
-          <span className="badge" data-risk={view.risk_level}>
-            {view.risk_level}
-          </span>
-        </div>
-      </header>
+        </header>
+      )}
 
-      <div className={styles.graphLayout}>
-        <div className={styles.graphPane}>
-          <h3 className={styles.panelTitle}>Reasoning graph</h3>
-          <ReasoningGraph
-            data={graphData}
-            selectedId={selectedNode?.id ?? null}
-            onSelect={setSelectedNode}
+      <AgentTracePanel
+        reviewId={review.id}
+        assessment={latest as AssessmentHistoryItem | null}
+      />
+
+      <AssessmentPanel
+        reviewId={review.id}
+        reviewState={review.state}
+        assessment={latest as AssessmentHistoryItem | null}
+      />
+
+      {showRecommended && (
+        <section
+          className={actionStyles.actionSection}
+          aria-labelledby="review-do-heading"
+        >
+          <h3 id="review-do-heading" className={actionStyles.actionSectionTitle}>
+            Recommended action
+          </h3>
+
+          <div className={actionStyles.primaryAction} data-risk={view.risk_level}>
+            <div className={actionStyles.primaryActionTop}>
+              <span className={actionStyles.primaryActionEyebrow}>Do next</span>
+              {ownerName ? (
+                <span className={actionStyles.primaryActionOwner}>
+                  Owner · <strong>{ownerName}</strong>
+                </span>
+              ) : null}
+            </div>
+            <p className={actionStyles.primaryActionText}>{nextAction}</p>
+          </div>
+
+          {decision ? (
+            <p className={actionStyles.decisionLine}>
+              <span
+                className="badge"
+                data-risk={
+                  decision.outcome === "blocked"
+                    ? "blocking"
+                    : decision.outcome === "approved_with_conditions"
+                      ? "elevated"
+                      : "nominal"
+                }
+              >
+                {decision.outcome.replaceAll("_", " ")}
+              </span>
+              {decision.conditions ? ` — ${decision.conditions}` : ""}
+            </p>
+          ) : otherRecommendations.length > 0 ? (
+            <details
+              className={actionStyles.candidates}
+              open={otherActionsOpen}
+              onToggle={(e) =>
+                setOtherActionsOpen((e.target as HTMLDetailsElement).open)
+              }
+            >
+              <summary className={actionStyles.candidatesSummary}>
+                <span>Candidate actions</span>
+                <span className={actionStyles.candidatesCount}>
+                  {otherRecommendations.length}
+                </span>
+              </summary>
+              <ol className={actionStyles.candidateList}>
+                {otherRecommendations.map((rec, i) => (
+                  <li key={rec.id} className={actionStyles.candidateItem}>
+                    <span className={actionStyles.candidateIndex} aria-hidden>
+                      {i + 2}
+                    </span>
+                    <div className={actionStyles.candidateBody}>
+                      <p className={actionStyles.candidateText}>{rec.text}</p>
+                      {rec.rationale && (
+                        <p className={actionStyles.candidateRationale}>
+                          {rec.rationale}
+                        </p>
+                      )}
+                    </div>
+                  </li>
+                ))}
+              </ol>
+            </details>
+          ) : null}
+        </section>
+      )}
+
+      {!embedded && (
+        <DecisionCard title="Decision">
+          <DecisionPanel
+            reviewId={review.id}
+            reviewState={review.state}
+            assessment={latest}
+            existing={detail.decision}
           />
-        </div>
-        <ReasoningGraphInspector
-          node={selectedNode}
-          fallbackSummary={latest?.summary ?? null}
-          fallbackRisk={
-            (latest?.risk_level as string | null | undefined) ??
-            view.risk_level
-          }
-        />
-      </div>
-
-      <div className={styles.sideRow}>
-        <AssessmentPanel
-          reviewId={review.id}
-          reviewState={review.state}
-          assessment={latest as AssessmentHistoryItem | null}
-        />
-        <DecisionPanel
-          reviewId={review.id}
-          reviewState={review.state}
-          assessment={latest}
-          existing={detail.decision}
-        />
-      </div>
+        </DecisionCard>
+      )}
     </div>
   );
 }

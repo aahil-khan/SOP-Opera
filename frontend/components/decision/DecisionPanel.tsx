@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import type { Decision } from "@/shared/schemas";
 import type { Report } from "@/shared/schemas";
@@ -35,6 +35,7 @@ function DecisionForm({
   const [conditions, setConditions] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const conditionsRef = useRef<HTMLDivElement>(null);
   const initialDispositions: Record<string, "accepted" | "rejected"> =
     Object.fromEntries(
       assessment.recommendations.map((rec) => [rec.id, "accepted" as const]),
@@ -43,6 +44,16 @@ function DecisionForm({
 
   const needsConditions = outcome === "approved_with_conditions";
   const canSubmit = !needsConditions || conditions.trim().length > 0;
+
+  useEffect(() => {
+    if (!needsConditions) return;
+    const el = conditionsRef.current;
+    if (!el) return;
+    const timer = window.setTimeout(() => {
+      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    }, 40);
+    return () => window.clearTimeout(timer);
+  }, [needsConditions]);
 
   async function onSubmit() {
     setBusy(true);
@@ -61,8 +72,7 @@ function DecisionForm({
   }
 
   return (
-    <div className={`panel ${styles.panel}`}>
-      <h3 className={styles.title}>Decision</h3>
+    <div className={styles.panel}>
       <p className={styles.label}>Outcome</p>
       <div className={styles.outcomes}>
         {OUTCOMES.map((o) => (
@@ -79,49 +89,51 @@ function DecisionForm({
         ))}
       </div>
 
-      <div>
-        <p className={styles.label}>Recommendation dispositions</p>
-        {assessment.recommendations.map((rec) => (
-          <div key={rec.id} className={styles.dispRow}>
-            <span>{rec.text}</span>
-            <div className={styles.toggles}>
-              {(["accepted", "rejected"] as const).map((kind) => (
-                <button
-                  key={kind}
-                  type="button"
-                  className={`btn ${styles.toggle}`}
-                  data-active={dispositions[rec.id] === kind}
-                  data-kind={kind}
-                  onClick={() =>
-                    setDispositions((d) => ({ ...d, [rec.id]: kind }))
-                  }
-                >
-                  {kind}
-                </button>
-              ))}
-            </div>
+      {assessment.recommendations.length > 0 && (
+        <div className={styles.block}>
+          <p className={styles.label}>Dispositions</p>
+          <div className={styles.dispList}>
+            {assessment.recommendations.map((rec) => (
+              <div key={rec.id} className={styles.dispRow}>
+                <span className={styles.dispText}>{rec.text}</span>
+                <div className={styles.toggles}>
+                  {(["accepted", "rejected"] as const).map((kind) => (
+                    <button
+                      key={kind}
+                      type="button"
+                      className={`btn ${styles.toggle}`}
+                      data-active={dispositions[rec.id] === kind}
+                      data-kind={kind}
+                      onClick={() =>
+                        setDispositions((d) => ({ ...d, [rec.id]: kind }))
+                      }
+                    >
+                      {kind}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
+        </div>
+      )}
 
-      <div>
-        <p className={styles.label}>Conditions</p>
-        <textarea
-          className={styles.textarea}
-          disabled={!needsConditions}
-          value={conditions}
-          onChange={(e) => setConditions(e.target.value)}
-          placeholder={
-            needsConditions
-              ? "Required for approved with conditions…"
-              : "Enable by choosing Approved w/ conditions"
-          }
-        />
-      </div>
+      {needsConditions && (
+        <div ref={conditionsRef} className={styles.block}>
+          <p className={styles.label}>Conditions</p>
+          <textarea
+            className={styles.textarea}
+            value={conditions}
+            onChange={(e) => setConditions(e.target.value)}
+            rows={2}
+            placeholder="Required for approved with conditions…"
+          />
+        </div>
+      )}
 
       <button
         type="button"
-        className="btn btn-primary"
+        className={`btn btn-primary ${styles.submit}`}
         disabled={!canSubmit || busy}
         onClick={() => void onSubmit()}
       >
@@ -148,14 +160,14 @@ function ClosedReportLink({ reviewId }: { reviewId: string }) {
   }, [reviewId]);
 
   return (
-    <div className={`panel ${styles.panel}`}>
-      <h3 className={styles.title}>Decision</h3>
+    <div className={styles.panel}>
       <p className={styles.done}>Review closed</p>
       {report ? (
         <p className={styles.hint}>
           Closure report ready —{" "}
           <Link href={`/reports/${report.id}`} className={styles.reportLink}>
-            {(report.content?.title as string) ?? `Report #${report.closure_event_seq}`}
+            {(report.content?.title as string) ??
+              `Report #${report.closure_event_seq}`}
           </Link>
         </p>
       ) : (
@@ -181,8 +193,7 @@ export function DecisionPanel({
 
   if (existing && reviewState === "decided") {
     return (
-      <div className={`panel ${styles.panel}`}>
-        <h3 className={styles.title}>Decision</h3>
+      <div className={styles.panel}>
         <p className={styles.done}>
           Submitted · <strong>{existing.outcome.replaceAll("_", " ")}</strong>
           {existing.conditions ? ` — ${existing.conditions}` : ""}
@@ -192,7 +203,7 @@ export function DecisionPanel({
         </p>
         <button
           type="button"
-          className="btn btn-primary"
+          className={`btn btn-primary ${styles.submit}`}
           disabled={closing}
           onClick={() => {
             setClosing(true);
@@ -213,8 +224,7 @@ export function DecisionPanel({
 
   if (existing) {
     return (
-      <div className={`panel ${styles.panel}`}>
-        <h3 className={styles.title}>Decision</h3>
+      <div className={styles.panel}>
         <p className={styles.done}>
           Submitted · <strong>{existing.outcome.replaceAll("_", " ")}</strong>
           {existing.conditions ? ` — ${existing.conditions}` : ""}
@@ -232,8 +242,7 @@ export function DecisionPanel({
 
   if (!canDecide) {
     return (
-      <div className={`panel ${styles.panel}`}>
-        <h3 className={styles.title}>Decision</h3>
+      <div className={styles.panel}>
         <p className={styles.hint}>
           A complete Assessment is required before a Decision can be submitted.
         </p>
