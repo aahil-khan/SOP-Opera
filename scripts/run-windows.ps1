@@ -14,10 +14,10 @@ if (-not (Test-Path ".env")) {
 
 $docker = Get-Command docker -ErrorAction SilentlyContinue
 if ($docker) {
-  Write-Host "==> Starting Postgres (docker compose db only)…"
+  Write-Host "==> Starting Postgres (docker compose db only)..."
   docker compose up -d db
 } else {
-  Write-Host "!!  Docker not found — ensure Postgres+pgvector is reachable at DATABASE_URL in .env"
+  Write-Host "!!  Docker not found - ensure Postgres+pgvector is reachable at DATABASE_URL in .env"
 }
 
 $py = $null
@@ -33,7 +33,7 @@ if (-not $py) {
 }
 
 if (-not (Test-Path ".venv\Scripts\python.exe")) {
-  Write-Host "==> Creating Python venv…"
+  Write-Host "==> Creating Python venv..."
   if ($py -eq "py") {
     & py -3 -m venv .venv
   } else {
@@ -41,20 +41,20 @@ if (-not (Test-Path ".venv\Scripts\python.exe")) {
   }
 }
 
-Write-Host "==> Installing Python deps…"
+Write-Host "==> Installing Python deps..."
 & .\.venv\Scripts\python.exe -m pip install -q -r backend\requirements.txt
 
 if (-not (Test-Path "frontend\node_modules")) {
-  Write-Host "==> Installing frontend deps…"
+  Write-Host "==> Installing frontend deps..."
   Push-Location frontend
   npm install
   Pop-Location
 }
 
-Write-Host "==> Syncing shared contracts…"
+Write-Host "==> Syncing shared contracts..."
 node scripts\sync-shared.mjs
 
-Write-Host "==> API  → http://localhost:8000"
+Write-Host "==> API  -> http://localhost:8000"
 $api = Start-Process -FilePath ".\.venv\Scripts\python.exe" `
   -ArgumentList "scripts\dev-api.py" `
   -WorkingDirectory $Root `
@@ -63,14 +63,14 @@ $api = Start-Process -FilePath ".\.venv\Scripts\python.exe" `
 
 function Stop-Api {
   if ($api -and -not $api.HasExited) {
-    Write-Host "`n==> Stopping API…"
+    Write-Host "`n==> Stopping API..."
     Stop-Process -Id $api.Id -Force -ErrorAction SilentlyContinue
   }
 }
 Register-EngineEvent -SourceIdentifier PowerShell.Exiting -Action { Stop-Api } | Out-Null
 try {
   Start-Sleep -Seconds 1
-  Write-Host "==> App  → http://localhost:3000"
+  Write-Host "==> App  -> http://localhost:3000"
   Write-Host "    Ctrl+C stops the frontend; API window is closed on exit"
   Push-Location frontend
   npm run dev

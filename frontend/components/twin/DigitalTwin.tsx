@@ -284,7 +284,7 @@ export function DigitalTwin() {
             data-active={viewMode === "overview" ? "true" : undefined}
             onClick={showOverview}
           >
-            Industry Plan
+            All
           </button>
           {FLOOR_ORDER.map((id) => {
             const selected = viewMode === "detail" && activeFloor === id;
