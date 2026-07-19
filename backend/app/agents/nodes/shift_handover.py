@@ -105,7 +105,7 @@ async def collect_shift_context(
     reviews = await session.execute(
         text(
             """
-            SELECT r.id, a.name, r.state, am.risk_level
+            SELECT r.id, r.asset_id, a.name, r.state, am.risk_level
             FROM reviews r
             JOIN assets a ON a.id = r.asset_id
             LEFT JOIN LATERAL (
@@ -121,19 +121,38 @@ async def collect_shift_context(
             """
         )
     )
-    open_reviews: list[str] = []
+    open_reviews: list[dict[str, Any]] = []
+    risk_rank = {"blocking": 0, "elevated": 1, "nominal": 2}
+    attention_asset_id: str | None = None
+    attention_rank = 99
     for row in reviews.fetchall():
         m = row._mapping
-        open_reviews.append(
-            f"{m['name']} state={m['state']} risk={m['risk_level'] or 'n/a'} "
-            f"({m['id']})"
-        )
+        risk = m["risk_level"] or "n/a"
+        item = {
+            "review_id": str(m["id"]),
+            "asset_id": str(m["asset_id"]),
+            "asset_name": m["name"],
+            "state": m["state"],
+            "risk_level": risk,
+            "label": (
+                f"{m['name']} state={m['state']} risk={risk} ({m['id']})"
+            ),
+        }
+        open_reviews.append(item)
+        rank = risk_rank.get(str(risk), 3)
+        if rank < attention_rank:
+            attention_rank = rank
+            attention_asset_id = str(m["asset_id"])
+
+    if attention_asset_id is None and open_reviews:
+        attention_asset_id = open_reviews[0]["asset_id"]
 
     return {
         "window_hours": window_hours,
         "asset_summaries": asset_summaries,
         "active_facts": active_facts,
         "open_reviews": open_reviews,
+        "attention_asset_id": attention_asset_id,
     }
 
 
@@ -147,6 +166,9 @@ async def generate_shift_handover(
     settings = get_settings()
     pname = provider_name or settings.ai_provider
     ctx = await collect_shift_context(session, window_hours=window_hours)
+    open_review_labels = [
+        r["label"] if isinstance(r, dict) else str(r) for r in ctx["open_reviews"]
+    ]
 
     await broadcast_agent_step(
         make_step(
@@ -162,7 +184,7 @@ async def generate_shift_handover(
         "Do not invent facts.\n\n"
         f"Window: last {window_hours} hours\n"
         f"Active facts: {ctx['active_facts']}\n"
-        f"Open reviews: {ctx['open_reviews']}\n"
+        f"Open reviews: {open_review_labels}\n"
         f"Recent signals:\n"
         + "\n".join(f"- {s}" for s in ctx["asset_summaries"][:20])
     )
@@ -170,7 +192,7 @@ async def generate_shift_handover(
     if brief is None:
         brief = _mock_brief(
             asset_summaries=ctx["asset_summaries"],
-            open_reviews=ctx["open_reviews"],
+            open_reviews=open_review_labels,
             active_facts=ctx["active_facts"],
             window_hours=window_hours,
         )
@@ -191,6 +213,7 @@ async def generate_shift_handover(
         "model": model_label(pname),
         "active_facts": ctx["active_facts"],
         "open_reviews": ctx["open_reviews"],
+        "attention_asset_id": ctx.get("attention_asset_id"),
         "signal_count": len(ctx["asset_summaries"]),
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }

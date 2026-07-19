@@ -78,8 +78,10 @@ def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
     if active:
         bits = [FACT_NARRATION.get(ft, ft) for ft in active]
         observation = f"{title}: " + "; ".join(bits) + "."
+        finding = "risk"
     else:
         observation = f"{title}: no active hazards in this domain."
+        finding = "clearance"
 
     risk = _local_risk(active)
     obs: AgentObservation = {
@@ -87,7 +89,7 @@ def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
         "observation": observation,
         "local_risk": risk,
         "fact_types": active,
-        "detail": {"domain": agent},
+        "detail": {"domain": agent, "finding": finding},
     }
 
     obs_step = make_step(
@@ -97,6 +99,7 @@ def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
         review_id=review_id,
         assessment_id=assessment_id,
         detail={"fact_types": active, "local_risk": risk},
+        finding=finding,  # type: ignore[arg-type]
     )
     risk_step = make_step(
         agent,

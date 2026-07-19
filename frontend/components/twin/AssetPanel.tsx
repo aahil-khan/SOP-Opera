@@ -2,11 +2,13 @@
 
 import Link from "next/link";
 import type { LiveAssetView } from "@/lib/liveStore";
-import { spatialLinksFromAssessment } from "@/lib/liveStore";
+import { spatialLinksFromAssessment, useLiveStore } from "@/lib/liveStore";
 import type { ReasoningFactor, RetrievedReference } from "@/shared/schemas";
 import { ReasoningTrace } from "@/components/trace/ReasoningTrace";
 import { SpatialGraphPanel } from "./SpatialGraphPanel";
 import { AssetTelemetry } from "./AssetTelemetry";
+import { AgentBrainPanel } from "./AgentBrainPanel";
+import { nextActionForView, ownerNameForView } from "@/lib/openWork";
 import styles from "./AssetPanel.module.css";
 
 interface AssetPanelProps {
@@ -53,6 +55,107 @@ function matchLabel(r: RetrievedReference): string {
   return "matched by category";
 }
 
+function ContextChipRow({ view }: { view: LiveAssetView }) {
+  const assetId = view.asset.id;
+  const latest = useLiveStore((s) => s.telemetryLatest[assetId]);
+  const plantStatus = useLiveStore((s) => s.telemetryStatus);
+  const context = view.detail?.context ?? [];
+  const spatialLinks = spatialLinksFromAssessment(view.assessment);
+
+  const gasFromTelemetry =
+    latest?.payload && typeof latest.payload.gas_reading === "number"
+      ? latest.payload.gas_reading
+      : null;
+  const gasFromContext = context.find(
+    (c) =>
+      c.category === "sensor" && typeof c.payload.gas_reading === "number",
+  );
+  const gas =
+    gasFromTelemetry ??
+    (gasFromContext
+      ? (gasFromContext.payload.gas_reading as number)
+      : null);
+  const gasWarn = gas != null && gas >= 20;
+
+  const activePermits = context.filter(
+    (c) =>
+      c.category === "permit" &&
+      String(c.payload.status ?? "").toLowerCase() === "active",
+  );
+  const hotWork = activePermits.some(
+    (c) => String(c.payload.work_type ?? "") === "hot_work",
+  );
+
+  const workersInContext = context.filter(
+    (c) => c.category === "worker_location",
+  );
+  const workersFromStatus = plantStatus.filter(
+    (s) =>
+      s.category === "worker_location" &&
+      (s.asset_id === assetId ||
+        s.label.toLowerCase().includes("hazardous")),
+  );
+  const crewCount = Math.max(workersInContext.length, workersFromStatus.length);
+
+  const chips: {
+    key: string;
+    label: string;
+    value: string;
+    warn?: boolean;
+  }[] = [
+    {
+      key: "gas",
+      label: "Gas",
+      value: gas != null ? `${gas.toFixed(1)} ppm` : "—",
+      warn: gasWarn,
+    },
+    {
+      key: "ptw",
+      label: "PTW",
+      value:
+        activePermits.length === 0
+          ? "None"
+          : hotWork
+            ? `${activePermits.length} active · hot work`
+            : `${activePermits.length} active`,
+      warn: activePermits.length > 0,
+    },
+    {
+      key: "crew",
+      label: "Crew",
+      value: crewCount === 0 ? "None nearby" : `${crewCount} in zone`,
+      warn: crewCount > 0,
+    },
+  ];
+
+  if (spatialLinks.length > 0) {
+    chips.push({
+      key: "spatial",
+      label: "Co-occur",
+      value: spatialLinks[0]?.reason?.slice(0, 42) ?? "Spatial link",
+      warn: true,
+    });
+  }
+
+  return (
+    <section className={styles.contextRow} aria-label="Cross-context">
+      <h3 className={styles.contextTitle}>Context</h3>
+      <div className={styles.contextChips}>
+        {chips.map((c) => (
+          <div
+            key={c.key}
+            className={styles.contextChip}
+            data-warn={c.warn ? "true" : undefined}
+          >
+            <span className={styles.contextChipLabel}>{c.label}</span>
+            <span className={styles.contextChipValue}>{c.value}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 export function AssetPanel({ view, onClose }: AssetPanelProps) {
   const { asset, risk_level, review, assessment, detail } = view;
   const context = detail?.context ?? [];
@@ -66,10 +169,17 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
     assessment?.metadata?.reasoning_factors ??
     [];
   const spatialLinks = spatialLinksFromAssessment(assessment);
+  const nextAction = nextActionForView(view);
+  const ownerName = ownerNameForView(view);
+
+  const assessmentInProgress =
+    review?.state === "assessing" ||
+    assessment?.status === "pending" ||
+    assessment?.status === "generating";
 
   const summary =
     assessment?.summary ??
-    (assessment?.status === "pending" || assessment?.status === "generating"
+    (assessmentInProgress
       ? "Assessment in progress…"
       : review
         ? "No assessment summary yet."
@@ -170,20 +280,31 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
       </header>
 
       <div className={styles.body}>
+        <ContextChipRow view={view} />
+
         <section className={styles.section} aria-labelledby="why-heading">
           <h3 id="why-heading" className={styles.sectionTitle}>
             Why
           </h3>
-          <p className={styles.summary}>{summary}</p>
-          {factors.length > 0 && (
-            <ul className={styles.factorList}>
-              {factors.map((f) => (
-                <li key={f.fact_type} className={styles.factorItem}>
-                  <strong>{f.headline}</strong>
-                  <p>{f.detail}</p>
-                </li>
-              ))}
-            </ul>
+          {assessmentInProgress && review ? (
+            <>
+              <p className={styles.summary}>Assessment in progress…</p>
+              <AgentBrainPanel reviewId={review.id} />
+            </>
+          ) : (
+            <>
+              <p className={styles.summary}>{summary}</p>
+              {factors.length > 0 && (
+                <ul className={styles.factorList}>
+                  {factors.map((f) => (
+                    <li key={f.fact_type} className={styles.factorItem}>
+                      <strong>{f.headline}</strong>
+                      <p>{f.detail}</p>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </>
           )}
         </section>
 
@@ -265,6 +386,16 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
           <h3 id="do-heading" className={styles.sectionTitle}>
             Recommended action
           </h3>
+          <p className={styles.nextOwnerLine}>
+            <span>
+              <strong>Next:</strong> {nextAction}
+            </span>
+            {ownerName ? (
+              <span>
+                <strong>Owner:</strong> {ownerName}
+              </span>
+            ) : null}
+          </p>
           {decision ? (
             <p className={styles.summary}>
               Decision: {decision.outcome.replaceAll("_", " ")}

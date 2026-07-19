@@ -127,6 +127,7 @@ async def incident_pattern_agent(state: AgentState) -> dict[str, Any]:
             f"(path={path}{score_bit}). {snippet}"
         ).strip()
         risk = "elevated"
+        finding = "risk"
         if len(fact_types) >= 2 or any(
             ft in fact_types
             for ft in ("elevated_gas", "zone_occupied", "permit_conflict")
@@ -137,13 +138,18 @@ async def incident_pattern_agent(state: AgentState) -> dict[str, Any]:
             "Incident Pattern Agent: no matching historical near-miss for active facts."
         )
         risk = "nominal"
+        finding = "clearance"
 
     obs: AgentObservation = {
         "agent": "incident_pattern",
         "observation": observation,
         "local_risk": risk,
         "fact_types": [],
-        "detail": {"incident_echoes": refs[:5], "retrieval_path": path_note},
+        "detail": {
+            "incident_echoes": refs[:5],
+            "retrieval_path": path_note,
+            "finding": finding,
+        },
     }
 
     steps = [
@@ -156,6 +162,7 @@ async def incident_pattern_agent(state: AgentState) -> dict[str, Any]:
             review_id=review_id,
             assessment_id=assessment_id,
             detail=obs["detail"],
+            finding=finding,  # type: ignore[arg-type]
         ).model_dump(),
         make_step(
             "incident_pattern",

@@ -213,7 +213,49 @@ async def orchestrator_agent(
             "provider": provider_label(pname),
             "model": model_label(pname),
         },
+        finding="risk" if risk in ("elevated", "blocking") else "neutral",
     )
+
+    clearance_obs = [
+        o
+        for o in observations
+        if (o.get("detail") or {}).get("finding") == "clearance"
+        or (
+            isinstance(o.get("observation"), str)
+            and "no " in o["observation"].lower()
+            and o.get("local_risk") == "nominal"
+        )
+    ]
+    risk_obs = [
+        o
+        for o in observations
+        if o.get("local_risk") in ("elevated", "blocking")
+        or (o.get("detail") or {}).get("finding") == "risk"
+    ]
+    not_causal_steps: list[dict[str, Any]] = []
+    if clearance_obs and risk_obs and risk in ("elevated", "blocking"):
+        cleared = ", ".join(
+            sorted({str(o.get("agent")) for o in clearance_obs if o.get("agent")})
+        )
+        not_causal_steps.append(
+            make_step(
+                "orchestrator",
+                "observation",
+                (
+                    "Cleared domains are not causal for the active compound risk"
+                    + (f" ({cleared})" if cleared else "")
+                    + "."
+                ),
+                review_id=review_id,
+                assessment_id=assessment_id,
+                detail={
+                    "cleared_agents": [o.get("agent") for o in clearance_obs],
+                    "risk_agents": [o.get("agent") for o in risk_obs],
+                },
+                finding="clearance",
+            ).model_dump()
+        )
+
     done = make_step(
         "orchestrator",
         "completed",
@@ -229,6 +271,7 @@ async def orchestrator_agent(
         "agent_trace": [
             started.model_dump(),
             verdict_step.model_dump(),
+            *not_causal_steps,
             done.model_dump(),
         ],
     }

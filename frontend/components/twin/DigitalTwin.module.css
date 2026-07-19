@@ -1,5 +1,5 @@
 .wrap {
-  --affected-panel-width: min(280px, calc(100vw - 1.5rem));
+  --affected-panel-width: min(360px, calc(100vw - 1.5rem));
   position: relative;
   height: calc(100vh - var(--nav-height));
   min-height: 480px;

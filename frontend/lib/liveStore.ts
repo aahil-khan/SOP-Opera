@@ -233,6 +233,8 @@ export type AgentStepKind =
   | "completed"
   | "error";
 
+export type AgentFinding = "risk" | "clearance" | "neutral";
+
 export interface AgentStepEvent {
   id: string;
   agent: string;
@@ -240,6 +242,7 @@ export interface AgentStepEvent {
   message: string;
   review_id: string | null;
   assessment_id: string | null;
+  finding: AgentFinding;
   detail: Record<string, unknown>;
   ts: string;
 }
@@ -356,6 +359,17 @@ function asAgentStep(payload: Record<string, unknown>): AgentStepEvent | null {
     return null;
   }
   const kind = typeof payload.kind === "string" ? payload.kind : "observation";
+  const rawFinding =
+    typeof payload.finding === "string"
+      ? payload.finding
+      : typeof (payload.detail as { finding?: unknown } | undefined)?.finding ===
+          "string"
+        ? (payload.detail as { finding: string }).finding
+        : "neutral";
+  const finding: AgentFinding =
+    rawFinding === "risk" || rawFinding === "clearance" || rawFinding === "neutral"
+      ? rawFinding
+      : "neutral";
   return {
     id: `${payload.agent}-${payload.ts ?? Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
     agent: payload.agent,
@@ -364,6 +378,7 @@ function asAgentStep(payload: Record<string, unknown>): AgentStepEvent | null {
     review_id: typeof payload.review_id === "string" ? payload.review_id : null,
     assessment_id:
       typeof payload.assessment_id === "string" ? payload.assessment_id : null,
+    finding,
     detail:
       payload.detail && typeof payload.detail === "object"
         ? (payload.detail as Record<string, unknown>)
@@ -649,6 +664,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         review_id:
           typeof payload.review_id === "string" ? payload.review_id : null,
         assessment_id: null,
+        finding: "neutral",
         detail: payload,
         ts: new Date().toISOString(),
       };

@@ -31,6 +31,8 @@ AgentStepKind = Literal[
     "error",
 ]
 
+AgentFinding = Literal["risk", "clearance", "neutral"]
+
 
 class AgentStep(BaseModel):
     """One visible reasoning step from an agent — streamed to the Brain panel."""
@@ -40,6 +42,7 @@ class AgentStep(BaseModel):
     message: str
     review_id: str | None = None
     assessment_id: str | None = None
+    finding: AgentFinding = "neutral"
     detail: dict[str, Any] = Field(default_factory=dict)
     ts: str = Field(
         default_factory=lambda: datetime.now(timezone.utc).isoformat()
@@ -58,6 +61,7 @@ def make_step(
     review_id: UUID | str | None = None,
     assessment_id: UUID | str | None = None,
     detail: dict[str, Any] | None = None,
+    finding: AgentFinding = "neutral",
 ) -> AgentStep:
     return AgentStep(
         agent=agent,
@@ -65,5 +69,6 @@ def make_step(
         message=message,
         review_id=str(review_id) if review_id else None,
         assessment_id=str(assessment_id) if assessment_id else None,
+        finding=finding,
         detail=detail or {},
     )

@@ -105,6 +105,7 @@ async def spatial_agent(state: AgentState) -> dict[str, Any]:
         )
         risk = "blocking" if any(L.distance_m <= settings.agent_spatial_radius_m for L in links) else "elevated"
         fact_types = ["spatial_cooccurrence"]
+        finding = "risk"
         if "elevated_gas" in (state.get("fact_types") or []) or gas_ids:
             # Keep grounding path: spatial escalates but BLOCK still needs rule facts
             pass
@@ -114,13 +115,18 @@ async def spatial_agent(state: AgentState) -> dict[str, Any]:
         )
         risk = "nominal"
         fact_types = []
+        finding = "clearance"
 
     obs: AgentObservation = {
         "agent": "spatial",
         "observation": observation,
         "local_risk": risk,
         "fact_types": fact_types,
-        "detail": {"spatial_links": spatial_links, "neighbors": near[:8]},
+        "detail": {
+            "spatial_links": spatial_links,
+            "neighbors": near[:8],
+            "finding": finding,
+        },
     }
 
     steps = [
@@ -132,7 +138,12 @@ async def spatial_agent(state: AgentState) -> dict[str, Any]:
             observation,
             review_id=review_id,
             assessment_id=assessment_id,
-            detail={"spatial_links": spatial_links, "gas_assets": sorted(gas_ids), "hot_work_assets": sorted(hot_ids)},
+            detail={
+                "spatial_links": spatial_links,
+                "gas_assets": sorted(gas_ids),
+                "hot_work_assets": sorted(hot_ids),
+            },
+            finding=finding,  # type: ignore[arg-type]
         ).model_dump(),
         make_step(
             "spatial",

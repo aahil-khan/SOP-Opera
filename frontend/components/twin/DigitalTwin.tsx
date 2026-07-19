@@ -12,9 +12,10 @@ import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
 import { AssetPanel } from "./AssetPanel";
-import { AgentBrainPanel } from "./AgentBrainPanel";
 import { TelemetryStrip } from "./TelemetryStrip";
+import { ImpactStrip } from "./ImpactStrip";
 import { ReviewSidebar } from "./ReviewSidebar";
+import { ShiftGate, hasStartedShift } from "./ShiftGate";
 import { MapControls } from "./MapControls";
 import { MapViewport, type MapViewportHandle } from "./MapViewport";
 import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
@@ -59,8 +60,23 @@ export function DigitalTwin() {
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [activeFloor, setActiveFloor] = useState<PlantFloor>("ground");
   const [slideDir, setSlideDir] = useState<SlideDir>("in");
+  const [shiftGateOpen, setShiftGateOpen] = useState(false);
   const lastFocusedRef = useRef<string | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    setShiftGateOpen(!hasStartedShift());
+  }, []);
+
+  const handleStartShift = useCallback(
+    (attentionAssetId: string | null) => {
+      setShiftGateOpen(false);
+      if (attentionAssetId) {
+        selectAsset(attentionAssetId);
+      }
+    },
+    [selectAsset],
+  );
 
   const views = getLiveAssetViews({
     assets,
@@ -361,11 +377,11 @@ export function DigitalTwin() {
           <AssetPanel view={selected} onClose={() => selectAsset(null)} />
         ) : null}
 
-        <TelemetryStrip
+        <ImpactStrip
           shiftForDrawer={Boolean(selected) && viewMode === "detail"}
         />
 
-        <AgentBrainPanel
+        <TelemetryStrip
           shiftForDrawer={Boolean(selected) && viewMode === "detail"}
         />
       </div>
@@ -375,6 +391,8 @@ export function DigitalTwin() {
         onOpenChange={setSidebarOpen}
         affectedCount={affectedCount}
       />
+
+      {shiftGateOpen ? <ShiftGate onStartShift={handleStartShift} /> : null}
     </div>
   );
 }

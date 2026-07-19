@@ -76,13 +76,23 @@ export interface AiOpsSummary {
   retrieval_ran_count: number;
 }
 
+export interface ShiftHandoverOpenReview {
+  review_id: string;
+  asset_id: string;
+  asset_name: string;
+  state: string;
+  risk_level: string;
+  label?: string;
+}
+
 export interface ShiftHandoverBrief {
   brief: string;
   window_hours: number;
   provider: string;
   model: string;
   active_facts: string[];
-  open_reviews: string[];
+  open_reviews: Array<ShiftHandoverOpenReview | string>;
+  attention_asset_id?: string | null;
   signal_count: number;
   generated_at: string;
 }

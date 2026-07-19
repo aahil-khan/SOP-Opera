@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef } from "react";
 import { useLiveStore, type AgentStepEvent } from "@/lib/liveStore";
 import styles from "./AgentBrainPanel.module.css";
 
@@ -30,87 +30,100 @@ function kindClass(kind: string): string {
 
 function StepRow({ step }: { step: AgentStepEvent }) {
   const label = AGENT_LABELS[step.agent] ?? step.agent;
+  const isClearance = step.finding === "clearance";
   return (
-    <li className={styles.step} data-kind={step.kind} data-agent={step.agent}>
+    <li
+      className={styles.step}
+      data-kind={step.kind}
+      data-agent={step.agent}
+      data-finding={step.finding}
+    >
       <span className={styles.agent}>{label}</span>
-      <span className={`${styles.kind} ${kindClass(step.kind)}`}>{step.kind}</span>
+      {isClearance ? (
+        <span className={`${styles.kind} ${styles.kindClearance}`}>Clear</span>
+      ) : (
+        <span className={`${styles.kind} ${kindClass(step.kind)}`}>
+          {step.kind}
+        </span>
+      )}
       <p className={styles.message}>{step.message}</p>
     </li>
   );
 }
 
 interface AgentBrainPanelProps {
-  shiftForDrawer?: boolean;
+  /** Limit the stream to steps for this review (asset-scoped investigation). */
+  reviewId: string;
 }
 
-export function AgentBrainPanel({ shiftForDrawer = false }: AgentBrainPanelProps) {
-  const steps = useLiveStore((s) => s.agentSteps);
-  const clearAgentSteps = useLiveStore((s) => s.clearAgentSteps);
-  const [open, setOpen] = useState(true);
+/**
+ * Live multi-agent reasoning stream scoped to one review.
+ * Rendered inside the asset drawer while assessment is in progress.
+ */
+export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
+  const allSteps = useLiveStore((s) => s.agentSteps);
   const listRef = useRef<HTMLUListElement>(null);
+
+  const steps = useMemo(
+    () => allSteps.filter((s) => s.review_id === reviewId),
+    [allSteps, reviewId],
+  );
 
   useEffect(() => {
     const el = listRef.current;
-    if (!el || !open) return;
+    if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [steps.length, open]);
+  }, [steps.length]);
 
   const verdict = [...steps].reverse().find((s) => s.kind === "verdict");
+  const pinnedClearances = useMemo(() => {
+    if (!verdict) return [];
+    return steps.filter(
+      (s) =>
+        s.finding === "clearance" &&
+        (s.agent === "orchestrator" ||
+          /no (active|hot-work|matching)/i.test(s.message)),
+    );
+  }, [steps, verdict]);
 
   return (
-    <aside
-      className={styles.panel}
-      data-open={open ? "true" : "false"}
-      data-shift={shiftForDrawer ? "true" : undefined}
-      aria-label="Agent reasoning stream"
-    >
+    <div className={styles.embedded} aria-label="Agent reasoning stream">
       <header className={styles.header}>
         <div className={styles.titleBlock}>
           <span className={styles.mark}>Brain</span>
-          <h2 className={styles.title}>Agent stream</h2>
+          <h3 className={styles.title}>Agent stream</h3>
           {steps.length > 0 && (
             <span className={styles.count}>{steps.length}</span>
           )}
         </div>
-        <div className={styles.actions}>
-          {steps.length > 0 && (
-            <button
-              type="button"
-              className={styles.ghost}
-              onClick={clearAgentSteps}
-            >
-              Clear
-            </button>
-          )}
-          <button
-            type="button"
-            className={styles.ghost}
-            onClick={() => setOpen((v) => !v)}
-            aria-expanded={open}
-          >
-            {open ? "Hide" : "Show"}
-          </button>
-        </div>
       </header>
 
-      {open && (
-        <>
-          {verdict && (
-            <p className={styles.verdictBanner}>{verdict.message}</p>
-          )}
-          {steps.length === 0 ? (
-            <p className={styles.empty}>
-              Start a demo scenario. Multi-agent reasoning will stream here live.
-            </p>
-          ) : (
-            <ul className={styles.list} ref={listRef}>
-              {steps.map((s) => (
-                <StepRow key={s.id} step={s} />
-              ))}
-            </ul>
-          )}
-        </>
+      {verdict && (
+        <p className={styles.verdictBanner}>{verdict.message}</p>
       )}
-    </aside>
+      {pinnedClearances.length > 0 && (
+        <div className={styles.clearancePin} aria-label="Clearance findings">
+          <span className={styles.clearancePinLabel}>
+            Clearances · not causal for alert
+          </span>
+          <ul className={styles.clearancePinList}>
+            {pinnedClearances.slice(-4).map((s) => (
+              <li key={s.id}>{s.message}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {steps.length === 0 ? (
+        <p className={styles.empty}>
+          Agents are starting… reasoning steps for this review will stream here.
+        </p>
+      ) : (
+        <ul className={styles.list} ref={listRef}>
+          {steps.map((s) => (
+            <StepRow key={s.id} step={s} />
+          ))}
+        </ul>
+      )}
+    </div>
   );
 }

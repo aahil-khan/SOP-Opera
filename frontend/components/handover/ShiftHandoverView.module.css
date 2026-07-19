@@ -103,3 +103,70 @@
   font-size: var(--text-sm);
   color: var(--text-secondary);
 }
+
+.compact {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  max-width: 100%;
+}
+
+.loadingLine {
+  margin: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  font-style: italic;
+}
+
+.openWork h2,
+.facts h2 {
+  margin: 0 0 var(--space-2);
+  font-size: var(--text-sm);
+}
+
+.openWorkList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.openWorkItem {
+  width: 100%;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-canvas) 70%, transparent);
+  color: var(--text-primary);
+  cursor: pointer;
+  font: inherit;
+}
+
+.openWorkItem:hover {
+  border-color: var(--border-hover);
+  background: var(--interactive-hover);
+}
+
+.openWorkItemStatic {
+  display: block;
+  padding: var(--space-2) var(--space-3);
+  font-size: var(--text-sm);
+  color: var(--text-secondary);
+}
+
+.openWorkName {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+}
+
+.openWorkMeta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  text-transform: capitalize;
+}
