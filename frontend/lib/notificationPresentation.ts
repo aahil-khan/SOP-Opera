@@ -26,6 +26,13 @@ export function notificationToastId(n: Notification): string {
 }
 
 /**
+ * Blocking (critical) and failed assessments only — elevated / routine stay quiet.
+ */
+export function isAlertNotification(n: Notification): boolean {
+  return presentNotification(n).severity === "error";
+}
+
+/**
  * Maps machine event_type (+ summary hints) to human-facing copy.
  * Never expose raw event_type strings in the UI.
  */
@@ -55,7 +62,7 @@ export function presentNotification(n: Notification): NotificationPresentation {
         title: "Elevated risk",
         detail: n.summary,
         severity: "warning",
-        toastable: true,
+        toastable: false,
       };
     }
     case "assessment.failed":
@@ -88,7 +95,7 @@ export function presentNotification(n: Notification): NotificationPresentation {
         title: "Escalated",
         detail: n.summary,
         severity: "warning",
-        toastable: true,
+        toastable: false,
       };
     default:
       return {

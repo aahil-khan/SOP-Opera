@@ -1,5 +1,6 @@
 "use client";
 
+import { useMemo } from "react";
 import { create } from "zustand";
 import type {
   Assessment,
@@ -29,13 +30,18 @@ import {
   dismissNotificationToast,
   showNotificationToast,
 } from "@/lib/notificationToast";
-import { presentNotification } from "@/lib/notificationPresentation";
+import {
+  isAlertNotification,
+  presentNotification,
+} from "@/lib/notificationPresentation";
 
 const NOTIFICATION_CAP = 50;
 const AGENT_STEP_CAP = 100;
 const TELEMETRY_RING_CAP = 30;
 /** Coalesce rapid soft samples into one Zustand write. */
 const TELEMETRY_FLUSH_MS = 250;
+/** Coalesce bursty domain WS events into one reviews refetch. */
+const OVERVIEW_REFRESH_DEBOUNCE_MS = 400;
 
 
 export type TelemetrySource = "scada" | "ptw" | "maintenance" | "workforce" | string;
@@ -274,12 +280,15 @@ interface LiveState {
   notifications: Notification[];
   /** Client-side unread ids (bootstrap history starts as read). */
   unreadNotificationIds: string[];
-  agentSteps: AgentStepEvent[];
+  /** Agent steps keyed by review id (null-scoped → `_unscoped`). */
+  agentStepsByReview: Record<string, AgentStepEvent[]>;
   telemetrySeries: Record<string, TelemetryPoint[]>;
   telemetryLatest: Record<string, TelemetrySample>;
   telemetryBySource: Record<string, TelemetrySample>;
   telemetryStatus: TelemetryStatusChip[];
   selectedAssetId: string | null;
+  /** Right AssetPanel mode on the Digital Twin. */
+  assetPanelMode: "summary" | "fullReview";
   bootstrapped: boolean;
   loading: boolean;
   error: string | null;
@@ -297,6 +306,9 @@ interface LiveState {
     body: ManualAssessmentIn,
   ) => Promise<Assessment>;
   selectAsset: (id: string | null) => void;
+  setAssetPanelMode: (mode: "summary" | "fullReview") => void;
+  /** Select an asset and open the in-panel full review (deep links). */
+  openAssetFullReview: (assetId: string) => void;
   loadNotifications: () => Promise<void>;
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
@@ -304,6 +316,25 @@ interface LiveState {
   clearAgentSteps: () => void;
   clearTelemetry: () => void;
   handleRealtimeEvent: (type: string, payload: Record<string, unknown>) => void;
+}
+
+const EMPTY_AGENT_STEPS: AgentStepEvent[] = [];
+const UNSCOPED_AGENT_KEY = "_unscoped";
+
+function agentStepBucket(reviewId: string | null | undefined): string {
+  return reviewId && reviewId.length > 0 ? reviewId : UNSCOPED_AGENT_KEY;
+}
+
+function appendAgentStep(
+  byReview: Record<string, AgentStepEvent[]>,
+  step: AgentStepEvent,
+): Record<string, AgentStepEvent[]> {
+  const key = agentStepBucket(step.review_id);
+  const prev = byReview[key] ?? [];
+  return {
+    ...byReview,
+    [key]: [...prev, step].slice(-AGENT_STEP_CAP),
+  };
 }
 
 function latestComplete(
@@ -323,16 +354,29 @@ function deriveRisk(
   assessment: AssessmentHistoryItem | null,
   detail: ReviewDetail | null,
 ): RiskLevel {
+  // Closed reviews clear the twin hotspot — evidence stays on the record,
+  // but live risk returns to nominal.
+  if (!review || review.state === "closed") {
+    return "nominal";
+  }
+
+  // Decided but not closed: color by the operator decision so the asset
+  // still reads as open work until Close Review.
+  if (review.state === "decided") {
+    const outcome = detail?.decision?.outcome;
+    if (outcome === "blocked") return "blocking";
+    // Approved / approved w/ conditions — soft amber until closed.
+    return "elevated";
+  }
+
   if (assessment?.status === "complete" && assessment.risk_level) {
     return assessment.risk_level;
   }
   if (detail?.derived_facts?.some((f) => f.value === true || f.value === "true")) {
     return "elevated";
   }
-  if (review && review.state !== "closed") {
-    return "elevated";
-  }
-  return "nominal";
+  // Any other open review without a settled assessment still reads elevated.
+  return "elevated";
 }
 
 function asNotification(payload: Record<string, unknown>): Notification | null {
@@ -432,6 +476,7 @@ export function spatialLinksFromAssessment(
 export const useLiveStore = create<LiveState>((set, get) => {
   const pendingTelemetry: TelemetrySample[] = [];
   let telemetryFlushTimer: ReturnType<typeof setTimeout> | null = null;
+  let overviewRefreshTimer: ReturnType<typeof setTimeout> | null = null;
 
   const flushTelemetry = () => {
     telemetryFlushTimer = null;
@@ -448,6 +493,15 @@ export const useLiveStore = create<LiveState>((set, get) => {
     }
   };
 
+  /** Trailing debounce for WS-driven overview refreshes (keeps mutation awaits immediate). */
+  const scheduleOverviewRefresh = () => {
+    if (overviewRefreshTimer != null) clearTimeout(overviewRefreshTimer);
+    overviewRefreshTimer = setTimeout(() => {
+      overviewRefreshTimer = null;
+      void get().refreshOverview();
+    }, OVERVIEW_REFRESH_DEBOUNCE_MS);
+  };
+
   return {
   assets: [],
   reviews: [],
@@ -455,17 +509,24 @@ export const useLiveStore = create<LiveState>((set, get) => {
   assessmentsByReview: {},
   notifications: [],
   unreadNotificationIds: [],
-  agentSteps: [],
+  agentStepsByReview: {},
   telemetrySeries: {},
   telemetryLatest: {},
   telemetryBySource: {},
   telemetryStatus: [],
   selectedAssetId: null,
+  assetPanelMode: "summary",
   bootstrapped: false,
   loading: false,
   error: null,
 
-  selectAsset: (id) => set({ selectedAssetId: id }),
+  selectAsset: (id) =>
+    set({ selectedAssetId: id, assetPanelMode: "summary" }),
+
+  setAssetPanelMode: (mode) => set({ assetPanelMode: mode }),
+
+  openAssetFullReview: (assetId) =>
+    set({ selectedAssetId: assetId, assetPanelMode: "fullReview" }),
 
   bootstrap: async () => {
     if (get().loading) return;
@@ -485,6 +546,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         reviewDetails: {},
         assessmentsByReview: {},
         selectedAssetId: null,
+        assetPanelMode: "summary",
         bootstrapped: true,
         loading: false,
         error: null,
@@ -522,7 +584,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       const notifications = await fetchNotifications();
       const existing = new Set(get().notifications.map((n) => n.id));
       const incomingUnread = notifications
-        .filter((n) => !existing.has(n.id))
+        .filter((n) => !existing.has(n.id) && isAlertNotification(n))
         .map((n) => n.id);
       set((state) => ({
         notifications,
@@ -561,7 +623,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
   },
 
   clearAgentSteps: () => {
-    set({ agentSteps: [] });
+    set({ agentStepsByReview: {} });
   },
 
   clearTelemetry: () => {
@@ -624,7 +686,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       const step = asAgentStep(payload);
       if (step) {
         set((state) => ({
-          agentSteps: [...state.agentSteps, step].slice(-AGENT_STEP_CAP),
+          agentStepsByReview: appendAgentStep(state.agentStepsByReview, step),
         }));
       }
       return;
@@ -670,7 +732,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       };
       set((state) => {
         const next: Partial<LiveState> = {
-          agentSteps: [...state.agentSteps, step].slice(-AGENT_STEP_CAP),
+          agentStepsByReview: appendAgentStep(state.agentStepsByReview, step),
         };
         if (type === "sim.source_emit") {
           const sample = asTelemetrySample(payload);
@@ -681,14 +743,14 @@ export const useLiveStore = create<LiveState>((set, get) => {
         return next;
       });
       if (type === "sim.source_emit") {
-        void get().refreshOverview();
+        scheduleOverviewRefresh();
       }
       return;
     }
 
     const reviewId =
       typeof payload.review_id === "string" ? payload.review_id : null;
-    void get().refreshOverview();
+    scheduleOverviewRefresh();
     if (
       reviewId &&
       (type === "review.status_changed" ||
@@ -707,10 +769,9 @@ export const useLiveStore = create<LiveState>((set, get) => {
             n,
             ...state.notifications.filter((x) => x.id !== n.id),
           ].slice(0, NOTIFICATION_CAP);
-          const unreadNotificationIds = [
-            n.id,
-            ...state.unreadNotificationIds.filter((x) => x !== n.id),
-          ];
+          const unreadNotificationIds = isAlertNotification(n)
+            ? [n.id, ...state.unreadNotificationIds.filter((x) => x !== n.id)]
+            : state.unreadNotificationIds.filter((x) => x !== n.id);
           return {
             notifications,
             unreadNotificationIds,
@@ -719,6 +780,11 @@ export const useLiveStore = create<LiveState>((set, get) => {
         if (presentNotification(n).toastable) {
           showNotificationToast(n, {
             onClear: () => get().dismissNotification(n.id),
+            onOpen: n.review_id
+              ? () => {
+                  void focusReviewAssetOnTwin(n.review_id!);
+                }
+              : undefined,
           });
         }
       }
@@ -770,6 +836,37 @@ export function getLiveAssetViews(
   });
 }
 
+/** Stable empty array when a review has no live steps yet. */
+export function selectAgentStepsForReview(reviewId: string) {
+  return (state: Pick<LiveState, "agentStepsByReview">): AgentStepEvent[] =>
+    state.agentStepsByReview[reviewId] ?? EMPTY_AGENT_STEPS;
+}
+
+export function useAgentStepsForReview(reviewId: string): AgentStepEvent[] {
+  return useLiveStore((s) => s.agentStepsByReview[reviewId] ?? EMPTY_AGENT_STEPS);
+}
+
+/**
+ * Subscribe once to the four overview slices and memoize derived views.
+ * Prefer this over calling getLiveAssetViews in every twin panel.
+ */
+export function useLiveAssetViews(): LiveAssetView[] {
+  const assets = useLiveStore((s) => s.assets);
+  const reviews = useLiveStore((s) => s.reviews);
+  const reviewDetails = useLiveStore((s) => s.reviewDetails);
+  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  return useMemo(
+    () =>
+      getLiveAssetViews({
+        assets,
+        reviews,
+        reviewDetails,
+        assessmentsByReview,
+      }),
+    [assets, reviews, reviewDetails, assessmentsByReview],
+  );
+}
+
 export function findViewByAssetId(
   views: LiveAssetView[],
   assetId: string,
@@ -784,6 +881,35 @@ export function findViewByReviewId(
   >,
   reviewId: string,
 ): LiveAssetView | undefined {
-  const views = getLiveAssetViews(state);
-  return views.find((v) => v.review?.id === reviewId);
+  const review = state.reviews.find((r) => r.id === reviewId) ?? null;
+  if (!review) return undefined;
+  const asset = state.assets.find((a) => a.id === review.asset_id);
+  if (!asset) return undefined;
+  const assessments = state.assessmentsByReview[review.id];
+  const assessment = latestComplete(assessments);
+  const detail = state.reviewDetails[review.id] ?? null;
+  return {
+    asset,
+    review,
+    assessment,
+    detail,
+    risk_level: deriveRisk(review, assessment, detail),
+  };
+}
+
+/** Select the reviewed asset on the Digital Twin (summary panel, not full review). */
+export async function focusReviewAssetOnTwin(
+  reviewId: string,
+): Promise<void> {
+  const store = useLiveStore.getState();
+  try {
+    await store.loadReviewDetail(reviewId);
+  } catch {
+    /* best-effort — may already be in store */
+  }
+  const state = useLiveStore.getState();
+  const view = findViewByReviewId(state, reviewId);
+  if (view) {
+    state.selectAsset(view.asset.id);
+  }
 }

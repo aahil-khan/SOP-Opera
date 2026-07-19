@@ -115,14 +115,6 @@ export function DemoControls() {
     return () => clearInterval(id);
   }, [status?.running, refreshStatus]);
 
-  useEffect(() => {
-    if (!status?.running) return;
-    const id = setInterval(() => {
-      void refreshOverview();
-    }, 800);
-    return () => clearInterval(id);
-  }, [status?.running, refreshOverview]);
-
   function toggleFloor(f: PlantFloor) {
     setFloors((prev) => {
       if (prev.includes(f)) {

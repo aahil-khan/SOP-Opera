@@ -2,19 +2,16 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
-import { useLiveStore } from "@/lib/liveStore";
-import { presentNotification } from "@/lib/notificationPresentation";
+import {
+  focusReviewAssetOnTwin,
+  useLiveStore,
+} from "@/lib/liveStore";
+import {
+  isAlertNotification,
+  presentNotification,
+} from "@/lib/notificationPresentation";
+import { relativeTime } from "@/lib/relativeTime";
 import styles from "./NotificationCenter.module.css";
-
-function relativeTime(iso: string): string {
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60_000);
-  if (mins < 1) return "Just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours}h ago`;
-  return new Date(iso).toLocaleDateString();
-}
 
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
@@ -27,12 +24,15 @@ export function NotificationCenter() {
   const dismissNotification = useLiveStore((s) => s.dismissNotification);
   const clearNotifications = useLiveStore((s) => s.clearNotifications);
 
-  const unreadCount = unreadIds.length;
+  const alerts = notifications.filter(isAlertNotification);
+  const unreadCount = unreadIds.filter((id) =>
+    alerts.some((n) => n.id === id),
+  ).length;
 
   useEffect(() => {
     if (!open) return;
     markRead();
-  }, [open, notifications.length, markRead]);
+  }, [open, alerts.length, markRead]);
 
   useEffect(() => {
     if (!open) return;
@@ -94,7 +94,7 @@ export function NotificationCenter() {
         >
           <header className={styles.header}>
             <h2 className={styles.title}>Activity</h2>
-            {notifications.length > 0 && (
+            {alerts.length > 0 && (
               <button
                 type="button"
                 className={styles.clearAll}
@@ -105,11 +105,11 @@ export function NotificationCenter() {
             )}
           </header>
 
-          {notifications.length === 0 ? (
-            <p className={styles.empty}>No recent activity</p>
+          {alerts.length === 0 ? (
+            <p className={styles.empty}>No recent alerts</p>
           ) : (
             <ul className={styles.list}>
-              {notifications.map((n) => {
+              {alerts.map((n) => {
                 const unread = unreadIds.includes(n.id);
                 const presentation = presentNotification(n);
                 return (
@@ -134,11 +134,15 @@ export function NotificationCenter() {
                       <p className={styles.summary}>{presentation.detail}</p>
                       {n.review_id && (
                         <Link
-                          href={`/reviews/${n.review_id}`}
+                          href="/"
                           className={styles.link}
-                          onClick={() => setOpen(false)}
+                          onClick={() => {
+                            setOpen(false);
+                            dismissNotification(n.id);
+                            void focusReviewAssetOnTwin(n.review_id!);
+                          }}
                         >
-                          Open review
+                          Open
                         </Link>
                       )}
                     </div>

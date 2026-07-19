@@ -30,11 +30,13 @@ function ToastBody({
   title,
   detail,
   reviewId,
+  onOpen,
   onDismiss,
 }: {
   title: string;
   detail: string;
   reviewId: string | null;
+  onOpen?: () => void;
   onDismiss?: () => void;
 }) {
   return (
@@ -45,7 +47,14 @@ function ToastBody({
       ) : null}
       <div className={styles.actions}>
         {reviewId ? (
-          <Link href={`/reviews/${reviewId}`} className={styles.action}>
+          <Link
+            href="/"
+            className={styles.action}
+            onClick={() => {
+              onOpen?.();
+              onDismiss?.();
+            }}
+          >
             Open
           </Link>
         ) : null}
@@ -66,7 +75,7 @@ function ToastBody({
 /** Push an urgent domain notification through react-toastify (no-op if not toastable). */
 export function showNotificationToast(
   n: Notification,
-  options?: { onClear?: () => void },
+  options?: { onClear?: () => void; onOpen?: () => void },
 ): void {
   const presentation = presentNotification(n);
   if (!presentation.toastable) return;
@@ -79,6 +88,7 @@ export function showNotificationToast(
       title={presentation.title}
       detail={presentation.detail}
       reviewId={n.review_id}
+      onOpen={options?.onOpen}
       onDismiss={
         options?.onClear
           ? () => {

@@ -45,7 +45,10 @@ export function fallbackNextAction(
     if (state === "assessing") return "Wait for assessment";
     return "Investigate signal";
   }
-  if (column === "awaiting_decision") return "Decide PROCEED / BLOCK";
+  if (column === "awaiting_decision") {
+    if (state === "decided") return "Close review";
+    return "Decide PROCEED / BLOCK";
+  }
   return "None";
 }
 

@@ -1,6 +1,6 @@
 import type { LiveAssetView, SpatialLinkView } from "@/lib/liveStore";
 import { spatialLinksFromAssessment } from "@/lib/liveStore";
-import type { RetrievedReference } from "@/shared/schemas";
+import type { AreaOwner, RetrievedReference } from "@/shared/schemas";
 
 export type DomainId =
   | "sensors"
@@ -76,8 +76,15 @@ export interface DomainScoreExtras {
   elevatedMetricCount?: number;
   /** Total metrics with data */
   metricCount?: number;
-  /** Neighbor count from KG API (optional enrichment) */
+  /**
+   * Neighbor count from `/graph/neighbors`.
+   * `undefined` means not loaded yet — spatial is not marked empty until known.
+   */
   neighborCount?: number;
+  /** True while neighbor fetch is in flight */
+  spatialPending?: boolean;
+  /** Zone area owner when review detail is not loaded (nominal assets). */
+  areaOwner?: AreaOwner | null;
 }
 
 function clampScore(n: number): number {
@@ -180,7 +187,7 @@ export function computeDomainScore(
     }
     case "people": {
       const crew = crewCount(view);
-      const owner = view.detail?.area_owner ?? null;
+      const owner = view.detail?.area_owner ?? extras.areaOwner ?? null;
       const empty = crew === 0 && !owner;
       let score = 0;
       if (!empty) {
@@ -233,19 +240,26 @@ export function computeDomainScore(
     }
     case "spatial": {
       const neighbors = extras.neighborCount ?? 0;
+      const pending = extras.spatialPending === true;
       const n = spatialLinks.length + neighbors;
-      const empty = n === 0;
+      // Don't grey out while neighbors are still loading — KG near/above
+      // is the primary signal for most assets without an assessment yet.
+      const empty = !pending && n === 0;
       let score = 0;
-      if (!empty) {
+      if (pending && n === 0) {
+        score = 18;
+      } else if (!empty) {
         score =
           30 + spatialLinks.length * 20 + Math.min(neighbors, 6) * 6;
         if (spatialLinks.length > 0) score = Math.max(score, 65);
+        if (neighbors > 0) score = Math.max(score, 40);
       }
       return {
         domain,
         score: clampScore(score),
-        headline:
-          spatialLinks.length > 0
+        headline: pending && n === 0
+          ? "Checking nearby assets…"
+          : spatialLinks.length > 0
             ? spatialLinks[0]?.reason?.slice(0, 48) || "Spatial co-occurrence"
             : neighbors > 0
               ? `${neighbors} nearby asset${neighbors === 1 ? "" : "s"}`
@@ -254,7 +268,13 @@ export function computeDomainScore(
           ...(spatialLinks.length
             ? [`${spatialLinks.length} co-occur`]
             : []),
-          ...(neighbors > 0 ? [`${neighbors} near`] : empty ? [] : ["Isolated"]),
+          ...(neighbors > 0
+            ? [`${neighbors} near/above`]
+            : pending
+              ? ["Loading…"]
+              : empty
+                ? []
+                : ["Isolated"]),
         ].slice(0, 2),
         warn: spatialLinks.length > 0,
         empty,

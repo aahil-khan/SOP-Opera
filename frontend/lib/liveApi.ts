@@ -74,6 +74,14 @@ export interface AiOpsSummary {
   rag_fallback_rate: number;
   mean_retrieval_relevance: number | null;
   retrieval_ran_count: number;
+  mean_latency_ms: number | null;
+  total_input_tokens: number;
+  total_output_tokens: number;
+  total_cost_usd: number;
+  mean_cost_usd: number | null;
+  langsmith_enabled: boolean;
+  langsmith_project: string;
+  langsmith_url: string | null;
 }
 
 export interface ShiftHandoverOpenReview {
@@ -195,6 +203,10 @@ export function fetchReviewReports(reviewId: string): Promise<Report[]> {
 
 export function fetchNotifications(limit = 50): Promise<Notification[]> {
   return request<Notification[]>(`/notifications?limit=${limit}`);
+}
+
+export function fetchAssetOwner(assetId: string): Promise<AreaOwner | null> {
+  return request<AreaOwner | null>(`/assets/${assetId}/owner`);
 }
 
 export function fetchAiOpsSummary(): Promise<AiOpsSummary> {

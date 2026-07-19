@@ -155,7 +155,8 @@ function agentLabel(agent: string): string {
   return map[agent] ?? agent;
 }
 
-function normalizeTraceSteps(
+/** Normalize persisted assessment.agent_trace JSON into AgentStepEvent[]. */
+export function normalizeAgentTrace(
   trace: Array<Record<string, unknown>>,
   assessment: Assessment | AssessmentHistoryItem | null,
 ): AgentStepEvent[] {
@@ -181,6 +182,9 @@ function normalizeTraceSteps(
     ts: String(raw.ts ?? new Date().toISOString()),
   }));
 }
+
+/** @deprecated Use normalizeAgentTrace */
+const normalizeTraceSteps = normalizeAgentTrace;
 
 export interface BuildReasoningGraphInput {
   asset: Asset;
