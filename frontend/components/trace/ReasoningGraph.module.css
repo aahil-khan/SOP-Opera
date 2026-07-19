@@ -1,0 +1,56 @@
+.root {
+  position: relative;
+  width: 100%;
+  min-height: 460px;
+  height: min(68vh, 640px);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  background:
+    radial-gradient(
+      circle at 1px 1px,
+      color-mix(in srgb, var(--border-muted) 80%, transparent) 1px,
+      transparent 0
+    );
+  background-size: 20px 20px;
+  background-color: var(--surface-canvas);
+  overflow: hidden;
+}
+
+.empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 280px;
+  border: 1px dashed var(--border-muted);
+  border-radius: var(--radius-md);
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+}
+
+.controls {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
+  z-index: 2;
+  display: flex;
+  gap: var(--space-1);
+}
+
+.ctrlBtn {
+  min-width: 32px;
+  height: 28px;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface-overlay) 92%, transparent);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  cursor: pointer;
+  backdrop-filter: blur(4px);
+}
+
+.ctrlBtn:hover {
+  border-color: var(--border-hover);
+  background: var(--interactive-hover);
+}

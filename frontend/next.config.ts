@@ -8,6 +8,7 @@ const nextConfig: NextConfig = {
   experimental: {
     externalDir: true,
   },
+  transpilePackages: ["react-force-graph-2d", "force-graph"],
   // Turbopack (next dev --turbopack) ignores webpack aliases
   turbopack: {
     resolveAlias: {
