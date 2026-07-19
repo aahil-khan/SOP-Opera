@@ -4,10 +4,16 @@ import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   findViewByReviewId,
+  spatialLinksFromAssessment,
   useLiveStore,
 } from "@/lib/liveStore";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
-import { ReasoningTrace } from "@/components/trace/ReasoningTrace";
+import {
+  buildReasoningGraphFromDetail,
+  type ReasoningGraphNode,
+} from "@/lib/reasoningGraph";
+import { ReasoningGraph } from "@/components/trace/ReasoningGraph";
+import { ReasoningGraphInspector } from "@/components/trace/ReasoningGraphInspector";
 import { AssessmentPanel } from "@/components/assessment/AssessmentPanel";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import styles from "./ReviewDetail.module.css";
@@ -16,54 +22,17 @@ interface ReviewDetailProps {
   reviewId: string;
 }
 
-function toTraceAssessment(a: AssessmentHistoryItem | null) {
-  if (!a) return null;
-  const factors = a.reasoning_factors ?? a.metadata?.reasoning_factors ?? [];
-  return {
-    id: a.id,
-    review_id: a.review_id,
-    assessment_type: a.assessment_type,
-    status: a.status,
-    risk_level: (a.risk_level ?? "elevated") as
-      | "nominal"
-      | "elevated"
-      | "blocking",
-    summary: a.summary ?? "",
-    recommendations: a.recommendations,
-    derived_fact_ids: a.derived_fact_ids,
-    reasoning_factors: factors,
-    metadata: a.metadata
-      ? {
-          provider: a.metadata.provider,
-          model: a.metadata.model ?? "",
-          prompt_version: a.metadata.prompt_version ?? "",
-          input_tokens: a.metadata.input_tokens ?? 0,
-          output_tokens: a.metadata.output_tokens ?? 0,
-          estimated_cost_usd: a.metadata.estimated_cost_usd ?? 0,
-          latency_ms: a.metadata.latency_ms ?? 0,
-          timestamp: a.created_at ?? new Date().toISOString(),
-          retrieved_context_ids: a.metadata.retrieved_context_ids ?? [],
-          retrieved_evidence_ids: a.metadata.retrieved_evidence_ids ?? [],
-          retrieval_mode: a.metadata.retrieval_mode ?? "skipped",
-          retrieval_quality: a.metadata.retrieval_quality ?? "n_a",
-          retrieval_score: a.metadata.retrieval_score ?? null,
-          embedding_model: a.metadata.embedding_model ?? null,
-          confidence: a.metadata.confidence ?? 0,
-          assessment_version:
-            a.metadata.assessment_version ?? a.version,
-          reasoning_factors: factors,
-        }
-      : null,
-  };
-}
-
 export function ReviewDetail({ reviewId }: ReviewDetailProps) {
   const loadReviewDetail = useLiveStore((s) => s.loadReviewDetail);
   const assets = useLiveStore((s) => s.assets);
   const reviews = useLiveStore((s) => s.reviews);
   const reviewDetails = useLiveStore((s) => s.reviewDetails);
   const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  const agentSteps = useLiveStore((s) => s.agentSteps);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [selectedNode, setSelectedNode] = useState<ReasoningGraphNode | null>(
+    null,
+  );
 
   useEffect(() => {
     let cancelled = false;
@@ -89,6 +58,24 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
       assessments[0]
     );
   }, [assessments]);
+
+  const graphData = useMemo(() => {
+    if (!detail) {
+      return { nodes: [], edges: [] };
+    }
+    const spatialLinks = spatialLinksFromAssessment(latest);
+    const steps = agentSteps.filter((s) => s.review_id === reviewId);
+    return buildReasoningGraphFromDetail(
+      detail,
+      latest,
+      spatialLinks,
+      steps,
+    );
+  }, [detail, latest, agentSteps, reviewId]);
+
+  useEffect(() => {
+    setSelectedNode(null);
+  }, [reviewId]);
 
   if (loadError && !detail) {
     return (
@@ -134,33 +121,37 @@ export function ReviewDetail({ reviewId }: ReviewDetailProps) {
         </div>
       </header>
 
-      <div className={styles.grid}>
-        <div className="panel">
-          <h3 className={styles.panelTitle}>Reasoning trace</h3>
-          <ReasoningTrace
-            asset={asset}
-            context={detail.context}
-            derivedFacts={detail.derived_facts}
-            references={latest?.retrieved_references ?? []}
-            assessment={toTraceAssessment(latest)}
-            decision={detail.decision}
-            areaOwner={detail.area_owner}
+      <div className={styles.graphLayout}>
+        <div className={styles.graphPane}>
+          <h3 className={styles.panelTitle}>Reasoning graph</h3>
+          <ReasoningGraph
+            data={graphData}
+            selectedId={selectedNode?.id ?? null}
+            onSelect={setSelectedNode}
           />
         </div>
+        <ReasoningGraphInspector
+          node={selectedNode}
+          fallbackSummary={latest?.summary ?? null}
+          fallbackRisk={
+            (latest?.risk_level as string | null | undefined) ??
+            view.risk_level
+          }
+        />
+      </div>
 
-        <div className={styles.side}>
-          <AssessmentPanel
-            reviewId={review.id}
-            reviewState={review.state}
-            assessment={latest}
-          />
-          <DecisionPanel
-            reviewId={review.id}
-            reviewState={review.state}
-            assessment={latest}
-            existing={detail.decision}
-          />
-        </div>
+      <div className={styles.sideRow}>
+        <AssessmentPanel
+          reviewId={review.id}
+          reviewState={review.state}
+          assessment={latest as AssessmentHistoryItem | null}
+        />
+        <DecisionPanel
+          reviewId={review.id}
+          reviewState={review.state}
+          assessment={latest}
+          existing={detail.decision}
+        />
       </div>
     </div>
   );
