@@ -1,0 +1,53 @@
+/**
+ * GitHub Dark — Primer dark-default palette.
+ */
+
+[data-theme="github-dark"] {
+  --surface-app: #0d1117;
+  --surface-panel: #161b22;
+  --surface-card: #21262d;
+  --surface-overlay: #1c2128;
+  --surface-canvas: #010409;
+  --surface-nav: #010409;
+  --surface-demo: #0d1117;
+
+  --border-default: #30363d;
+  --border-muted: #21262d;
+  --border-hover: #8b949e;
+  --border-focus: #1f6feb;
+  --border-selected: #388bfd;
+
+  --text-primary: #e6edf3;
+  --text-secondary: #9198a1;
+  --text-muted: #656d76;
+  --text-inverse: #0d1117;
+  --text-on-accent: #ffffff;
+  --text-link: #4493f8;
+
+  --interactive-default: #21262d;
+  --interactive-hover: #30363d;
+  --interactive-active: #1f6feb;
+  --interactive-disabled: #161b22;
+
+  --status-nominal: #3fb950;
+  --status-elevated: #d29922;
+  --status-blocking: #f85149;
+  --status-info: #4493f8;
+  --status-nominal-muted: color-mix(in srgb, var(--status-nominal) 18%, transparent);
+  --status-elevated-muted: color-mix(in srgb, var(--status-elevated) 18%, transparent);
+  --status-blocking-muted: color-mix(in srgb, var(--status-blocking) 18%, transparent);
+  --status-info-muted: color-mix(in srgb, var(--status-info) 18%, transparent);
+
+  --accent-selection: #1f6feb;
+  --accent-ai: #ab7df8;
+
+  --domain-sensors: #3fb950;
+  --domain-permits: #d29922;
+  --domain-people: #4493f8;
+  --domain-evidence: #ab7df8;
+  --domain-spatial: #39d353;
+
+  --shadow-sm: 0 1px 2px rgba(1, 4, 9, 0.45);
+  --shadow-md: 0 4px 12px rgba(1, 4, 9, 0.5);
+  --shadow-drawer: -4px 0 24px rgba(1, 4, 9, 0.55);
+}

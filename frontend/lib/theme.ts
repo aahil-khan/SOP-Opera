@@ -3,6 +3,7 @@ export const THEME_STORAGE_KEY = "sop-opera-theme";
 export const THEMES = [
   { id: "mission-control", label: "Mission Control" },
   { id: "vscode-dark", label: "VS Code Dark" },
+  { id: "github-dark", label: "GitHub Dark" },
   { id: "light", label: "Light" },
   { id: "blueprint", label: "Blueprint" },
   { id: "catppuccin", label: "Catppuccin" },

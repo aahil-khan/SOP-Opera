@@ -1,5 +1,8 @@
 import type { Metadata } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import localFont from "next/font/local";
+import { Plus_Jakarta_Sans } from "next/font/google";
+import { GeistMono } from "geist/font/mono";
+import { GeistSans } from "geist/font/sans";
 import "./globals.css";
 import { TopNav } from "@/components/nav/TopNav";
 import { AppToaster } from "@/components/notifications/AppToaster";
@@ -7,17 +10,37 @@ import { RealtimeProvider } from "@/components/RealtimeProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from "@/lib/theme";
 
-const plexSans = IBM_Plex_Sans({
-  subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
-  variable: "--font-sans-loaded",
+const satoshi = localFont({
+  src: [
+    {
+      path: "../fonts/satoshi/Satoshi-Regular.woff2",
+      weight: "400",
+      style: "normal",
+    },
+    {
+      path: "../fonts/satoshi/Satoshi-Medium.woff2",
+      weight: "500",
+      style: "normal",
+    },
+    {
+      path: "../fonts/satoshi/Satoshi-Medium.woff2",
+      weight: "600",
+      style: "normal",
+    },
+    {
+      path: "../fonts/satoshi/Satoshi-Bold.woff2",
+      weight: "700",
+      style: "normal",
+    },
+  ],
+  variable: "--font-display-loaded",
   display: "swap",
 });
 
-const plexMono = IBM_Plex_Mono({
+const plusJakarta = Plus_Jakarta_Sans({
   subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--font-mono-loaded",
+  weight: ["400", "500", "600", "700"],
+  variable: "--font-label-loaded",
   display: "swap",
 });
 
@@ -31,7 +54,7 @@ const themeInitScript = `
   try {
     var key = ${JSON.stringify(THEME_STORAGE_KEY)};
     var fallback = ${JSON.stringify(DEFAULT_THEME)};
-    var allowed = ["mission-control", "vscode-dark", "light", "blueprint", "catppuccin"];
+    var allowed = ["mission-control", "vscode-dark", "github-dark", "light", "blueprint", "catppuccin"];
     var stored = localStorage.getItem(key);
     var theme = allowed.indexOf(stored) !== -1 ? stored : fallback;
     document.documentElement.dataset.theme = theme;
@@ -49,7 +72,7 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${plexSans.variable} ${plexMono.variable}`}
+      className={`${GeistSans.variable} ${GeistMono.variable} ${satoshi.variable} ${plusJakarta.variable}`}
       suppressHydrationWarning
     >
       <head>

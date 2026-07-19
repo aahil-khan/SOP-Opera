@@ -7,6 +7,7 @@
   /* Layout */
   --nav-height: 48px;
   --drawer-width: 380px;
+  --drawer-width-expanded: 720px;
 
   /* Spacing (4px base) */
   --space-1: 4px;
@@ -18,10 +19,11 @@
   --space-7: 28px;
   --space-8: 32px;
 
-  /* Typography — next/font sets --font-*-loaded on <html> */
-  --font-sans: var(--font-sans-loaded), "IBM Plex Sans", "Segoe UI", system-ui,
-    sans-serif;
-  --font-mono: var(--font-mono-loaded), "IBM Plex Mono", ui-monospace, monospace;
+  /* Typography — Geist UI, Satoshi headings, Plus Jakarta labels */
+  --font-sans: var(--font-geist-sans), Geist, system-ui, sans-serif;
+  --font-display: var(--font-display-loaded), Satoshi, var(--font-sans);
+  --font-label: var(--font-label-loaded), "Plus Jakarta Sans", var(--font-sans);
+  --font-mono: var(--font-geist-mono), ui-monospace, monospace;
   --text-xs: 0.6875rem; /* 11px */
   --text-sm: 0.8125rem; /* 13px */
   --text-md: 0.875rem; /* 14px */

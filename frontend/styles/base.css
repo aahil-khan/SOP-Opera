@@ -16,6 +16,13 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
+h1,
+h2,
+h3,
+h4 {
+  font-family: var(--font-display);
+}
+
 a {
   color: var(--text-link);
   text-decoration: none;
@@ -66,6 +73,7 @@ a:focus-visible {
   gap: var(--space-1);
   padding: 0.12rem 0.45rem;
   border-radius: var(--radius-sm);
+  font-family: var(--font-label);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-label);
@@ -166,6 +174,7 @@ a:focus-visible {
 
 .section-label {
   margin: 0 0 var(--space-2);
+  font-family: var(--font-label);
   font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-label);
