@@ -32,6 +32,8 @@ pip install -r backend/requirements.txt
 # API (:8000) — applies schema.sql on startup when DB is up
 chmod +x scripts/dev-api.sh
 ./scripts/dev-api.sh
+# Windows
+.\scripts\dev-api.ps1
 
 # Frontend (:3000) — separate terminal
 cd frontend && npm install && npm run dev

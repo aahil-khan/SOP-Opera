@@ -1,10 +1,10 @@
 import type { Metadata } from "next";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import "./globals.css";
-import { TopNav } from "@/components/nav/TopNav";
 import { AppToaster } from "@/components/notifications/AppToaster";
 import { RealtimeProvider } from "@/components/RealtimeProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { AppShell } from "@/components/nav/AppShell";
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from "@/lib/theme";
 
 const plexSans = IBM_Plex_Sans({
@@ -58,10 +58,7 @@ export default function RootLayout({
       <body>
         <ThemeProvider>
           <RealtimeProvider>
-            <div className="app-shell">
-              <TopNav />
-              <main className="app-main">{children}</main>
-            </div>
+            <AppShell>{children}</AppShell>
             <AppToaster />
           </RealtimeProvider>
         </ThemeProvider>

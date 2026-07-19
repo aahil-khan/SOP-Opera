@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync-shared": "bash ../scripts/sync-shared.sh",
+    "sync-shared": "powershell -ExecutionPolicy Bypass -File ../scripts/sync-shared.ps1",
     "predev": "npm run sync-shared",
     "dev": "next dev --turbopack",
     "prebuild": "npm run sync-shared",

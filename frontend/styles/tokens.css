@@ -41,8 +41,24 @@
   --radius-md: 6px;
   --radius-lg: 8px;
 
+  /* Extended spacing (landing) */
+  --space-10: 40px;
+  --space-12: 48px;
+  --space-16: 64px;
+  --space-20: 80px;
+  --space-24: 96px;
+
+  /* Extended typography (landing) */
+  --text-2xl: 1.5rem;   /* 24px */
+  --text-3xl: 2rem;     /* 32px */
+  --text-4xl: 2.75rem;  /* 44px */
+
+  /* Extended radius (landing) */
+  --radius-xl: 12px;
+
   /* Motion */
   --duration-fast: 150ms;
   --duration-normal: 200ms;
+  --duration-slow: 400ms;
   --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
 }
