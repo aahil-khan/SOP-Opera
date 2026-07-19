@@ -40,3 +40,7 @@ class AgentState(TypedDict):
     # Final structured assessment (orchestrator fills)
     verdict: dict[str, Any] | None
     grounded_fact_types: list[str]  # rule-tool confirmed facts used for BLOCK
+    # LLM provider for domain narration + orch summary (mock → templates)
+    provider_name: str | None
+    # Per-ainvoke usage records (source narration + orch summary)
+    llm_usage: Annotated[list[dict[str, Any]], operator.add]

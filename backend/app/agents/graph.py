@@ -13,7 +13,7 @@ from langgraph.types import Send
 from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedReference
 
 from app.agents.events import AgentStep, broadcast_agent_step
-from app.agents.llm import model_label, provider_label
+from app.agents.llm import model_label, provider_label, sum_usage
 from app.agents.nodes.incident_pattern import incident_pattern_agent
 from app.agents.nodes.orchestrator import orchestrator_agent
 from app.agents.nodes.shift_handover import shift_handover_agent
@@ -133,7 +133,11 @@ def _serialize_ref(r: RetrievedReference) -> dict[str, Any]:
         "source": r.source,
         "retrieval_path": r.retrieval_path,
         "score": r.score,
+        "chunk_id": str(r.chunk_id) if getattr(r, "chunk_id", None) else None,
+        "title": getattr(r, "title", None),
         "snippet": getattr(r, "snippet", None),
+        "code": getattr(r, "code", None),
+        "triggered_by_fact": getattr(r, "triggered_by_fact", None),
     }
 
 
@@ -183,6 +187,8 @@ async def run_agent_assessment(
         "shift_handover_note": None,
         "verdict": None,
         "grounded_fact_types": [],
+        "provider_name": _provider_override,
+        "llm_usage": [],
     }
 
     graph = get_compiled_graph()
@@ -198,9 +204,11 @@ async def run_agent_assessment(
                     if not isinstance(update, dict):
                         continue
                     for key, value in update.items():
-                        if key in ("observations", "agent_trace") and isinstance(
-                            value, list
-                        ):
+                        if key in (
+                            "observations",
+                            "agent_trace",
+                            "llm_usage",
+                        ) and isinstance(value, list):
                             existing = list(final_state.get(key) or [])
                             existing.extend(value)
                             final_state[key] = existing
@@ -236,13 +244,14 @@ async def run_agent_assessment(
         confidence=result.confidence,
     )
 
+    tin, tout, cost = sum_usage(list(final_state.get("llm_usage") or []))
     generation = ProviderGeneration(
         result=result,
         provider=f"langgraph:{provider_label(provider_name)}",
         model=model_label(provider_name),
-        input_tokens=80 + 15 * len(fact_types),
-        output_tokens=60 + 10 * len(result.recommendations),
-        estimated_cost_usd=0.0,
+        input_tokens=tin,
+        output_tokens=tout,
+        estimated_cost_usd=round(cost, 8),
         latency_ms=latency_ms,
     )
     trace = list(final_state.get("agent_trace") or [])
