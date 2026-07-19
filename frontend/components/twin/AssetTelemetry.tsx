@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo } from "react";
+import { useId, useMemo } from "react";
 import {
   useLiveStore,
   type TelemetryMetricKey,
@@ -23,60 +23,169 @@ const GAUGES: {
   { key: "wind_ms", label: "Wind", unit: "m/s", max: 30, warnAt: 15 },
 ];
 
-function Sparkline({ points }: { points: TelemetryPoint[] }) {
-  if (points.length < 2) {
-    return <div className={styles.sparkEmpty} />;
-  }
-  const values = points.map((p) => p.v);
-  const min = Math.min(...values);
-  const max = Math.max(...values);
-  const span = Math.max(max - min, 0.001);
-  const w = 120;
-  const h = 28;
-  const d = points
-    .map((p, i) => {
-      const x = (i / (points.length - 1)) * w;
-      const y = h - ((p.v - min) / span) * (h - 2) - 1;
-      return `${i === 0 ? "M" : "L"}${x.toFixed(1)},${y.toFixed(1)}`;
-    })
-    .join(" ");
-  return (
-    <svg className={styles.spark} viewBox={`0 0 ${w} ${h}`} aria-hidden>
-      <path d={d} fill="none" stroke="currentColor" strokeWidth="1.5" />
-    </svg>
-  );
+const CHART_W = 280;
+const CHART_H = 72;
+const PAD = { top: 8, right: 8, bottom: 6, left: 8 };
+
+function formatValue(key: TelemetryMetricKey, v: number): string {
+  const digits = key === "vibration_mm_s" || key === "ph" ? 2 : 1;
+  return v.toFixed(digits);
 }
 
-function GaugeBar({
-  value,
-  max,
+function MiniChart({
+  points,
   warnAt,
+  maxScale,
+  elevated,
 }: {
-  value: number;
-  max: number;
+  points: TelemetryPoint[];
   warnAt: number;
+  maxScale: number;
+  elevated: boolean;
 }) {
-  const pct = Math.min(100, Math.max(0, (value / max) * 100));
-  const warnPct = Math.min(100, (warnAt / max) * 100);
-  const elevated = value >= warnAt;
+  const gradId = useId().replace(/:/g, "");
+
+  if (points.length < 2) {
+    return (
+      <div className={styles.chartEmpty}>
+        <span>Collecting samples…</span>
+      </div>
+    );
+  }
+
+  const values = points.map((p) => p.v);
+  const dataMin = Math.min(...values);
+  const dataMax = Math.max(...values);
+  // Keep charts readable: pad range, always include warn line if near scale.
+  const pad = Math.max((dataMax - dataMin) * 0.15, maxScale * 0.04, 0.5);
+  const yMin = Math.max(0, Math.min(dataMin, warnAt) - pad);
+  const yMax = Math.max(dataMax, warnAt, yMin + 0.001) + pad;
+  const span = yMax - yMin;
+
+  const plotW = CHART_W - PAD.left - PAD.right;
+  const plotH = CHART_H - PAD.top - PAD.bottom;
+
+  const xy = points.map((p, i) => {
+    const x = PAD.left + (i / (points.length - 1)) * plotW;
+    const y = PAD.top + plotH - ((p.v - yMin) / span) * plotH;
+    return { x, y, v: p.v };
+  });
+
+  const lineD = xy
+    .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
+    .join(" ");
+
+  const areaD = [
+    `M${xy[0].x.toFixed(1)},${(PAD.top + plotH).toFixed(1)}`,
+    ...xy.map((p) => `L${p.x.toFixed(1)},${p.y.toFixed(1)}`),
+    `L${xy[xy.length - 1].x.toFixed(1)},${(PAD.top + plotH).toFixed(1)}`,
+    "Z",
+  ].join(" ");
+
+  const warnY = PAD.top + plotH - ((warnAt - yMin) / span) * plotH;
+  const warnInView = warnAt >= yMin && warnAt <= yMax;
+  const last = xy[xy.length - 1];
+  const gridYs = [0.25, 0.5, 0.75].map((t) => PAD.top + plotH * t);
+
   return (
-    <div className={styles.barTrack} aria-hidden>
-      <div
-        className={styles.barFill}
-        data-risk={elevated ? "elevated" : "nominal"}
-        style={{ width: `${pct}%` }}
-      />
-      <span className={styles.barWarn} style={{ left: `${warnPct}%` }} />
+    <div className={styles.chartFrame} data-risk={elevated ? "elevated" : "nominal"}>
+      <svg
+        className={styles.chart}
+        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+        role="img"
+        aria-label="Telemetry trend"
+        preserveAspectRatio="none"
+      >
+        <defs>
+          <linearGradient id={`fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+            <stop
+              offset="0%"
+              stopColor="currentColor"
+              stopOpacity={elevated ? 0.35 : 0.28}
+            />
+            <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
+          </linearGradient>
+        </defs>
+
+        {/* Plot background */}
+        <rect
+          x={PAD.left}
+          y={PAD.top}
+          width={plotW}
+          height={plotH}
+          className={styles.chartPlot}
+        />
+
+        {/* Horizontal grid */}
+        {gridYs.map((y) => (
+          <line
+            key={y}
+            x1={PAD.left}
+            y1={y}
+            x2={PAD.left + plotW}
+            y2={y}
+            className={styles.chartGrid}
+          />
+        ))}
+
+        {/* Warn threshold */}
+        {warnInView && (
+          <g>
+            <line
+              x1={PAD.left}
+              y1={warnY}
+              x2={PAD.left + plotW}
+              y2={warnY}
+              className={styles.chartWarn}
+            />
+          </g>
+        )}
+
+        <path d={areaD} fill={`url(#fill-${gradId})`} />
+        <path
+          d={lineD}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+        />
+
+        {/* Latest sample marker */}
+        <circle
+          cx={last.x}
+          cy={last.y}
+          r="3.5"
+          className={styles.chartDot}
+          fill="currentColor"
+        />
+        <circle
+          cx={last.x}
+          cy={last.y}
+          r="6"
+          fill="currentColor"
+          opacity="0.2"
+        />
+      </svg>
+      <div className={styles.chartAxis}>
+        <span>{yMax.toFixed(yMax >= 100 ? 0 : 1)}</span>
+        <span className={styles.chartAxisMid}>trend</span>
+        <span>{yMin.toFixed(yMin >= 100 ? 0 : 1)}</span>
+      </div>
     </div>
   );
 }
 
 interface AssetTelemetryProps {
   assetId: string;
+  /** When true, omit the outer section heading (used inside DomainDetailFlyout). */
+  embedded?: boolean;
 }
 
-export function AssetTelemetry({ assetId }: AssetTelemetryProps) {
-  // Narrow selectors — avoid re-rendering on every plant-wide sample
+export function AssetTelemetry({
+  assetId,
+  embedded = false,
+}: AssetTelemetryProps) {
   const gas = useLiveStore((s) => s.telemetrySeries[`${assetId}::gas_reading`]);
   const temp = useLiveStore((s) => s.telemetrySeries[`${assetId}::temp_reading`]);
   const vibe = useLiveStore(
@@ -113,38 +222,64 @@ export function AssetTelemetry({ assetId }: AssetTelemetryProps) {
     return { ...g, points, value: last?.v ?? null };
   }).filter((g) => g.value != null || g.points.length > 0);
 
+  const heading = !embedded ? (
+    <h3 id="telemetry-heading" className={styles.sectionTitle}>
+      Live telemetry
+    </h3>
+  ) : null;
+
   if (gauges.length === 0 && assetStatus.length === 0) {
     return (
-      <section className={styles.section} aria-labelledby="telemetry-heading">
-        <h3 id="telemetry-heading" className={styles.sectionTitle}>
-          Live telemetry
-        </h3>
+      <section
+        className={styles.section}
+        aria-labelledby={embedded ? undefined : "telemetry-heading"}
+      >
+        {heading}
         <p className={styles.muted}>Waiting for ambient plant feed…</p>
       </section>
     );
   }
 
   return (
-    <section className={styles.section} aria-labelledby="telemetry-heading">
-      <h3 id="telemetry-heading" className={styles.sectionTitle}>
-        Live telemetry
-      </h3>
+    <section
+      className={styles.section}
+      aria-labelledby={embedded ? undefined : "telemetry-heading"}
+      aria-label={embedded ? "Live telemetry" : undefined}
+    >
+      {heading}
       <div className={styles.gaugeGrid}>
-        {gauges.map((g) => (
-          <div key={g.key} className={styles.gauge}>
-            <div className={styles.gaugeHead}>
-              <span>{g.label}</span>
-              <strong>
-                {g.value != null ? g.value.toFixed(g.key === "vibration_mm_s" || g.key === "ph" ? 2 : 1) : "—"}
-                {g.unit ? ` ${g.unit}` : ""}
-              </strong>
-            </div>
-            {g.value != null ? (
-              <GaugeBar value={g.value} max={g.max} warnAt={g.warnAt} />
-            ) : null}
-            <Sparkline points={g.points} />
-          </div>
-        ))}
+        {gauges.map((g) => {
+          const elevated = g.value != null && g.value >= g.warnAt;
+          return (
+            <article
+              key={g.key}
+              className={styles.gauge}
+              data-risk={elevated ? "elevated" : "nominal"}
+            >
+              <div className={styles.gaugeHead}>
+                <div className={styles.gaugeTitle}>
+                  <span className={styles.gaugeLabel}>{g.label}</span>
+                  <span className={styles.gaugeMeta}>
+                    {g.points.length} samples · warn ≥ {formatValue(g.key, g.warnAt)}
+                    {g.unit ? ` ${g.unit}` : ""}
+                  </span>
+                </div>
+                <div className={styles.gaugeValue}>
+                  <strong>
+                    {g.value != null ? formatValue(g.key, g.value) : "—"}
+                  </strong>
+                  {g.unit ? <span className={styles.unit}>{g.unit}</span> : null}
+                </div>
+              </div>
+              <MiniChart
+                points={g.points}
+                warnAt={g.warnAt}
+                maxScale={g.max}
+                elevated={elevated}
+              />
+            </article>
+          );
+        })}
       </div>
       {assetStatus.length > 0 ? (
         <div className={styles.chips}>

@@ -19,12 +19,15 @@ interface SpatialGraphPanelProps {
   assetId: string;
   assetName: string;
   spatialLinks?: SpatialLinkView[];
+  /** When true, omit the outer section heading (used inside DomainDetailFlyout). */
+  embedded?: boolean;
 }
 
 export function SpatialGraphPanel({
   assetId,
   assetName,
   spatialLinks = [],
+  embedded = false,
 }: SpatialGraphPanelProps) {
   const [neighbors, setNeighbors] = useState<Neighbor[]>([]);
   const [error, setError] = useState<string | null>(null);
@@ -53,14 +56,23 @@ export function SpatialGraphPanel({
   }, [assetId]);
 
   if (spatialLinks.length === 0 && neighbors.length === 0 && !error) {
+    if (embedded) {
+      return <p className={styles.muted}>No spatial links for this asset.</p>;
+    }
     return null;
   }
 
   return (
-    <section className={styles.section} aria-labelledby="kg-heading">
-      <h3 id="kg-heading" className={styles.title}>
-        Knowledge graph
-      </h3>
+    <section
+      className={styles.section}
+      aria-labelledby={embedded ? undefined : "kg-heading"}
+      aria-label={embedded ? "Knowledge graph" : undefined}
+    >
+      {!embedded && (
+        <h3 id="kg-heading" className={styles.title}>
+          Knowledge graph
+        </h3>
+      )}
       {spatialLinks.length > 0 && (
         <div className={styles.block}>
           <p className={styles.label}>Spatial co-occurrence</p>
