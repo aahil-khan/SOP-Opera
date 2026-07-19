@@ -42,6 +42,12 @@
   --accent-selection: #89b4fa;
   --accent-ai: #cba6f7;
 
+  --domain-sensors: #a6e3a1;
+  --domain-permits: #f9e2af;
+  --domain-people: #89b4fa;
+  --domain-evidence: #cba6f7;
+  --domain-spatial: #89dceb;
+
   --shadow-sm: 0 1px 2px rgba(17, 17, 27, 0.4);
   --shadow-md: 0 4px 12px rgba(17, 17, 27, 0.45);
   --shadow-drawer: -4px 0 24px rgba(17, 17, 27, 0.5);
