@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useMemo } from "react";
+import { useCallback, useId, useMemo, useRef, useState } from "react";
 import {
   useLiveStore,
   type TelemetryMetricKey,
@@ -16,7 +16,7 @@ const GAUGES: {
   warnAt: number;
 }[] = [
   { key: "gas_reading", label: "Gas", unit: "ppm", max: 50, warnAt: 20 },
-  { key: "temp_reading", label: "Temp", unit: "°C", max: 160, warnAt: 80 },
+  { key: "temp_reading", label: "Temperature", unit: "°C", max: 160, warnAt: 80 },
   { key: "vibration_mm_s", label: "Vibration", unit: "mm/s", max: 15, warnAt: 7.1 },
   { key: "level_pct", label: "Level", unit: "%", max: 100, warnAt: 95 },
   { key: "ph", label: "pH", unit: "", max: 14, warnAt: 9 },
@@ -32,45 +32,85 @@ function formatValue(key: TelemetryMetricKey, v: number): string {
   return v.toFixed(digits);
 }
 
+function formatSampleTime(t: number): string {
+  try {
+    return new Date(t).toLocaleTimeString(undefined, {
+      hour: "2-digit",
+      minute: "2-digit",
+      second: "2-digit",
+    });
+  } catch {
+    return "";
+  }
+}
+
 function MiniChart({
   points,
   warnAt,
   maxScale,
   elevated,
+  metricKey,
+  unit,
 }: {
   points: TelemetryPoint[];
   warnAt: number;
   maxScale: number;
   elevated: boolean;
+  metricKey: TelemetryMetricKey;
+  unit: string;
 }) {
   const gradId = useId().replace(/:/g, "");
+  const svgRef = useRef<SVGSVGElement>(null);
+  const [hoverIdx, setHoverIdx] = useState<number | null>(null);
 
-  if (points.length < 2) {
-    return (
-      <div className={styles.chartEmpty}>
-        <span>Collecting samples…</span>
-      </div>
-    );
-  }
+  const layout = useMemo(() => {
+    if (points.length < 2) return null;
 
-  const values = points.map((p) => p.v);
-  const dataMin = Math.min(...values);
-  const dataMax = Math.max(...values);
-  // Keep charts readable: pad range, always include warn line if near scale.
-  const pad = Math.max((dataMax - dataMin) * 0.15, maxScale * 0.04, 0.5);
-  const yMin = Math.max(0, Math.min(dataMin, warnAt) - pad);
-  const yMax = Math.max(dataMax, warnAt, yMin + 0.001) + pad;
-  const span = yMax - yMin;
+    const values = points.map((p) => p.v);
+    const dataMin = Math.min(...values);
+    const dataMax = Math.max(...values);
+    // Keep charts readable: pad range, always include warn line if near scale.
+    const pad = Math.max((dataMax - dataMin) * 0.15, maxScale * 0.04, 0.5);
+    const yMin = Math.max(0, Math.min(dataMin, warnAt) - pad);
+    const yMax = Math.max(dataMax, warnAt, yMin + 0.001) + pad;
+    const span = yMax - yMin;
 
-  const plotW = CHART_W - PAD.left - PAD.right;
-  const plotH = CHART_H - PAD.top - PAD.bottom;
+    const plotW = CHART_W - PAD.left - PAD.right;
+    const plotH = CHART_H - PAD.top - PAD.bottom;
 
-  const xy = points.map((p, i) => {
-    const x = PAD.left + (i / (points.length - 1)) * plotW;
-    const y = PAD.top + plotH - ((p.v - yMin) / span) * plotH;
-    return { x, y, v: p.v };
-  });
+    const xy = points.map((p, i) => {
+      const x = PAD.left + (i / (points.length - 1)) * plotW;
+      const y = PAD.top + plotH - ((p.v - yMin) / span) * plotH;
+      return { x, y, v: p.v, t: p.t };
+    });
 
+    return { yMin, yMax, plotW, plotH, xy, span };
+  }, [points, warnAt, maxScale]);
+
+  const pickIndex = useCallback(
+    (clientX: number) => {
+      if (!layout || !svgRef.current) return null;
+      const rect = svgRef.current.getBoundingClientRect();
+      if (rect.width <= 0) return null;
+      const svgX = ((clientX - rect.left) / rect.width) * CHART_W;
+      const { xy } = layout;
+      let best = 0;
+      let bestDist = Math.abs(xy[0].x - svgX);
+      for (let i = 1; i < xy.length; i++) {
+        const d = Math.abs(xy[i].x - svgX);
+        if (d < bestDist) {
+          best = i;
+          bestDist = d;
+        }
+      }
+      return best;
+    },
+    [layout],
+  );
+
+  if (!layout) return null;
+
+  const { yMin, yMax, plotW, plotH, xy } = layout;
   const lineD = xy
     .map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)},${p.y.toFixed(1)}`)
     .join(" ");
@@ -82,91 +122,161 @@ function MiniChart({
     "Z",
   ].join(" ");
 
-  const warnY = PAD.top + plotH - ((warnAt - yMin) / span) * plotH;
+  const warnY = PAD.top + plotH - ((warnAt - yMin) / layout.span) * plotH;
   const warnInView = warnAt >= yMin && warnAt <= yMax;
   const last = xy[xy.length - 1];
   const gridYs = [0.25, 0.5, 0.75].map((t) => PAD.top + plotH * t);
+  const hover = hoverIdx != null ? xy[hoverIdx] : null;
+  const tipLeftPct = hover
+    ? Math.min(92, Math.max(8, (hover.x / CHART_W) * 100))
+    : 50;
 
   return (
-    <div className={styles.chartFrame} data-risk={elevated ? "elevated" : "nominal"}>
-      <svg
-        className={styles.chart}
-        viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-        role="img"
-        aria-label="Telemetry trend"
-        preserveAspectRatio="none"
-      >
-        <defs>
-          <linearGradient id={`fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-            <stop
-              offset="0%"
-              stopColor="currentColor"
-              stopOpacity={elevated ? 0.35 : 0.28}
-            />
-            <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
-          </linearGradient>
-        </defs>
+    <div
+      className={styles.chartFrame}
+      data-risk={elevated ? "elevated" : "nominal"}
+      data-hovering={hover ? "true" : undefined}
+    >
+      <div className={styles.chartPlotWrap}>
+        <svg
+          ref={svgRef}
+          className={styles.chart}
+          viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+          role="img"
+          aria-label="Telemetry trend"
+          preserveAspectRatio="none"
+          onMouseMove={(e) => {
+            const idx = pickIndex(e.clientX);
+            if (idx != null) setHoverIdx(idx);
+          }}
+          onMouseLeave={() => setHoverIdx(null)}
+        >
+          <defs>
+            <linearGradient id={`fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+              <stop
+                offset="0%"
+                stopColor="currentColor"
+                stopOpacity={elevated ? 0.35 : 0.28}
+              />
+              <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
+            </linearGradient>
+          </defs>
 
-        {/* Plot background */}
-        <rect
-          x={PAD.left}
-          y={PAD.top}
-          width={plotW}
-          height={plotH}
-          className={styles.chartPlot}
-        />
-
-        {/* Horizontal grid */}
-        {gridYs.map((y) => (
-          <line
-            key={y}
-            x1={PAD.left}
-            y1={y}
-            x2={PAD.left + plotW}
-            y2={y}
-            className={styles.chartGrid}
+          {/* Plot background */}
+          <rect
+            x={PAD.left}
+            y={PAD.top}
+            width={plotW}
+            height={plotH}
+            className={styles.chartPlot}
           />
-        ))}
 
-        {/* Warn threshold */}
-        {warnInView && (
-          <g>
+          {/* Horizontal grid */}
+          {gridYs.map((y) => (
             <line
+              key={y}
               x1={PAD.left}
-              y1={warnY}
+              y1={y}
               x2={PAD.left + plotW}
-              y2={warnY}
-              className={styles.chartWarn}
+              y2={y}
+              className={styles.chartGrid}
             />
-          </g>
+          ))}
+
+          {/* Warn threshold */}
+          {warnInView && (
+            <g>
+              <line
+                x1={PAD.left}
+                y1={warnY}
+                x2={PAD.left + plotW}
+                y2={warnY}
+                className={styles.chartWarn}
+              />
+            </g>
+          )}
+
+          <path d={areaD} fill={`url(#fill-${gradId})`} />
+          <path
+            d={lineD}
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinejoin="round"
+            strokeLinecap="round"
+          />
+
+          {/* Latest sample marker — hide when scrubbing so hover point is clear */}
+          {!hover && (
+            <>
+              <circle
+                cx={last.x}
+                cy={last.y}
+                r="3.5"
+                className={styles.chartDot}
+                fill="currentColor"
+              />
+              <circle
+                cx={last.x}
+                cy={last.y}
+                r="6"
+                fill="currentColor"
+                opacity="0.2"
+              />
+            </>
+          )}
+
+          {hover && (
+            <g className={styles.chartScrub} pointerEvents="none">
+              <line
+                x1={hover.x}
+                y1={PAD.top}
+                x2={hover.x}
+                y2={PAD.top + plotH}
+                className={styles.chartScrubLine}
+              />
+              <circle
+                cx={hover.x}
+                cy={hover.y}
+                r="5"
+                className={styles.chartDot}
+                fill="currentColor"
+              />
+              <circle
+                cx={hover.x}
+                cy={hover.y}
+                r="8"
+                fill="currentColor"
+                opacity="0.22"
+              />
+            </g>
+          )}
+
+          {/* Invisible hit surface so the whole plot is scrubbable */}
+          <rect
+            x={PAD.left}
+            y={PAD.top}
+            width={plotW}
+            height={plotH}
+            fill="transparent"
+            className={styles.chartHit}
+          />
+        </svg>
+
+        {hover && (
+          <div
+            className={styles.chartTip}
+            style={{ left: `${tipLeftPct}%` }}
+            role="status"
+          >
+            <strong>
+              {formatValue(metricKey, hover.v)}
+              {unit ? ` ${unit}` : ""}
+            </strong>
+            <span>{formatSampleTime(hover.t)}</span>
+          </div>
         )}
-
-        <path d={areaD} fill={`url(#fill-${gradId})`} />
-        <path
-          d={lineD}
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinejoin="round"
-          strokeLinecap="round"
-        />
-
-        {/* Latest sample marker */}
-        <circle
-          cx={last.x}
-          cy={last.y}
-          r="3.5"
-          className={styles.chartDot}
-          fill="currentColor"
-        />
-        <circle
-          cx={last.x}
-          cy={last.y}
-          r="6"
-          fill="currentColor"
-          opacity="0.2"
-        />
-      </svg>
+      </div>
       <div className={styles.chartAxis}>
         <span>{yMax.toFixed(yMax >= 100 ? 0 : 1)}</span>
         <span className={styles.chartAxisMid}>trend</span>
@@ -276,6 +386,8 @@ export function AssetTelemetry({
                 warnAt={g.warnAt}
                 maxScale={g.max}
                 elevated={elevated}
+                metricKey={g.key}
+                unit={g.unit}
               />
             </article>
           );

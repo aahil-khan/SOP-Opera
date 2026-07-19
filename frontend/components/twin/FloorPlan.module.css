@@ -64,7 +64,6 @@
 .hitRegion[data-risk="elevated"] {
   fill: color-mix(in srgb, var(--status-elevated) 32%, transparent);
   stroke: color-mix(in srgb, var(--status-elevated) 75%, transparent);
-  animation: breathe-opacity 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
 .hitRegion[data-risk="blocking"] {
@@ -116,6 +115,13 @@
   }
   50% {
     opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hitRegion[data-risk="blocking"] {
+    animation: none;
+    opacity: 0.85;
   }
 }
 

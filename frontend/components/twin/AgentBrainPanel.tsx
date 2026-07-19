@@ -1,7 +1,11 @@
 "use client";
 
-import { useEffect, useMemo, useRef } from "react";
-import { useLiveStore, type AgentStepEvent } from "@/lib/liveStore";
+import { useEffect, useMemo, useRef, useState } from "react";
+import {
+  useAgentStepsForReview,
+  type AgentStepEvent,
+  type AgentStepKind,
+} from "@/lib/liveStore";
 import styles from "./AgentBrainPanel.module.css";
 
 const AGENT_LABELS: Record<string, string> = {
@@ -15,37 +19,68 @@ const AGENT_LABELS: Record<string, string> = {
   orchestrator: "Orchestrator",
   sim_orchestrator: "Orch Sim",
   sim_scada: "Sim SCADA",
-  sim_ptw: "Sim PTW",
-  sim_maintenance: "Sim Maint",
+  sim_ptw: "Sim Permit to Work",
+  sim_maintenance: "Sim Maintenance",
   sim_workforce: "Sim Workforce",
+};
+
+const KIND_LABELS: Record<AgentStepKind, string> = {
+  started: "Starting",
+  tool_call: "Checking",
+  observation: "Found",
+  local_risk: "Risk signal",
+  verdict: "Verdict",
+  completed: "Done",
+  error: "Error",
 };
 
 function kindClass(kind: string): string {
   if (kind === "verdict") return styles.kindVerdict;
   if (kind === "error") return styles.kindError;
   if (kind === "tool_call") return styles.kindTool;
+  if (kind === "observation") return styles.kindObs;
   if (kind === "local_risk") return styles.kindRisk;
+  if (kind === "started") return styles.kindStarted;
+  if (kind === "completed") return styles.kindDone;
   return styles.kindDefault;
 }
 
-function StepRow({ step }: { step: AgentStepEvent }) {
-  const label = AGENT_LABELS[step.agent] ?? step.agent;
+function agentLabel(agent: string): string {
+  return AGENT_LABELS[agent] ?? agent;
+}
+
+function StepRow({
+  step,
+  variant,
+}: {
+  step: AgentStepEvent;
+  variant: "current" | "history";
+}) {
+  const label = agentLabel(step.agent);
+  const kindLabel =
+    step.finding === "clearance"
+      ? "Clear"
+      : (KIND_LABELS[step.kind] ?? step.kind);
   const isClearance = step.finding === "clearance";
+
   return (
     <li
       className={styles.step}
       data-kind={step.kind}
       data-agent={step.agent}
       data-finding={step.finding}
+      data-variant={variant}
     >
-      <span className={styles.agent}>{label}</span>
-      {isClearance ? (
-        <span className={`${styles.kind} ${styles.kindClearance}`}>Clear</span>
-      ) : (
-        <span className={`${styles.kind} ${kindClass(step.kind)}`}>
-          {step.kind}
+      <div className={styles.stepMeta}>
+        <span className={styles.agent}>{label}</span>
+        <span
+          className={`${styles.kind} ${
+            isClearance ? styles.kindClearance : kindClass(step.kind)
+          }`}
+        >
+          {kindLabel}
         </span>
-      )}
+      </div>
       <p className={styles.message}>{step.message}</p>
     </li>
   );
@@ -58,24 +93,32 @@ interface AgentBrainPanelProps {
 
 /**
  * Live multi-agent reasoning stream scoped to one review.
- * Rendered inside the asset drawer while assessment is in progress.
+ * Default: only the latest step. "History" expands the full step list from the start.
  */
 export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
-  const allSteps = useLiveStore((s) => s.agentSteps);
+  const steps = useAgentStepsForReview(reviewId);
   const listRef = useRef<HTMLUListElement>(null);
+  const [showHistory, setShowHistory] = useState(false);
 
-  const steps = useMemo(
-    () => allSteps.filter((s) => s.review_id === reviewId),
-    [allSteps, reviewId],
-  );
+  useEffect(() => {
+    setShowHistory(false);
+  }, [reviewId]);
+
+  const current = steps[steps.length - 1] ?? null;
+  const history = showHistory ? steps.slice(0, -1) : [];
+  const priorCount = Math.max(0, steps.length - 1);
+  const canToggle = steps.length > 1;
 
   useEffect(() => {
     const el = listRef.current;
     if (!el) return;
     el.scrollTop = el.scrollHeight;
-  }, [steps.length]);
+  }, [current?.id, showHistory, steps.length]);
 
-  const verdict = [...steps].reverse().find((s) => s.kind === "verdict");
+  const verdict = useMemo(
+    () => [...steps].reverse().find((s) => s.kind === "verdict"),
+    [steps],
+  );
   const pinnedClearances = useMemo(() => {
     if (!verdict) return [];
     return steps.filter(
@@ -86,16 +129,35 @@ export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
     );
   }, [steps, verdict]);
 
+  const statusLine = current
+    ? `${agentLabel(current.agent)} · ${
+        current.finding === "clearance"
+          ? "Clearance"
+          : (KIND_LABELS[current.kind] ?? current.kind)
+      }`
+    : "Waiting for domain signals…";
+
   return (
     <div className={styles.embedded} aria-label="Agent reasoning stream">
       <header className={styles.header}>
         <div className={styles.titleBlock}>
-          <span className={styles.mark}>Brain</span>
-          <h3 className={styles.title}>Agent stream</h3>
+          <span className={styles.liveDot} aria-hidden />
+          <h3 className={styles.title}>Live reasoning</h3>
           {steps.length > 0 && (
             <span className={styles.count}>{steps.length}</span>
           )}
         </div>
+        {canToggle && (
+          <button
+            type="button"
+            className={styles.replayBtn}
+            aria-pressed={showHistory}
+            onClick={() => setShowHistory((v) => !v)}
+          >
+            {showHistory ? "Latest only" : "History"}
+          </button>
+        )}
+        <p className={styles.statusLine}>{statusLine}</p>
       </header>
 
       {verdict && (
@@ -114,14 +176,23 @@ export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
         </div>
       )}
       {steps.length === 0 ? (
-        <p className={styles.empty}>
-          Agents are starting… reasoning steps for this review will stream here.
-        </p>
+        <div className={styles.empty}>
+          <span className={styles.emptyPulse} aria-hidden />
+          <p>Agents are starting — steps will appear here as they run.</p>
+        </div>
       ) : (
         <ul className={styles.list} ref={listRef}>
-          {steps.map((s) => (
-            <StepRow key={s.id} step={s} />
+          {!showHistory && priorCount > 0 && (
+            <li className={styles.hiddenHint}>
+              {priorCount} prior step{priorCount === 1 ? "" : "s"}
+            </li>
+          )}
+          {history.map((s) => (
+            <StepRow key={s.id} step={s} variant="history" />
           ))}
+          {current ? (
+            <StepRow key={current.id} step={current} variant="current" />
+          ) : null}
         </ul>
       )}
     </div>

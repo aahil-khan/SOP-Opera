@@ -17,7 +17,6 @@
 .disk {
   transform-box: fill-box;
   transform-origin: center;
-  will-change: transform;
   transition: fill var(--duration-normal) var(--ease-out);
 }
 
@@ -28,9 +27,9 @@
 
 .disk[data-risk="elevated"] {
   fill: var(--status-elevated);
-  animation: breathe-scale 2.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+/* Strong idle motion only for blocking risk (elevated stays static). */
 .disk[data-risk="blocking"] {
   fill: var(--status-blocking);
   animation: breathe-scale-strong 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
@@ -50,7 +49,8 @@
   pointer-events: none;
 }
 
-.pulse[data-active="true"] {
+/* Pulse ring only for blocking (or selected blocking via data-active). */
+.pulse[data-active="true"][data-risk="blocking"] {
   animation: pulse-ring 2.2s var(--ease-out) infinite;
 }
 
@@ -78,16 +78,6 @@
   }
 }
 
-@keyframes breathe-scale {
-  0%,
-  100% {
-    transform: scale(0.92);
-  }
-  50% {
-    transform: scale(1.18);
-  }
-}
-
 @keyframes breathe-scale-strong {
   0%,
   100% {
@@ -95,5 +85,12 @@
   }
   50% {
     transform: scale(1.24);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .disk[data-risk="blocking"],
+  .pulse[data-active="true"][data-risk="blocking"] {
+    animation: none;
   }
 }

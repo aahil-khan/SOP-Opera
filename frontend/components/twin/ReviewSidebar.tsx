@@ -1,8 +1,14 @@
 "use client";
 
-import { useEffect, useRef } from "react";
 import {
-  getLiveAssetViews,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import {
+  useLiveAssetViews,
   useLiveStore,
   type LiveAssetView,
 } from "@/lib/liveStore";
@@ -13,34 +19,60 @@ import {
   ownerNameForView,
   type OpenWorkColumnId,
 } from "@/lib/openWork";
-import { useFloatingPanel } from "./useFloatingPanel";
+import { relativeTime } from "@/lib/relativeTime";
+import { useNewEntries } from "@/lib/useNewEntries";
+import { OverviewPanel } from "./OverviewPanel";
 import styles from "./ReviewSidebar.module.css";
-import floatStyles from "./floatingPanel.module.css";
-
-const MIN_SIDEBAR_W = 240;
-const MAX_SIDEBAR_W = 600;
-const MIN_SIDEBAR_H = 220;
 
 interface ReviewSidebarProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   affectedCount: number;
-  width: number;
-  onWidthChange: (w: number) => void;
-  onFloatingChange?: (floating: boolean) => void;
+}
+
+function arrivedAt(view: LiveAssetView): number {
+  if (view.review?.created_at) {
+    const t = Date.parse(view.review.created_at);
+    if (Number.isFinite(t)) return t;
+  }
+  return 0;
+}
+
+function ListeningOrbit({ compact = false }: { compact?: boolean }) {
+  return (
+    <div
+      className={compact ? styles.orbitCompact : styles.orbit}
+      aria-hidden
+    >
+      <span className={styles.orbitRing} data-ring="outer" />
+      <span className={styles.orbitRing} data-ring="mid" />
+      <span className={styles.orbitCore} />
+      <span className={styles.orbitBlip}>
+        <span className={styles.orbitBlipDot} />
+      </span>
+    </div>
+  );
 }
 
 function WorkCard({
   view,
   active,
+  isNew,
+  now,
   onSelect,
 }: {
   view: LiveAssetView;
   active: boolean;
+  isNew: boolean;
+  now: number;
   onSelect: () => void;
 }) {
   const next = nextActionForView(view);
   const owner = ownerNameForView(view);
+  const when = view.review?.created_at
+    ? relativeTime(view.review.created_at, now)
+    : null;
+
   return (
     <button
       type="button"
@@ -50,7 +82,10 @@ function WorkCard({
       onClick={onSelect}
     >
       <span className={styles.itemTop}>
-        <span className={styles.itemName}>{view.asset.name}</span>
+        <span className={styles.itemName}>
+          {isNew ? <span className={styles.dot} aria-label="New" /> : null}
+          {view.asset.name}
+        </span>
         <span className="badge" data-risk={view.risk_level}>
           {view.risk_level}
         </span>
@@ -60,6 +95,7 @@ function WorkCard({
         {view.review
           ? ` · ${view.review.state.replaceAll("_", " ")}`
           : " · signal"}
+        {when ? ` · ${when}` : null}
       </span>
       <span className={styles.itemFooter}>
         <span className={styles.nextLine}>
@@ -79,55 +115,78 @@ export function ReviewSidebar({
   open,
   onOpenChange,
   affectedCount,
-  width,
-  onWidthChange,
-  onFloatingChange,
 }: ReviewSidebarProps) {
-  const resizeRef = useRef<{ startX: number; startW: number } | null>(null);
-  const {
-    panelRef,
-    floating,
-    interacting,
-    isDragging,
-    style: floatStyle,
-    onHeaderPointerDown,
-    onResizePointerDown,
-    onPointerMove,
-    onPointerUp,
-    snapToDefault,
-  } = useFloatingPanel({ minW: MIN_SIDEBAR_W, minH: MIN_SIDEBAR_H });
-
-  useEffect(() => {
-    onFloatingChange?.(floating);
-  }, [floating, onFloatingChange]);
-
-  const assets = useLiveStore((s) => s.assets);
-  const reviews = useLiveStore((s) => s.reviews);
-  const reviewDetails = useLiveStore((s) => s.reviewDetails);
-  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  const allViews = useLiveAssetViews();
   const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
   const selectAsset = useLiveStore((s) => s.selectAsset);
 
-  const views = getLiveAssetViews({
-    assets,
-    reviews,
-    reviewDetails,
-    assessmentsByReview,
-  }).filter(
-    (v) =>
-      v.review != null ||
-      (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
+  const [activeColumn, setActiveColumn] = useState<OpenWorkColumnId>("awaiting_decision");
+  const tablistRef = useRef<HTMLDivElement>(null);
+  const tabRefs = useRef<Partial<Record<OpenWorkColumnId, HTMLButtonElement | null>>>({});
+  const [slider, setSlider] = useState({ left: 0, width: 0 });
+
+  const views = useMemo(
+    () =>
+      allViews.filter(
+        (v) =>
+          v.review != null ||
+          (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
+      ),
+    [allViews],
   );
 
-  const byColumn: Record<OpenWorkColumnId, LiveAssetView[]> = {
-    investigating: [],
-    awaiting_decision: [],
-    closed: [],
-  };
-  for (const v of views) {
-    const col = columnForReviewState(v.review?.state);
-    byColumn[col].push(v);
-  }
+  const byColumn = useMemo(() => {
+    const cols: Record<OpenWorkColumnId, LiveAssetView[]> = {
+      investigating: [],
+      awaiting_decision: [],
+      closed: [],
+    };
+    for (const v of views) {
+      cols[columnForReviewState(v.review?.state)].push(v);
+    }
+    for (const id of Object.keys(cols) as OpenWorkColumnId[]) {
+      cols[id].sort((a, b) => arrivedAt(b) - arrivedAt(a));
+    }
+    return cols;
+  }, [views]);
+
+  const entryIds = useMemo(
+    () => views.map((v) => v.review?.id ?? `signal:${v.asset.id}`),
+    [views],
+  );
+  const { isNew, now } = useNewEntries(entryIds);
+
+  const items = byColumn[activeColumn];
+  const activeColMeta = OPEN_WORK_COLUMNS.find((c) => c.id === activeColumn);
+  const showNew = activeColumn !== "closed";
+
+  useLayoutEffect(() => {
+    const track = tablistRef.current;
+    const tab = tabRefs.current[activeColumn];
+    if (!track || !tab) return;
+
+    const update = () => {
+      setSlider({
+        left: tab.offsetLeft,
+        width: tab.offsetWidth,
+      });
+    };
+
+    update();
+
+    const ro = new ResizeObserver(update);
+    ro.observe(track);
+    ro.observe(tab);
+    return () => ro.disconnect();
+  }, [activeColumn, byColumn]);
+
+  useEffect(() => {
+    tabRefs.current[activeColumn]?.scrollIntoView({
+      inline: "nearest",
+      block: "nearest",
+      behavior: "smooth",
+    });
+  }, [activeColumn]);
 
   return (
     <>
@@ -146,65 +205,19 @@ export function ReviewSidebar({
         )}
       </button>
 
-      {isDragging && (
-        <div
-          className={`${styles.sidebar} ${floatStyles.homeGhost}`}
-          style={{ width, bottom: "calc(var(--left-bottom-h, 0px) + var(--space-3) + 8px)" }}
-          aria-hidden="true"
-        />
-      )}
-
       <aside
         id="open-work-panel"
-        ref={panelRef}
         className={styles.sidebar}
         data-open={open}
-        data-floating={floating ? "true" : undefined}
-        data-interacting={interacting ? "true" : undefined}
         aria-label="Open work board"
         aria-hidden={!open}
-        style={
-          floating
-            ? floatStyle
-            : { width, bottom: "calc(var(--left-bottom-h, 0px) + var(--space-3) + 8px)" }
-        }
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
       >
-        {!floating && (
-          <div
-            className={styles.resizeHandle}
-            aria-hidden="true"
-            onPointerDown={(e) => {
-              e.currentTarget.setPointerCapture(e.pointerId);
-              resizeRef.current = { startX: e.clientX, startW: width };
-            }}
-            onPointerMove={(e) => {
-              if (!resizeRef.current) return;
-              const dx = e.clientX - resizeRef.current.startX;
-              onWidthChange(Math.max(MIN_SIDEBAR_W, Math.min(MAX_SIDEBAR_W, resizeRef.current.startW + dx)));
-            }}
-            onPointerUp={() => { resizeRef.current = null; }}
-          />
-        )}
-        <header className={styles.header} onPointerDown={onHeaderPointerDown}>
-          <span className={styles.grip} aria-hidden="true">⠿</span>
+        <header className={styles.header}>
           <div className={styles.headerText}>
             <h2 className={styles.title}>Open work</h2>
             <p className={styles.subtitle}>Calls for help · select to locate</p>
           </div>
           <div className={styles.headerControls}>
-            {floating && (
-              <button
-                type="button"
-                className={floatStyles.snapBack}
-                onClick={snapToDefault}
-                title="Snap back to default position"
-                aria-label="Snap back to default position"
-              >
-                ↺
-              </button>
-            )}
             <button
               type="button"
               className={styles.collapse}
@@ -217,59 +230,100 @@ export function ReviewSidebar({
           </div>
         </header>
 
-        {views.length === 0 ? (
-          <p className={styles.empty}>
-            No active signals. Ingest context or start a simulator scenario.
-          </p>
-        ) : (
-          <div className={styles.board} role="list">
+        <div className={styles.columnTabs} aria-label="Work columns">
+          <div
+            ref={tablistRef}
+            className={styles.columnTabTrack}
+            role="tablist"
+            aria-orientation="horizontal"
+          >
+            <span
+              className={styles.columnTabSlider}
+              aria-hidden
+              style={{
+                transform: `translateX(${slider.left}px)`,
+                width: slider.width,
+              }}
+            />
             {OPEN_WORK_COLUMNS.map((col) => {
-              const items = byColumn[col.id];
+              const selected = activeColumn === col.id;
+              const colHasNew =
+                col.id !== "closed" &&
+                byColumn[col.id].some((v) =>
+                  isNew(v.review?.id ?? `signal:${v.asset.id}`),
+                );
               return (
-                <section
+                <button
                   key={col.id}
-                  className={styles.column}
-                  aria-label={col.label}
+                  ref={(el) => {
+                    tabRefs.current[col.id] = el;
+                  }}
+                  type="button"
+                  role="tab"
+                  aria-selected={selected}
+                  tabIndex={selected ? 0 : -1}
+                  className={styles.columnTab}
+                  data-active={selected ? "true" : undefined}
+                  onClick={() => setActiveColumn(col.id)}
                 >
-                  <header className={styles.columnHeader}>
-                    <span className={styles.columnTitle}>{col.label}</span>
-                    <span className={styles.columnCount}>{items.length}</span>
-                  </header>
-                  <ul className={styles.columnList}>
-                    {items.length === 0 ? (
-                      <li className={styles.columnEmpty}>—</li>
-                    ) : (
-                      items.map((v) => (
-                        <li key={v.review?.id ?? v.asset.id} role="listitem">
-                          <WorkCard
-                            view={v}
-                            active={selectedAssetId === v.asset.id}
-                            onSelect={() => selectAsset(v.asset.id)}
-                          />
-                        </li>
-                      ))
-                    )}
-                  </ul>
-                </section>
+                  <span className={styles.columnTabLabel}>{col.label}</span>
+                  <span className={styles.columnTabCount}>
+                    {byColumn[col.id].length}
+                    {colHasNew ? (
+                      <span className={styles.dot} aria-hidden="true" />
+                    ) : null}
+                  </span>
+                </button>
               );
             })}
           </div>
+        </div>
+
+        {views.length === 0 ? (
+          <div className={styles.emptyState} role="status">
+            <ListeningOrbit />
+            <p className={styles.emptyTitle}>Listening for signals</p>
+            <p className={styles.emptyCopy}>
+              Open work will land here when an asset needs attention
+            </p>
+          </div>
+        ) : (
+          <section className={styles.column} aria-label={activeColMeta?.label}>
+            <ul className={styles.columnList}>
+              {items.length === 0 ? (
+                <li className={styles.columnEmpty} role="status">
+                  <ListeningOrbit compact />
+                  <p className={styles.emptyTitle}>Nothing in {activeColMeta?.label ?? "this column"}</p>
+                  <p className={styles.emptyCopy}>
+                    Work will appear as reviews move into this stage.
+                  </p>
+                </li>
+              ) : (
+                items.map((v) => {
+                  const id = v.review?.id ?? `signal:${v.asset.id}`;
+                  const fresh = showNew && isNew(id);
+                  return (
+                    <li
+                      key={id}
+                      role="listitem"
+                      className={fresh ? styles.enter : undefined}
+                    >
+                      <WorkCard
+                        view={v}
+                        active={selectedAssetId === v.asset.id}
+                        isNew={fresh}
+                        now={now}
+                        onSelect={() => selectAsset(v.asset.id)}
+                      />
+                    </li>
+                  );
+                })
+              )}
+            </ul>
+          </section>
         )}
 
-        {floating && (
-          <>
-            {/* Edges */}
-            <div className={`${floatStyles.rh} ${floatStyles.rhN}`}  onPointerDown={(e) => onResizePointerDown(e, "n")}  aria-hidden="true" />
-            <div className={`${floatStyles.rh} ${floatStyles.rhS}`}  onPointerDown={(e) => onResizePointerDown(e, "s")}  aria-hidden="true" />
-            <div className={`${floatStyles.rh} ${floatStyles.rhE}`}  onPointerDown={(e) => onResizePointerDown(e, "e")}  aria-hidden="true" />
-            <div className={`${floatStyles.rh} ${floatStyles.rhW}`}  onPointerDown={(e) => onResizePointerDown(e, "w")}  aria-hidden="true" />
-            {/* Corners */}
-            <div className={`${floatStyles.rh} ${floatStyles.rhNE}`} onPointerDown={(e) => onResizePointerDown(e, "ne")} aria-hidden="true" />
-            <div className={`${floatStyles.rh} ${floatStyles.rhNW}`} onPointerDown={(e) => onResizePointerDown(e, "nw")} aria-hidden="true" />
-            <div className={`${floatStyles.rh} ${floatStyles.rhSE}`} onPointerDown={(e) => onResizePointerDown(e, "se")} aria-hidden="true" />
-            <div className={`${floatStyles.rh} ${floatStyles.rhSW}`} onPointerDown={(e) => onResizePointerDown(e, "sw")} aria-hidden="true" />
-          </>
-        )}
+        {open ? <OverviewPanel /> : null}
       </aside>
     </>
   );

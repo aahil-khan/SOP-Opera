@@ -1,41 +1,63 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import {
-  getLiveAssetViews,
+  useLiveAssetViews,
   useLiveStore,
   type TelemetryMetricKey,
   type TelemetrySample,
+  type TelemetryStatusChip,
 } from "@/lib/liveStore";
 import { isBlockedWork, isElevatedOrBlocking } from "@/lib/openWork";
-import { useFloatingPanel } from "./useFloatingPanel";
+import { relativeTime } from "@/lib/relativeTime";
+import { useNewEntries } from "@/lib/useNewEntries";
+import type { Asset } from "@/shared/schemas";
+import type { PlantFloor } from "@/shared/enums";
+import floorPlanMap from "@/lib/floor_plan_map.json";
+import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
 import styles from "./OverviewPanel.module.css";
-import floatStyles from "./floatingPanel.module.css";
 
 // ── Constants ──────────────────────────────────────────────────────────────
 
-const MIN_W = 300;
-const MIN_H = 180;
-const DEFAULT_W = 460;
-const SCADA_ROTATE_MS = 5000;
-
-// ── Telemetry helpers ──────────────────────────────────────────────────────
-
 const SOURCES = [
-  { id: "scada", label: "SCADA" },
-  { id: "ptw", label: "PTW" },
-  { id: "maintenance", label: "Maint" },
-  { id: "workforce", label: "Workforce" },
+  { id: "scada", label: "SCADA", mark: "Sensors" },
+  { id: "ptw", label: "Permit to Work", mark: "Permits" },
+  { id: "maintenance", label: "Maintenance", mark: "Isolation" },
+  { id: "workforce", label: "Workforce", mark: "People" },
 ] as const;
 
-const METRIC_META: Record<TelemetryMetricKey, { label: string; unit: string; warnAt?: number }> = {
-  gas_reading:   { label: "Gas",   unit: "ppm",  warnAt: 20 },
-  temp_reading:  { label: "Temp",  unit: "°C",   warnAt: 80 },
-  vibration_mm_s:{ label: "Vibe",  unit: "mm/s", warnAt: 7.1 },
-  level_pct:     { label: "Level", unit: "%" },
-  ph:            { label: "pH",    unit: "" },
-  wind_ms:       { label: "Wind",  unit: "m/s",  warnAt: 15 },
+type FeedSourceId = (typeof SOURCES)[number]["id"];
+
+const ORIGIN_BY_SOURCE: Record<FeedSourceId, string> = {
+  scada: "0% 0%",
+  ptw: "100% 0%",
+  maintenance: "0% 100%",
+  workforce: "100% 100%",
 };
+
+const METRIC_META: Record<TelemetryMetricKey, { label: string; unit: string; warnAt?: number }> = {
+  gas_reading:   { label: "Gas",           unit: "ppm",  warnAt: 20 },
+  temp_reading:  { label: "Temperature",   unit: "°C",   warnAt: 80 },
+  vibration_mm_s:{ label: "Vibration",     unit: "mm/s", warnAt: 7.1 },
+  level_pct:     { label: "Level",         unit: "%" },
+  ph:            { label: "pH",            unit: "" },
+  wind_ms:       { label: "Wind",          unit: "m/s",  warnAt: 15 },
+};
+
+type FloorEntry = { floor?: PlantFloor };
+
+const MAP = floorPlanMap as Record<string, FloorEntry>;
+
+function floorOfAsset(assetId: string, assets: Asset[]): PlantFloor {
+  const mapped = MAP[assetId]?.floor;
+  if (mapped) return mapped;
+  const asset = assets.find((a) => a.id === assetId);
+  if (asset?.floor === "first" || asset?.floor === "second" || asset?.floor === "ground") {
+    return asset.floor;
+  }
+  return "ground";
+}
 
 function getScadaAssets(bySource: Record<string, TelemetrySample>): TelemetrySample[] {
   const seen = new Map<string, TelemetrySample>();
@@ -63,364 +85,659 @@ function metricsForAsset(sample: TelemetrySample) {
     });
 }
 
-function countActivePermits(status: { category: string; label: string }[]): number {
-  return status.filter((s) => s.category === "permit" && s.label.toLowerCase().includes("active")).length;
-}
-
-function countHazardousWorkers(status: { category: string; label: string }[]): number {
+function countHazardousWorkers(status: TelemetryStatusChip[]): number {
   return status.filter(
     (s) => s.category === "worker_location" && s.label.toLowerCase().includes("hazardous"),
   ).length;
 }
 
-// ── Types ──────────────────────────────────────────────────────────────────
+function assetLabel(
+  assetId: string,
+  assets: Asset[],
+  fallback?: string | null,
+): string {
+  return fallback ?? assets.find((a) => a.id === assetId)?.name ?? assetId;
+}
 
-interface OverviewPanelProps {
-  shiftForDrawer?: boolean;
-  docked?: boolean;
-  dockedWidth?: number;
+function assetZone(assetId: string, assets: Asset[]): string | null {
+  return assets.find((a) => a.id === assetId)?.zone ?? null;
+}
+
+function rowRisk(chip: TelemetryStatusChip): "elevated" | "nominal" {
+  const label = chip.label.toLowerCase();
+  if (label.includes("incomplete") || label.includes("hazardous") || label.includes("missing")) {
+    return "elevated";
+  }
+  if (chip.category === "permit" && label.includes("active")) return "elevated";
+  if (chip.category === "isolation_status" && label.includes("incomplete")) return "elevated";
+  return "nominal";
+}
+
+function statusForSource(
+  source: FeedSourceId,
+  telemetryStatus: TelemetryStatusChip[],
+): TelemetryStatusChip[] {
+  if (source === "ptw") return telemetryStatus.filter((s) => s.category === "permit");
+  if (source === "maintenance") {
+    return telemetryStatus.filter((s) => s.category === "isolation_status");
+  }
+  if (source === "workforce") {
+    return telemetryStatus.filter(
+      (s) => s.category === "worker_location" || s.category === "ppe_status",
+    );
+  }
+  return [];
+}
+
+function sortByTsDesc<T extends { ts?: string }>(items: T[]): T[] {
+  return [...items].sort((a, b) => Date.parse(b.ts ?? "") - Date.parse(a.ts ?? ""));
+}
+
+function statusEntryKey(chip: TelemetryStatusChip): string {
+  return `${chip.category}:${chip.asset_id}`;
+}
+
+function scadaEntryKey(assetId: string): string {
+  return `scada:${assetId}`;
+}
+
+function groupByFloor<T>(
+  items: T[],
+  getAssetId: (item: T) => string,
+  assets: Asset[],
+): Record<PlantFloor, T[]> {
+  const groups: Record<PlantFloor, T[]> = { ground: [], first: [], second: [] };
+  for (const item of items) {
+    groups[floorOfAsset(getAssetId(item), assets)].push(item);
+  }
+  return groups;
 }
 
 // ── Component ──────────────────────────────────────────────────────────────
 
-export function OverviewPanel({ shiftForDrawer = false, docked = false, dockedWidth = 360 }: OverviewPanelProps) {
-  const assets            = useLiveStore((s) => s.assets);
-  const reviews           = useLiveStore((s) => s.reviews);
-  const reviewDetails     = useLiveStore((s) => s.reviewDetails);
-  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
-  const telemetryStatus   = useLiveStore((s) => s.telemetryStatus);
-  const bySource          = useLiveStore((s) => s.telemetryBySource);
-  const selectAsset       = useLiveStore((s) => s.selectAsset);
+export function OverviewPanel() {
+  const assets = useLiveStore((s) => s.assets);
+  const views = useLiveAssetViews();
+  const telemetryStatus = useLiveStore((s) => s.telemetryStatus);
+  const bySource = useLiveStore((s) => s.telemetryBySource);
+  const selectAsset = useLiveStore((s) => s.selectAsset);
 
-  const [collapsed,   setCollapsed]  = useState(false);
-  const [feedSource,  setFeedSource] = useState<(typeof SOURCES)[number]["id"]>("scada");
-  const [scadaIdx,    setScadaIdx]   = useState(0);
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayClosing, setOverlayClosing] = useState(false);
+  const [expandedSource, setExpandedSource] = useState<FeedSourceId | null>(null);
+  const [paneClosing, setPaneClosing] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const afterCloseRef = useRef<(() => void) | null>(null);
+  const paneSourceRef = useRef<FeedSourceId | null>(null);
 
-  const {
-    panelRef,
-    floating,
-    interacting,
-    isDragging,
-    isResized,
-    size,
-    style: floatStyle,
-    onHeaderPointerDown,
-    onResizePointerDown,
-    onPointerMove,
-    onPointerUp,
-    snapToDefault,
-    maximize,
-  } = useFloatingPanel({ minW: MIN_W, minH: MIN_H });
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
-  // ── KPIs ──────────────────────────────────────────────────────────────────
+  useEffect(() => {
+    if (expandedSource) paneSourceRef.current = expandedSource;
+  }, [expandedSource]);
+
+  const visiblePaneSource = expandedSource ?? (paneClosing ? paneSourceRef.current : null);
+
+  const scadaAssets = useMemo(
+    () => sortByTsDesc(getScadaAssets(bySource)),
+    [bySource],
+  );
+
+  const ptwRows = useMemo(
+    () => sortByTsDesc(statusForSource("ptw", telemetryStatus)),
+    [telemetryStatus],
+  );
+  const maintRows = useMemo(
+    () => sortByTsDesc(statusForSource("maintenance", telemetryStatus)),
+    [telemetryStatus],
+  );
+  const workforceRows = useMemo(
+    () => sortByTsDesc(statusForSource("workforce", telemetryStatus)),
+    [telemetryStatus],
+  );
+
+  const feedEntryIds = useMemo(() => {
+    const ids = scadaAssets.map((a) => scadaEntryKey(a.asset_id));
+    for (const row of [...ptwRows, ...maintRows, ...workforceRows]) {
+      ids.push(statusEntryKey(row));
+    }
+    return ids;
+  }, [scadaAssets, ptwRows, maintRows, workforceRows]);
+
+  const { isNew, now } = useNewEntries(feedEntryIds);
+  const hasFreshFeed = feedEntryIds.some(isNew);
 
   const kpis = useMemo(() => {
-    const views = getLiveAssetViews({ assets, reviews, reviewDetails, assessmentsByReview });
     const openReviews = views.filter((v) => v.review != null && v.review.state !== "closed").length;
     const zones = new Set<string>();
     for (const v of views) {
       if (isElevatedOrBlocking(v) && v.asset.zone) zones.add(v.asset.zone);
     }
     const peopleAtRisk = countHazardousWorkers(telemetryStatus);
-    const blockedWork  = views.filter(isBlockedWork).length;
+    const blockedWork = views.filter(isBlockedWork).length;
     return [
-      { key: "open",    label: "Open reviews",   value: openReviews,  warn: openReviews > 0 },
-      { key: "zones",   label: "Zones locked",   value: zones.size,   warn: zones.size > 0 },
-      { key: "people",  label: "People at risk",  value: peopleAtRisk, warn: peopleAtRisk > 0 },
-      { key: "blocked", label: "Blocked work",    value: blockedWork,  warn: blockedWork > 0 },
+      { key: "open", label: "Open reviews", value: openReviews, warn: openReviews > 0 },
+      { key: "zones", label: "Zones locked", value: zones.size, warn: zones.size > 0 },
+      { key: "people", label: "People at risk", value: peopleAtRisk, warn: peopleAtRisk > 0 },
+      { key: "blocked", label: "Blocked work", value: blockedWork, warn: blockedWork > 0 },
     ];
-  }, [assets, reviews, reviewDetails, assessmentsByReview, telemetryStatus]);
+  }, [views, telemetryStatus]);
 
-  // ── SCADA assets + rotation ───────────────────────────────────────────────
+  const categoryCards = useMemo(() => {
+    const scadaElevated = scadaAssets.filter((a) =>
+      metricsForAsset(a).some((m) => m.risk === "elevated"),
+    ).length;
+    const ptwActive = ptwRows.filter((s) => s.label.toLowerCase().includes("active")).length;
+    const maintIncomplete = maintRows.filter((s) =>
+      s.label.toLowerCase().includes("incomplete"),
+    ).length;
+    const workforceRisk = workforceRows.filter((s) =>
+      s.label.toLowerCase().includes("hazardous") || s.label.toLowerCase().includes("missing"),
+    ).length;
 
-  const scadaAssets = useMemo(() => getScadaAssets(bySource), [bySource]);
-
-  // Clamp index on list change
-  useEffect(() => {
-    if (scadaAssets.length > 0) setScadaIdx((i) => i % scadaAssets.length);
-  }, [scadaAssets.length]);
-
-  // Auto-rotate only when panel is too small to show all assets
-  const panelW = size?.w ?? DEFAULT_W;
-  const panelH = size?.h ?? null;
-  const dockedNow = docked && !floating;
-  // When sitting in its default docked slot, the panel fills a defined
-  // height — always show every asset. Same once floating-resized tall.
-  const showAllScada = feedSource === "scada" && (dockedNow || (panelH != null && panelH > 320));
-
-  useEffect(() => {
-    if (showAllScada || feedSource !== "scada" || scadaAssets.length < 2) return;
-    const id = window.setInterval(() => setScadaIdx((i) => (i + 1) % scadaAssets.length), SCADA_ROTATE_MS);
-    return () => window.clearInterval(id);
-  }, [showAllScada, feedSource, scadaAssets.length]);
-
-  // ── Feed cards (single-asset cycling) ────────────────────────────────────
-
-  const feedCards = useMemo(() => {
-    if (feedSource === "scada") {
-      if (scadaAssets.length === 0) return [];
-      return metricsForAsset(scadaAssets[scadaIdx % scadaAssets.length]);
-    }
-    if (feedSource === "ptw") {
-      const count = countActivePermits(telemetryStatus);
-      return [{ key: "permits", label: "Active permits", value: String(count), unit: "", risk: count > 1 ? "elevated" : "nominal" }];
-    }
-    if (feedSource === "maintenance") {
-      const incomplete = telemetryStatus.filter(
-        (s) => s.category === "isolation_status" && s.label.toLowerCase().includes("incomplete"),
-      ).length;
-      return [{ key: "iso", label: "Isolation flags", value: String(incomplete), unit: "", risk: incomplete ? "elevated" : "nominal" }];
-    }
-    const hazardous = countHazardousWorkers(telemetryStatus);
-    return [{ key: "zone", label: "In hazardous zone", value: String(hazardous), unit: "", risk: hazardous > 0 ? "elevated" : "nominal" }];
-  }, [bySource, feedSource, telemetryStatus, scadaAssets, scadaIdx]);
-
-  const currentScadaAsset = feedSource === "scada" && !showAllScada && scadaAssets.length > 0
-    ? scadaAssets[scadaIdx % scadaAssets.length]
-    : null;
+    return [
+      {
+        id: "scada" as const,
+        entryIds: scadaAssets.map((a) => scadaEntryKey(a.asset_id)),
+        primary: String(scadaAssets.length),
+        primaryLabel: "assets reporting",
+        secondary: scadaElevated > 0 ? `${scadaElevated} elevated` : "All nominal",
+        warn: scadaElevated > 0,
+        preview: scadaAssets.slice(0, 3).map((a) => {
+          const metrics = metricsForAsset(a);
+          return {
+            key: scadaEntryKey(a.asset_id),
+            title: assetLabel(a.asset_id, assets, a.asset_name),
+            detail: metrics.slice(0, 2).map((m) => `${m.label} ${m.value}${m.unit}`).join(" · ") || "No readings",
+            risk: metrics.some((m) => m.risk === "elevated") ? "elevated" : "nominal",
+            ts: a.ts,
+          };
+        }),
+      },
+      {
+        id: "ptw" as const,
+        entryIds: ptwRows.map(statusEntryKey),
+        primary: String(ptwActive),
+        primaryLabel: "active permits",
+        secondary: `${ptwRows.length} total`,
+        warn: ptwActive > 0,
+        preview: ptwRows.slice(0, 3).map((c) => ({
+          key: statusEntryKey(c),
+          title: assetLabel(c.asset_id, assets),
+          detail: c.label,
+          risk: rowRisk(c),
+          ts: c.ts,
+        })),
+      },
+      {
+        id: "maintenance" as const,
+        entryIds: maintRows.map(statusEntryKey),
+        primary: String(maintIncomplete),
+        primaryLabel: "incomplete isolations",
+        secondary: `${maintRows.length} total`,
+        warn: maintIncomplete > 0,
+        preview: maintRows.slice(0, 3).map((c) => ({
+          key: statusEntryKey(c),
+          title: assetLabel(c.asset_id, assets),
+          detail: c.label,
+          risk: rowRisk(c),
+          ts: c.ts,
+        })),
+      },
+      {
+        id: "workforce" as const,
+        entryIds: workforceRows.map(statusEntryKey),
+        primary: String(workforceRisk),
+        primaryLabel: "at risk / non-compliant",
+        secondary: `${workforceRows.length} total`,
+        warn: workforceRisk > 0,
+        preview: workforceRows.slice(0, 3).map((c) => ({
+          key: statusEntryKey(c),
+          title: assetLabel(c.asset_id, assets),
+          detail: c.label,
+          risk: rowRisk(c),
+          ts: c.ts,
+        })),
+      },
+    ];
+  }, [scadaAssets, ptwRows, maintRows, workforceRows, assets]);
 
   const sampleCount = Object.keys(bySource).length;
 
-  const toggleCollapse = useCallback(() => setCollapsed((c) => !c), []);
+  const openMaximize = useCallback(() => {
+    afterCloseRef.current = null;
+    setExpandedSource(null);
+    setPaneClosing(false);
+    setOverlayClosing(false);
+    setOverlayOpen(true);
+  }, []);
 
-  // Escape snaps a floating panel back to its default position
+  const finishClose = useCallback(() => {
+    setOverlayOpen(false);
+    setOverlayClosing(false);
+    setExpandedSource(null);
+    setPaneClosing(false);
+    const after = afterCloseRef.current;
+    afterCloseRef.current = null;
+    after?.();
+  }, []);
+
+  const closeMaximize = useCallback(() => {
+    if (!overlayOpen || overlayClosing) return;
+    setPaneClosing(false);
+    setExpandedSource(null);
+    setOverlayClosing(true);
+  }, [overlayOpen, overlayClosing]);
+
+  const collapsePane = useCallback(() => {
+    if (!expandedSource || paneClosing) return;
+    setPaneClosing(true);
+    setExpandedSource(null);
+  }, [expandedSource, paneClosing]);
+
+  const goToAsset = useCallback(
+    (assetId: string) => {
+      afterCloseRef.current = () => selectAsset(assetId);
+      if (!overlayOpen) {
+        selectAsset(assetId);
+        return;
+      }
+      if (overlayClosing) return;
+      setPaneClosing(false);
+      setExpandedSource(null);
+      setOverlayClosing(true);
+    },
+    [overlayOpen, overlayClosing, selectAsset],
+  );
+
   useEffect(() => {
+    if (!overlayOpen) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && floating) snapToDefault();
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (expandedSource || paneClosing) {
+        collapsePane();
+      } else {
+        closeMaximize();
+      }
     };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [floating, snapToDefault]);
+    window.addEventListener("keydown", onKey, true);
+    return () => window.removeEventListener("keydown", onKey, true);
+  }, [overlayOpen, expandedSource, paneClosing, collapsePane, closeMaximize]);
 
-  // ── Tier calculation ──────────────────────────────────────────────────────
-
-  const effectiveW = dockedNow ? dockedWidth : panelW;
-  const tier = effectiveW >= 680 ? "wide" : effectiveW >= 420 ? "normal" : "compact";
-  // isLarge drives the bigger-font styling + the maximize/restore icon —
-  // tied to a deliberate resize/maximize, not just being dragged around
-  const isLarge = isResized;
-
-  // ── Inline style ──────────────────────────────────────────────────────────
-
-  const inlineStyle: React.CSSProperties = floating ? floatStyle : {};
-
-  // ── Render ────────────────────────────────────────────────────────────────
-
-  return (
-    <>
-      {isDragging && (
-        <div
-          className={`${styles.panel} ${floatStyles.homeGhost}`}
-          data-docked={docked ? "true" : undefined}
-          aria-hidden="true"
-        />
-      )}
-      <div
-        ref={panelRef}
-        className={styles.panel}
-        data-tier={tier}
-        data-tall={showAllScada ? "true" : undefined}
-        data-collapsed={collapsed ? "true" : undefined}
-        data-large={isLarge ? "true" : undefined}
-        data-floating={floating ? "true" : undefined}
-        data-docked={dockedNow ? "true" : undefined}
-        data-interacting={interacting ? "true" : undefined}
-        data-shift={!floating && shiftForDrawer ? "true" : undefined}
-        style={inlineStyle}
-        onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        role="region"
-        aria-label="Plant overview"
-      >
-      {/* ── Header ── */}
-      <div className={styles.header} onPointerDown={onHeaderPointerDown}>
-        <span className={styles.grip} aria-hidden="true">⠿</span>
-        <span className={styles.panelTitle}>Overview</span>
-        {sampleCount > 0 && <span className={styles.liveDot} title="Live data" />}
-        <div className={styles.controls}>
-          {floating && (
-            <button
-              type="button"
-              className={floatStyles.snapBack}
-              onClick={snapToDefault}
-              title="Snap back to default position"
-              aria-label="Snap back to default position"
-            >
-              ↺
-            </button>
-          )}
-          <button
-            type="button"
-            className={styles.ctrl}
-            onClick={toggleCollapse}
-            title={collapsed ? "Expand" : "Collapse"}
-            aria-label={collapsed ? "Expand panel" : "Collapse panel"}
-          >
-            {collapsed ? "▲" : "▼"}
-          </button>
-          <button
-            type="button"
-            className={styles.ctrl}
-            onClick={maximize}
-            title={isLarge ? "Restore" : "Maximize"}
-            aria-label={isLarge ? "Restore panel" : "Maximize panel"}
-          >
-            {isLarge ? "⤓" : "⤢"}
-          </button>
+  const kpiGrid = (
+    <div className={styles.kpis}>
+      {kpis.map((k) => (
+        <div key={k.key} className={styles.kpi} data-warn={k.warn ? "true" : undefined}>
+          <span className={styles.kpiValue}>{k.value}</span>
+          <span className={styles.kpiLabel}>{k.label}</span>
         </div>
-      </div>
+      ))}
+    </div>
+  );
 
-      {/* ── Body ── */}
-      {!collapsed && (
-        <div className={styles.body}>
+  const expandedMeta = visiblePaneSource
+    ? SOURCES.find((s) => s.id === visiblePaneSource)
+    : null;
 
-          {/* KPIs */}
-          <div className={styles.section}>
-            <div className={styles.sectionHeader}>
-              <span className={styles.sectionMark}>Impact</span>
-              <span className={styles.sectionTitle}>Ops KPIs</span>
-            </div>
-            <div className={styles.kpis}>
-              {kpis.map((k) => (
-                <div key={k.key} className={styles.kpi} data-warn={k.warn ? "true" : undefined}>
-                  <span className={styles.kpiValue}>{k.value}</span>
-                  <span className={styles.kpiLabel}>{k.label}</span>
-                </div>
-              ))}
-            </div>
-          </div>
+  const scadaByFloor = useMemo(
+    () => groupByFloor(scadaAssets, (a) => a.asset_id, assets),
+    [scadaAssets, assets],
+  );
 
-          <div className={styles.divider} />
+  const statusByFloor = useMemo(() => {
+    if (!visiblePaneSource || visiblePaneSource === "scada") {
+      return { ground: [], first: [], second: [] } as Record<PlantFloor, TelemetryStatusChip[]>;
+    }
+    const rows =
+      visiblePaneSource === "ptw"
+        ? ptwRows
+        : visiblePaneSource === "maintenance"
+          ? maintRows
+          : workforceRows;
+    return groupByFloor(rows, (c) => c.asset_id, assets);
+  }, [visiblePaneSource, ptwRows, maintRows, workforceRows, assets]);
 
-          {/* Live Plant Feed */}
-          <div className={`${styles.section} ${styles.liveSection}`}>
-            <div className={styles.sectionHeader}>
-              <span className={styles.sectionMarkGreen}>Live</span>
-              <span className={styles.sectionTitle}>Plant feed</span>
-              {currentScadaAsset && (
-                <span key={currentScadaAsset.asset_id} className={styles.assetCycleLabel}>
-                  {currentScadaAsset.asset_name ?? currentScadaAsset.asset_id}
-                  {scadaAssets.length > 1 && (
-                    <span className={styles.assetCycleCount}>
-                      {" "}{(scadaIdx % scadaAssets.length) + 1}/{scadaAssets.length}
-                    </span>
-                  )}
-                </span>
-              )}
-              <div className={styles.feedTabs} role="tablist" aria-label="Data source">
-                {SOURCES.map((s) => (
-                  <button
-                    key={s.id}
-                    type="button"
-                    role="tab"
-                    aria-selected={feedSource === s.id}
-                    className={styles.feedTab}
-                    data-active={feedSource === s.id ? "true" : undefined}
-                    onClick={() => setFeedSource(s.id)}
-                  >
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-
-            <div className={styles.feedScroll}>
-              {/* Single-asset cycling (small panel) */}
-              {!showAllScada && (
-                <div className={styles.cards}>
-                  {feedCards.length === 0 ? (
-                    <p className={styles.feedEmpty}>
-                      {feedSource === "scada"
-                        ? "No live SCADA telemetry yet."
-                        : "No data for this source yet."}
-                    </p>
-                  ) : (
-                    feedCards.map((c) => {
-                      const assetId = feedSource === "scada" && currentScadaAsset ? currentScadaAsset.asset_id : null;
-                      return assetId ? (
-                        <button
-                          key={c.key}
-                          type="button"
-                          className={`${styles.card} ${styles.cardClickable}`}
-                          data-risk={c.risk}
-                          onClick={() => selectAsset(assetId)}
-                          title={`Go to ${currentScadaAsset?.asset_name ?? assetId}`}
-                        >
-                          <span className={styles.cardLabel}>{c.label}</span>
-                          <span className={styles.cardValue}>
-                            {c.value}
-                            {c.unit ? <span className={styles.unit}>{c.unit}</span> : null}
-                          </span>
-                        </button>
+  const floorBoard = visiblePaneSource === "scada" ? (
+    <div className={styles.floorBoard}>
+      {FLOOR_ORDER.map((floor) => {
+        const items = scadaByFloor[floor];
+        return (
+          <section key={floor} className={styles.floorCol} aria-label={`${FLOOR_LABELS[floor]} floor`}>
+            <header className={styles.floorColHead}>
+              <span className={styles.floorColTitle}>{FLOOR_LABELS[floor]}</span>
+              <span className={styles.floorColCount}>{items.length}</span>
+            </header>
+            {items.length === 0 ? (
+              <p className={styles.floorEmpty}>No assets</p>
+            ) : (
+              <div className={styles.floorTiles}>
+                {items.map((asset) => {
+                  const metrics = metricsForAsset(asset);
+                  const elevated = metrics.some((m) => m.risk === "elevated");
+                  const zone = assetZone(asset.asset_id, assets);
+                  const entryId = scadaEntryKey(asset.asset_id);
+                  const fresh = isNew(entryId);
+                  return (
+                    <button
+                      key={asset.asset_id}
+                      type="button"
+                      className={fresh ? `${styles.tile} ${styles.enter}` : styles.tile}
+                      data-risk={elevated ? "elevated" : undefined}
+                      onClick={() => goToAsset(asset.asset_id)}
+                      title={`Go to ${asset.asset_name ?? asset.asset_id}`}
+                    >
+                      <span className={styles.tileHead}>
+                        <span className={styles.tileName}>
+                          {fresh ? <span className={styles.dot} aria-label="New" /> : null}
+                          {assetLabel(asset.asset_id, assets, asset.asset_name)}
+                        </span>
+                      </span>
+                      {zone ? <span className={styles.tileZone}>{zone}</span> : null}
+                      {asset.ts ? (
+                        <span className={styles.tileWhen}>{relativeTime(asset.ts, now)}</span>
+                      ) : null}
+                      {metrics.length === 0 ? (
+                        <span className={styles.tileMuted}>No readings</span>
                       ) : (
-                        <div key={c.key} className={styles.card} data-risk={c.risk}>
-                          <span className={styles.cardLabel}>{c.label}</span>
-                          <span className={styles.cardValue}>
-                            {c.value}
-                            {c.unit ? <span className={styles.unit}>{c.unit}</span> : null}
-                          </span>
-                        </div>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-
-              {/* All assets (tall panel) */}
-              {showAllScada && (
-                <div className={styles.allAssets}>
-                  {scadaAssets.length === 0 ? (
-                    <p className={styles.feedEmpty}>No live SCADA telemetry yet.</p>
-                  ) : (
-                    scadaAssets.map((asset) => (
-                      <button
-                        key={asset.asset_id}
-                        type="button"
-                        className={`${styles.assetBlock} ${styles.assetBlockClickable}`}
-                        onClick={() => selectAsset(asset.asset_id)}
-                        title={`Go to ${asset.asset_name ?? asset.asset_id}`}
-                      >
-                        <div className={styles.assetName}>
-                          {asset.asset_name ?? asset.asset_id}
-                        </div>
-                        <div className={styles.cards}>
-                          {metricsForAsset(asset).map((c) => (
-                            <div key={c.key} className={styles.card} data-risk={c.risk}>
-                              <span className={styles.cardLabel}>{c.label}</span>
-                              <span className={styles.cardValue}>
+                        <div className={styles.tileMetrics}>
+                          {metrics.map((c) => (
+                            <span key={c.key} className={styles.tileMetric} data-risk={c.risk}>
+                              <span className={styles.tileMetricLabel}>{c.label}</span>
+                              <span className={styles.tileMetricValue}>
                                 {c.value}
                                 {c.unit ? <span className={styles.unit}>{c.unit}</span> : null}
                               </span>
-                            </div>
+                            </span>
                           ))}
                         </div>
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  ) : (
+    <div className={styles.floorBoard}>
+      {FLOOR_ORDER.map((floor) => {
+        const items = statusByFloor[floor];
+        return (
+          <section key={floor} className={styles.floorCol} aria-label={`${FLOOR_LABELS[floor]} floor`}>
+            <header className={styles.floorColHead}>
+              <span className={styles.floorColTitle}>{FLOOR_LABELS[floor]}</span>
+              <span className={styles.floorColCount}>{items.length}</span>
+            </header>
+            {items.length === 0 ? (
+              <p className={styles.floorEmpty}>None on this floor</p>
+            ) : (
+              <div className={styles.floorTiles}>
+                {items.map((chip) => {
+                  const zone = assetZone(chip.asset_id, assets);
+                  const entryId = statusEntryKey(chip);
+                  const fresh = isNew(entryId);
+                  return (
+                    <button
+                      key={`${chip.asset_id}-${chip.category}-${chip.ts}`}
+                      type="button"
+                      className={fresh ? `${styles.tile} ${styles.enter}` : styles.tile}
+                      data-risk={rowRisk(chip)}
+                      onClick={() => goToAsset(chip.asset_id)}
+                      title={`Go to ${assetLabel(chip.asset_id, assets)}`}
+                    >
+                      <span className={styles.tileHead}>
+                        <span className={styles.tileName}>
+                          {fresh ? <span className={styles.dot} aria-label="New" /> : null}
+                          {assetLabel(chip.asset_id, assets)}
+                        </span>
+                      </span>
+                      {zone ? <span className={styles.tileZone}>{zone}</span> : null}
+                      <span className={styles.tileWhen}>{relativeTime(chip.ts, now)}</span>
+                      <span className={styles.tileStatus}>{chip.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        );
+      })}
+    </div>
+  );
+
+  const allCategoriesGrid = (
+    <div className={styles.categoryGrid} data-dimmed={visiblePaneSource ? "true" : undefined}>
+      {categoryCards.map((card) => {
+        const meta = SOURCES.find((s) => s.id === card.id)!;
+        const cardFresh = card.entryIds.some(isNew);
+        return (
+          <section
+            key={card.id}
+            className={styles.categoryCard}
+            data-warn={card.warn ? "true" : undefined}
+            data-active={visiblePaneSource === card.id ? "true" : undefined}
+          >
+            <header className={styles.categoryHead}>
+              <div className={styles.categoryTitles}>
+                <span className={styles.categoryMark}>{meta.mark}</span>
+                <h3 className={styles.categoryTitle}>
+                  {cardFresh ? <span className={styles.dot} aria-hidden="true" /> : null}
+                  {meta.label}
+                </h3>
+              </div>
+              <button
+                type="button"
+                className={styles.expandBtn}
+                onClick={() => {
+                  setPaneClosing(false);
+                  setExpandedSource(card.id);
+                }}
+                title={`Expand ${meta.label}`}
+                aria-label={`Expand ${meta.label}`}
+              >
+                ⤢
+              </button>
+            </header>
+
+            <div className={styles.categoryStat}>
+              <span className={styles.categoryPrimary} data-warn={card.warn ? "true" : undefined}>
+                {card.primary}
+              </span>
+              <span className={styles.categoryPrimaryLabel}>{card.primaryLabel}</span>
+              <span className={styles.categorySecondary}>{card.secondary}</span>
             </div>
+
+            {card.preview.length === 0 ? (
+              <p className={styles.categoryEmpty}>No live data yet</p>
+            ) : (
+              <ul className={styles.previewList}>
+                {card.preview.map((row) => {
+                  const fresh = isNew(row.key);
+                  return (
+                    <li
+                      key={row.key}
+                      className={
+                        fresh
+                          ? `${styles.previewItem} ${styles.enter}`
+                          : styles.previewItem
+                      }
+                      data-risk={row.risk === "elevated" ? "elevated" : undefined}
+                    >
+                      <span className={styles.previewTop}>
+                        <span className={styles.previewTitle}>
+                          {fresh ? <span className={styles.dot} aria-label="New" /> : null}
+                          {row.title}
+                        </span>
+                      </span>
+                      <span className={styles.previewDetail}>{row.detail}</span>
+                      {row.ts ? (
+                        <span className={styles.previewWhen}>{relativeTime(row.ts, now)}</span>
+                      ) : null}
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+
+            <button
+              type="button"
+              className={styles.viewAll}
+              onClick={() => {
+                setPaneClosing(false);
+                setExpandedSource(card.id);
+              }}
+            >
+              Expand {meta.label}
+            </button>
+          </section>
+        );
+      })}
+    </div>
+  );
+
+  const maximizedOverlay =
+    mounted && overlayOpen
+      ? createPortal(
+          <div
+            className={styles.overlay}
+            data-closing={overlayClosing ? "true" : undefined}
+            role="dialog"
+            aria-modal="true"
+            aria-label="Plant overview"
+          >
+            <div
+              className={styles.overlayPanel}
+              onAnimationEnd={(e) => {
+                if (e.target !== e.currentTarget) return;
+                if (overlayClosing) finishClose();
+              }}
+            >
+              <div className={styles.header}>
+                <span className={styles.panelTitle}>
+                  {expandedMeta ? expandedMeta.label : "Overview"}
+                </span>
+                {sampleCount > 0 && <span className={styles.liveDot} title="Live data" />}
+                <div className={styles.controls}>
+                  <button
+                    type="button"
+                    className={styles.ctrl}
+                    onClick={closeMaximize}
+                    title="Close"
+                    aria-label="Close overview"
+                  >
+                    ⤓
+                  </button>
+                </div>
+              </div>
+
+              <div className={styles.overlayBody}>
+                <div className={styles.section} data-recessed={visiblePaneSource ? "true" : undefined}>
+                  <div className={styles.sectionHeader}>
+                    <span className={styles.sectionMark}>Impact</span>
+                    <span className={styles.sectionTitle}>Ops KPIs</span>
+                  </div>
+                  {kpiGrid}
+                </div>
+                <div className={styles.divider} />
+                <div className={`${styles.section} ${styles.liveSection}`}>
+                  <div className={styles.sectionHeader}>
+                    <span className={styles.sectionMarkGreen}>Live</span>
+                    <span className={styles.sectionTitle}>
+                      {expandedMeta ? expandedMeta.mark : "Plant feed"}
+                    </span>
+                    <span className={styles.feedSummary}>
+                      {visiblePaneSource ? "By floor" : "All sources"}
+                    </span>
+                  </div>
+
+                  <div className={styles.feedStage}>
+                    <div className={styles.feedScroll}>{allCategoriesGrid}</div>
+
+                    {visiblePaneSource ? (
+                      <div
+                        key={visiblePaneSource}
+                        className={styles.expandPane}
+                        data-closing={paneClosing ? "true" : undefined}
+                        style={{ transformOrigin: ORIGIN_BY_SOURCE[visiblePaneSource] }}
+                        role="region"
+                        aria-label={`${expandedMeta?.label} by floor`}
+                        onAnimationEnd={(e) => {
+                          if (e.target !== e.currentTarget) return;
+                          if (paneClosing) setPaneClosing(false);
+                        }}
+                      >
+                        <div className={styles.expandPaneHead}>
+                          <button
+                            type="button"
+                            className={styles.backBtn}
+                            onClick={collapsePane}
+                            aria-label="Back to overview"
+                          >
+                            ←
+                          </button>
+                          <div className={styles.expandPaneTitles}>
+                            <span className={styles.categoryMark}>{expandedMeta?.mark}</span>
+                            <h3 className={styles.expandPaneTitle}>{expandedMeta?.label}</h3>
+                          </div>
+                          <button
+                            type="button"
+                            className={styles.ctrl}
+                            onClick={collapsePane}
+                            title="Collapse"
+                            aria-label="Collapse category"
+                          >
+                            ⤓
+                          </button>
+                        </div>
+                        <div className={styles.expandPaneBody}>{floorBoard}</div>
+                      </div>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>,
+          document.body,
+        )
+      : null;
+
+  return (
+    <>
+      <div className={styles.embedded} role="region" aria-label="Plant overview">
+        <div className={styles.header}>
+          <span className={styles.panelTitle}>Overview</span>
+          {hasFreshFeed ? (
+            <span className={styles.dot} aria-label="New data" title="New live data" />
+          ) : sampleCount > 0 ? (
+            <span className={styles.liveDot} title="Live data" />
+          ) : null}
+          <div className={styles.controls}>
+            <button
+              type="button"
+              className={styles.ctrl}
+              onClick={openMaximize}
+              title="Maximize"
+              aria-label="Maximize panel"
+            >
+              ⤢
+            </button>
           </div>
-
         </div>
-      )}
-
-      {/* ── Resize handles ── */}
-      {!collapsed && !dockedNow && (
-        <>
-          {/* Edges */}
-          <div className={`${floatStyles.rh} ${floatStyles.rhN}`}  onPointerDown={(e) => onResizePointerDown(e, "n")}  aria-hidden="true" />
-          <div className={`${floatStyles.rh} ${floatStyles.rhS}`}  onPointerDown={(e) => onResizePointerDown(e, "s")}  aria-hidden="true" />
-          <div className={`${floatStyles.rh} ${floatStyles.rhE}`}  onPointerDown={(e) => onResizePointerDown(e, "e")}  aria-hidden="true" />
-          <div className={`${floatStyles.rh} ${floatStyles.rhW}`}  onPointerDown={(e) => onResizePointerDown(e, "w")}  aria-hidden="true" />
-          {/* Corners */}
-          <div className={`${floatStyles.rh} ${floatStyles.rhNE}`} onPointerDown={(e) => onResizePointerDown(e, "ne")} aria-hidden="true" />
-          <div className={`${floatStyles.rh} ${floatStyles.rhNW}`} onPointerDown={(e) => onResizePointerDown(e, "nw")} aria-hidden="true" />
-          <div className={`${floatStyles.rh} ${floatStyles.rhSE}`} onPointerDown={(e) => onResizePointerDown(e, "se")} aria-hidden="true" />
-          <div className={`${floatStyles.rh} ${floatStyles.rhSW}`} onPointerDown={(e) => onResizePointerDown(e, "sw")} aria-hidden="true" />
-        </>
-      )}
+        <div className={styles.embeddedBody}>
+          <div className={styles.sectionHeader}>
+            <span className={styles.sectionMark}>Impact</span>
+            <span className={styles.sectionTitle}>Ops KPIs</span>
+          </div>
+          {kpiGrid}
+        </div>
       </div>
+      {maximizedOverlay}
     </>
   );
 }

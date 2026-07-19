@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAssetView } from "@/lib/liveStore";
 import { useLiveStore } from "@/lib/liveStore";
+import { fetchAssetOwner } from "@/lib/liveApi";
+import type { AreaOwner } from "@/shared/schemas";
 import {
   DOMAINS,
   DOMAIN_META,
@@ -12,6 +14,7 @@ import {
 } from "@/lib/domains";
 import { DomainDetailFlyout } from "./DomainDetailFlyout";
 import styles from "./DomainRadar.module.css";
+import { API_BASE } from "@/lib/api";
 
 const SIZE = 300;
 const CX = SIZE / 2;
@@ -27,6 +30,13 @@ const LABEL_OUTSET = 14;
 const N = DOMAINS.length;
 /** Rotate so a flat side faces each domain (labels on sides, corners between). */
 const CORNER_OFFSET = 360 / N / 2;
+/**
+ * A regular polygon's corners sit at the ring radius, but the midpoint of a
+ * flat side (where axes/score tips point) is closer to center by cos(π/N).
+ * Score tips are plotted along that mid-side direction, so their radius must
+ * be scaled by this factor or a score of 100 would poke past the outer ring.
+ */
+const APOTHEM_FACTOR = Math.cos((CORNER_OFFSET * Math.PI) / 180);
 
 function polar(angleDeg: number, r: number): { x: number; y: number } {
   const rad = ((angleDeg - 90) * Math.PI) / 180;
@@ -44,8 +54,9 @@ function cornerAngle(i: number): number {
 }
 
 function radiusForScore(score: number, empty: boolean): number {
-  if (empty) return MIN_R * 0.55;
-  return MIN_R + (score / 100) * (MAX_R - MIN_R);
+  const r = empty ? MIN_R * 0.55 : MIN_R + (score / 100) * (MAX_R - MIN_R);
+  // Clamp defensively in case an upstream score ever exceeds 0–100.
+  return Math.min(r, MAX_R) * APOTHEM_FACTOR;
 }
 
 const EMPTY_COLOR = "var(--text-muted)";
@@ -85,6 +96,8 @@ interface DomainRadarProps {
 
 export function DomainRadar({ view }: DomainRadarProps) {
   const assetId = view.asset.id;
+  const detailOwner = view.detail?.area_owner ?? null;
+
   const gasSeries = useLiveStore(
     (s) => s.telemetrySeries[`${assetId}::gas_reading`],
   );
@@ -100,6 +113,53 @@ export function DomainRadar({ view }: DomainRadarProps) {
   const ph = useLiveStore((s) => s.telemetrySeries[`${assetId}::ph`]);
   const wind = useLiveStore((s) => s.telemetrySeries[`${assetId}::wind_ms`]);
   const latest = useLiveStore((s) => s.telemetryLatest[assetId]);
+
+  const [neighborCount, setNeighborCount] = useState<number | null>(null);
+  const [fetchedOwner, setFetchedOwner] = useState<AreaOwner | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setNeighborCount(null);
+    (async () => {
+      try {
+        const res = await fetch(`${API_BASE}/graph/neighbors/${assetId}`);
+        if (!res.ok) throw new Error(`${res.status}`);
+        const data = (await res.json()) as { neighbors?: unknown[] };
+        if (!cancelled) {
+          setNeighborCount(
+            Array.isArray(data.neighbors) ? data.neighbors.length : 0,
+          );
+        }
+      } catch {
+        if (!cancelled) setNeighborCount(0);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
+
+  // Load zone owner when review detail doesn't include one (e.g. nominal assets).
+  useEffect(() => {
+    if (detailOwner) {
+      setFetchedOwner(null);
+      return;
+    }
+    let cancelled = false;
+    setFetchedOwner(null);
+    void fetchAssetOwner(assetId)
+      .then((owner) => {
+        if (!cancelled) setFetchedOwner(owner);
+      })
+      .catch(() => {
+        if (!cancelled) setFetchedOwner(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId, detailOwner]);
+
+  const areaOwner = detailOwner ?? fetchedOwner;
 
   const extras = useMemo(() => {
     const series = [
@@ -127,8 +187,21 @@ export function DomainRadar({ view }: DomainRadarProps) {
       gasPpm: gasFromTel,
       metricCount,
       elevatedMetricCount,
+      neighborCount: neighborCount ?? 0,
+      spatialPending: neighborCount === null,
+      areaOwner,
     };
-  }, [gasSeries, temp, vibe, level, ph, wind, latest]);
+  }, [
+    gasSeries,
+    temp,
+    vibe,
+    level,
+    ph,
+    wind,
+    latest,
+    neighborCount,
+    areaOwner,
+  ]);
 
   const scores = useMemo(
     () => computeAllDomainScores(view, extras),
@@ -142,6 +215,13 @@ export function DomainRadar({ view }: DomainRadarProps) {
   );
   const radarWrapRef = useRef<HTMLDivElement>(null);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Reset pin when switching assets.
+  useEffect(() => {
+    setHovered(null);
+    setPreviewPos(null);
+    setPinned(null);
+  }, [assetId]);
 
   const activePreview = pinned ? null : hovered;
   const previewScore: DomainScore | undefined = activePreview
@@ -222,7 +302,6 @@ export function DomainRadar({ view }: DomainRadarProps) {
     <section className={styles.root} ref={rootRef} aria-label="Domain overview">
       <div className={styles.sectionHead}>
         <h3 className={styles.sectionTitle}>Domains</h3>
-        <p className={styles.hint}>Grey sides have no data</p>
       </div>
 
       <div className={styles.radarWrap} ref={radarWrapRef}>
@@ -250,19 +329,16 @@ export function DomainRadar({ view }: DomainRadarProps) {
           })}
 
           {/* Axes toward each side midpoint */}
-          {faces.map((f) => {
-            const rim = polar(f.midAngle, MAX_R);
-            return (
-              <line
-                key={`axis-${f.score.domain}`}
-                x1={CX}
-                y1={CY}
-                x2={rim.x}
-                y2={rim.y}
-                className={styles.axis}
-              />
-            );
-          })}
+          {faces.map((f) => (
+            <line
+              key={`axis-${f.score.domain}`}
+              x1={CX}
+              y1={CY}
+              x2={f.edge.x}
+              y2={f.edge.y}
+              className={styles.axis}
+            />
+          ))}
 
           <polygon points={polygonPoints} className={styles.poly} />
 
@@ -433,6 +509,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
       <DomainDetailFlyout
         domain={pinned}
         view={view}
+        areaOwner={areaOwner}
         onClose={() => setPinned(null)}
       />
     </section>

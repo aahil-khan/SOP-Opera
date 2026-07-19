@@ -101,12 +101,74 @@
   color: var(--status-elevated);
 }
 
+.chartPlotWrap {
+  position: relative;
+  min-width: 0;
+}
+
 .chart {
   width: 100%;
   height: 72px;
   display: block;
   border-radius: var(--radius-sm);
   overflow: visible;
+  cursor: crosshair;
+}
+
+.chartHit {
+  cursor: crosshair;
+}
+
+.chartScrubLine {
+  stroke: currentColor;
+  stroke-width: 1;
+  stroke-dasharray: 2 2;
+  opacity: 0.55;
+}
+
+.chartTip {
+  position: absolute;
+  top: 4px;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, currentColor 35%, var(--border-default));
+  background: color-mix(in srgb, var(--surface-overlay) 94%, transparent);
+  box-shadow: var(--shadow-sm);
+  pointer-events: none;
+  white-space: nowrap;
+  animation: tip-in 120ms var(--ease-out, ease-out) both;
+}
+
+@keyframes tip-in {
+  from {
+    opacity: 0;
+    transform: translateX(-50%) translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+}
+
+.chartTip strong {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+
+.chartTip span {
+  font-size: 0.6rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
 }
 
 .chartPlot {
@@ -151,18 +213,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   opacity: 0.7;
-}
-
-.chartEmpty {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  height: 72px;
-  border: 1px dashed var(--border-muted);
-  border-radius: var(--radius-sm);
-  background: color-mix(in srgb, var(--surface-canvas) 55%, transparent);
-  color: var(--text-muted);
-  font-size: var(--text-xs);
 }
 
 .chips {

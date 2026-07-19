@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { MAP_VIEWBOX } from "./MapViewport";
@@ -20,6 +20,7 @@ interface FloorOverviewProps {
   riskByAsset: Record<string, RiskLevel>;
   activityByFloor: Record<PlantFloor, number>;
   onSelectFloor: (floor: PlantFloor) => void;
+  exiting?: boolean;
 }
 
 const MAP = floorPlanMap as Record<string, FloorEntry>;
@@ -116,15 +117,22 @@ export function FloorOverview({
   riskByAsset,
   activityByFloor,
   onSelectFloor,
+  exiting = false,
 }: FloorOverviewProps) {
   return (
     <div
       className={styles.overview}
+      data-exiting={exiting ? "true" : undefined}
       role="list"
       aria-label="Plant floors overview"
     >
-      {FLOOR_ORDER.map((floor) => (
-        <div key={floor} className={styles.slot} role="listitem">
+      {FLOOR_ORDER.map((floor, index) => (
+        <div
+          key={floor}
+          className={styles.slot}
+          role="listitem"
+          style={{ "--slot-index": index } as CSSProperties}
+        >
           <FloorThumb
             floor={floor}
             riskByAsset={riskByAsset}

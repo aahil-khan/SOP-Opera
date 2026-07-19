@@ -10,8 +10,8 @@ import styles from "./TelemetryStrip.module.css";
 
 const SOURCES = [
   { id: "scada", label: "SCADA" },
-  { id: "ptw", label: "PTW" },
-  { id: "maintenance", label: "Maint" },
+  { id: "ptw", label: "Permit to Work" },
+  { id: "maintenance", label: "Maintenance" },
   { id: "workforce", label: "Workforce" },
 ] as const;
 
@@ -20,8 +20,8 @@ const METRIC_META: Record<
   { label: string; unit: string; warnAt?: number }
 > = {
   gas_reading: { label: "Gas", unit: "ppm", warnAt: 20 },
-  temp_reading: { label: "Temp", unit: "°C", warnAt: 80 },
-  vibration_mm_s: { label: "Vibe", unit: "mm/s", warnAt: 7.1 },
+  temp_reading: { label: "Temperature", unit: "°C", warnAt: 80 },
+  vibration_mm_s: { label: "Vibration", unit: "mm/s", warnAt: 7.1 },
   level_pct: { label: "Level", unit: "%" },
   ph: { label: "pH", unit: "" },
   wind_ms: { label: "Wind", unit: "m/s", warnAt: 15 },
