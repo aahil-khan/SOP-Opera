@@ -55,11 +55,12 @@ async def test_rag_path_taken_when_query_matches_corpus(session):
         await session.execute(
             text(
                 "SELECT chunk_text FROM knowledge_chunks "
-                "WHERE source_type = 'regulations' AND embedding IS NOT NULL LIMIT 1"
+                "WHERE source_type = 'historical_incidents' "
+                "AND embedding IS NOT NULL LIMIT 1"
             )
         )
     ).first()
-    assert row is not None, "seed_embeddings did not produce any regulation chunks"
+    assert row is not None, "seed_embeddings did not produce any incident chunks"
     chunk_text = row._mapping["chunk_text"]
 
     result = await retrieve(session, query=chunk_text, fact_types=["elevated_gas"])
@@ -71,8 +72,17 @@ async def test_rag_path_taken_when_query_matches_corpus(session):
     assert result.quality == "good"
     assert result.best_score is not None and result.best_score >= 0.99
     assert result.refs
-    assert all(r.retrieval_path == "rag" for r in result.refs)
-    assert all(r.chunk_id is not None for r in result.refs)
+    rag_refs = [r for r in result.refs if r.retrieval_path == "rag"]
+    assert rag_refs
+    assert all(r.source == "historical_incidents" for r in rag_refs)
+    assert all(r.chunk_id is not None for r in rag_refs)
+
+
+@pytest.mark.asyncio
+async def test_retrieve_skips_when_no_facts(session):
+    result = await retrieve(session, query="anything", fact_types=[])
+    assert result.mode == "skipped"
+    assert result.refs == []
 
 
 @pytest.mark.asyncio

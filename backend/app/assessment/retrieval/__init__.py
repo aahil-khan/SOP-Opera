@@ -5,7 +5,6 @@ from __future__ import annotations
 import asyncio
 import logging
 from typing import Literal
-from uuid import UUID
 
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -22,6 +21,9 @@ logger = logging.getLogger(__name__)
 
 RetrievalQuality = Literal["good", "weak", "empty"]
 RetrievalMode = Literal["rag", "deterministic", "skipped"]
+
+# Vector RAG only for incidents (orchestrator does not consume regs/SOPs today).
+RAG_VECTOR_SOURCE_TYPES: list[str] = ["historical_incidents"]
 
 
 def assess_retrieval_quality(
@@ -57,6 +59,31 @@ class HybridRetrievalResult:
         self.source_types = source_types
 
 
+def _merge_rag_incidents_with_det(
+    rag_refs: list[RetrievedReference],
+    det_refs: list[RetrievedReference],
+) -> list[RetrievedReference]:
+    """Prefer vector incident hits when present; keep deterministic regs/SOPs (+ other)."""
+    seen: set[tuple[str, str]] = set()
+    out: list[RetrievedReference] = []
+    for r in rag_refs:
+        key = (r.source, str(r.id))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    for r in det_refs:
+        if r.source == "historical_incidents" and rag_refs:
+            # Drop det incidents when RAG supplied stronger hits
+            continue
+        key = (r.source, str(r.id))
+        if key in seen:
+            continue
+        seen.add(key)
+        out.append(r)
+    return out
+
+
 async def retrieve(
     session: AsyncSession,
     *,
@@ -64,7 +91,8 @@ async def retrieve(
     fact_types: list[str],
 ) -> HybridRetrievalResult:
     """
-    RAG → assess_retrieval_quality → deterministic fallback on weak/empty/timeout/error.
+    Skip when no facts. Otherwise deterministic for all mapped sources;
+    vector RAG only for historical_incidents when RAG is enabled.
     """
     settings = get_settings()
     source_types = source_types_for_facts(fact_types)
@@ -72,19 +100,7 @@ async def retrieve(
         settings.embedding_model if settings.embedding_provider != "mock" else "mock-hash"
     )
 
-    if not settings.rag_enabled:
-        det = DeterministicRetriever()
-        refs = await det.retrieve(session, fact_types)
-        return HybridRetrievalResult(
-            refs=refs,
-            mode="deterministic" if refs else "skipped",
-            quality="n_a",
-            best_score=None,
-            embedding_model=None,
-            source_types=list(source_types),
-        )
-
-    if not source_types:
+    if not fact_types:
         return HybridRetrievalResult(
             refs=[],
             mode="skipped",
@@ -94,13 +110,36 @@ async def retrieve(
             source_types=[],
         )
 
+    det = DeterministicRetriever()
+    det_refs = await det.retrieve(session, fact_types)
+
+    if not settings.rag_enabled:
+        return HybridRetrievalResult(
+            refs=det_refs,
+            mode="deterministic" if det_refs else "skipped",
+            quality="n_a",
+            best_score=None,
+            embedding_model=None,
+            source_types=list(source_types),
+        )
+
+    if "historical_incidents" not in source_types:
+        return HybridRetrievalResult(
+            refs=det_refs,
+            mode="deterministic" if det_refs else "skipped",
+            quality="n_a",
+            best_score=None,
+            embedding_model=embedding_model,
+            source_types=list(source_types),
+        )
+
     rag_refs: list[RetrievedReference] = []
     quality: RetrievalQuality = "empty"
     try:
         rag = RagRetriever()
         timeout_s = max(0.1, settings.rag_timeout_ms / 1000.0)
         rag_refs = await asyncio.wait_for(
-            rag.retrieve(query, list(source_types), settings.rag_top_k),
+            rag.retrieve(query, list(RAG_VECTOR_SOURCE_TYPES), settings.rag_top_k),
             timeout=timeout_s,
         )
         quality = assess_retrieval_quality(
@@ -115,8 +154,9 @@ async def retrieve(
 
     best = max((r.score or 0.0 for r in rag_refs), default=None)
     if quality == "good":
+        merged = _merge_rag_incidents_with_det(rag_refs, det_refs)
         return HybridRetrievalResult(
-            refs=rag_refs,
+            refs=merged,
             mode="rag",
             quality=quality,
             best_score=best,
@@ -124,8 +164,6 @@ async def retrieve(
             source_types=list(source_types),
         )
 
-    det = DeterministicRetriever()
-    det_refs = await det.retrieve(session, fact_types)
     return HybridRetrievalResult(
         refs=det_refs,
         mode="deterministic" if det_refs else "skipped",

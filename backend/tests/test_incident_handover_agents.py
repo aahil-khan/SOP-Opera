@@ -136,5 +136,27 @@ async def test_full_graph_includes_incident_and_handover():
     agents = {s["agent"] for s in trace}
     assert "incident_pattern" in agents
     assert "shift_handover" in agents
+    assert "scada" in agents
+    assert "permit" in agents
     assert generation.result.risk_level in ("elevated", "blocking")
     assert any("echo" in (s.get("message") or "").lower() for s in trace)
+
+
+@pytest.mark.asyncio
+async def test_full_graph_skips_enrichment_when_nominal():
+    generation, trace, _links = await run_agent_assessment(
+        review_id=uuid4(),
+        assessment_id=uuid4(),
+        asset_id=VESSEL_A,
+        asset_name="Vessel A",
+        asset_zone="coke-oven-battery",
+        facts=[],
+        context_entries=[],
+        retrieved_references=[],
+        provider_name="mock",
+    )
+    agents = {s["agent"] for s in trace}
+    assert generation.result.risk_level == "nominal"
+    assert "incident_pattern" not in agents
+    assert "shift_handover" not in agents
+    assert "spatial" not in agents

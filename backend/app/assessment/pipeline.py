@@ -12,6 +12,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import run_agent_assessment
+from app.agents.routing import should_load_plant_neighborhood
 from app.assessment.orchestrator import PROMPT_VERSION
 from app.assessment.reasoning import build_reasoning_factors, serialize_factor
 from app.assessment.retrieval import build_retrieval_query, retrieve
@@ -293,25 +294,27 @@ async def run_assessment_job(
             area_owner=area_owner,
         )
 
-        # Neighborhood context for Spatial Agent (focus + NEAR/ABOVE assets)
-        near = neighbors_within_radius(get_plant_graph(), str(review.asset_id))
-        neighbor_ids = [UUID(n["asset_id"]) for n in near]
-        plant_views = await load_valid_context_for_assets(
-            session, [review.asset_id, *neighbor_ids]
-        )
-        plant_context_entries = [
-            {
-                "id": str(e.id),
-                "asset_id": str(e.asset_id),
-                "category": e.category,
-                "payload": dict(e.payload),
-                "provider": e.provider,
-                "valid_from": e.valid_from,
-                "valid_until": e.valid_until,
-                "confidence": e.confidence,
-            }
-            for e in plant_views
-        ]
+        # Neighborhood context for Spatial Agent — skip when spatial cannot fire
+        plant_context_entries: list[dict] = []
+        if should_load_plant_neighborhood(fact_types, context_entries):
+            near = neighbors_within_radius(get_plant_graph(), str(review.asset_id))
+            neighbor_ids = [UUID(n["asset_id"]) for n in near]
+            plant_views = await load_valid_context_for_assets(
+                session, [review.asset_id, *neighbor_ids]
+            )
+            plant_context_entries = [
+                {
+                    "id": str(e.id),
+                    "asset_id": str(e.asset_id),
+                    "category": e.category,
+                    "payload": dict(e.payload),
+                    "provider": e.provider,
+                    "valid_from": e.valid_from,
+                    "valid_until": e.valid_until,
+                    "confidence": e.confidence,
+                }
+                for e in plant_views
+            ]
 
         generation = None
         agent_trace: list = []

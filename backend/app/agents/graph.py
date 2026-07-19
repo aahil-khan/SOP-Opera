@@ -5,10 +5,11 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Send
 from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedReference
 
 from app.agents.events import AgentStep, broadcast_agent_step
@@ -23,6 +24,12 @@ from app.agents.nodes.source import (
     workforce_agent,
 )
 from app.agents.nodes.spatial import spatial_agent
+from app.agents.routing import (
+    SOURCE_AGENTS,
+    select_source_agents,
+    should_run_enrichment,
+    should_run_spatial,
+)
 from app.agents.state import AgentState
 from app.assessment.schemas import AssessmentResult, ProviderGeneration
 from app.core.config import get_settings
@@ -33,33 +40,65 @@ _compiled = None
 _provider_override: str | None = None
 
 
+def _join_sources(state: AgentState) -> dict[str, Any]:
+    """No-op barrier after gated source fan-out."""
+    return {}
+
+
+def _fan_out_sources(state: AgentState) -> list[Send]:
+    selected = select_source_agents(state)
+    if not selected:
+        return [Send("join_sources", state)]
+    return [Send(name, state) for name in selected]
+
+
+def _route_spatial(
+    state: AgentState,
+) -> Literal["spatial", "orchestrator"]:
+    if should_run_spatial(state):
+        return "spatial"
+    return "orchestrator"
+
+
+def _fan_out_enrichment(state: AgentState) -> list[Send] | Any:
+    if should_run_enrichment(state):
+        return [
+            Send("incident_pattern", state),
+            Send("shift_handover", state),
+        ]
+    return END
+
+
 def build_graph():
     builder = StateGraph(AgentState)
     builder.add_node("scada", scada_agent)
     builder.add_node("permit", permit_agent)
     builder.add_node("maintenance", maintenance_agent)
     builder.add_node("workforce", workforce_agent)
+    builder.add_node("join_sources", _join_sources)
     builder.add_node("spatial", spatial_agent)
-    builder.add_node("incident_pattern", incident_pattern_agent)
-    builder.add_node("shift_handover", shift_handover_agent)
 
     async def orch(state: AgentState) -> dict[str, Any]:
         return await orchestrator_agent(state, provider_name=_provider_override)
 
     builder.add_node("orchestrator", orch)
+    builder.add_node("incident_pattern", incident_pattern_agent)
+    builder.add_node("shift_handover", shift_handover_agent)
 
-    for node in (
-        "scada",
-        "permit",
-        "maintenance",
-        "workforce",
-        "spatial",
-        "incident_pattern",
-        "shift_handover",
-    ):
-        builder.add_edge(START, node)
-        builder.add_edge(node, "orchestrator")
-    builder.add_edge("orchestrator", END)
+    builder.add_conditional_edges(START, _fan_out_sources, [*SOURCE_AGENTS, "join_sources"])
+    for name in SOURCE_AGENTS:
+        builder.add_edge(name, "join_sources")
+    builder.add_conditional_edges(
+        "join_sources", _route_spatial, ["spatial", "orchestrator"]
+    )
+    builder.add_edge("spatial", "orchestrator")
+    builder.add_conditional_edges(
+        "orchestrator",
+        _fan_out_enrichment,
+        ["incident_pattern", "shift_handover", END],
+    )
+    builder.add_edge("incident_pattern", END)
+    builder.add_edge("shift_handover", END)
     return builder.compile()
 
 

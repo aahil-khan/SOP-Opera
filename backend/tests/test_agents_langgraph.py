@@ -7,9 +7,16 @@ from uuid import UUID, uuid4
 
 import pytest
 
-from app.agents.graph import run_agent_assessment
+from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
 from shared.python.schemas import DerivedFact
+
+
+@pytest.fixture(autouse=True)
+def _fresh_graph():
+    reset_compiled_graph()
+    yield
+    reset_compiled_graph()
 
 
 def test_rule_toolkit_known_facts():
@@ -59,15 +66,19 @@ async def test_langgraph_compound_risk_blocking():
     assert {
         "scada",
         "permit",
-        "maintenance",
         "workforce",
         "orchestrator",
         "spatial",
         "incident_pattern",
         "shift_handover",
     } <= agents
+    assert "maintenance" not in agents
     assert any(s["kind"] == "verdict" for s in trace)
-    assert "Multi-agent" in generation.result.summary or "grounded" in generation.result.summary.lower() or "Vessel A" in generation.result.summary
+    assert (
+        "Multi-agent" in generation.result.summary
+        or "grounded" in generation.result.summary.lower()
+        or "Vessel A" in generation.result.summary
+    )
 
 
 @pytest.mark.asyncio
@@ -85,4 +96,8 @@ async def test_langgraph_nominal_when_no_facts():
         provider_name="mock",
     )
     assert generation.result.risk_level == "nominal"
-    assert len(trace) >= 5
+    agents = {s["agent"] for s in trace}
+    assert agents == {"orchestrator"}
+    assert "incident_pattern" not in agents
+    assert "shift_handover" not in agents
+    assert "scada" not in agents
