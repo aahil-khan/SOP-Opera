@@ -70,34 +70,53 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
         <Link href={`/reviews/${report.review_id}`}>Open review</Link>
       </p>
       <h1 className={styles.title}>
-        {(content.title as string) ?? `Closure report #${report.closure_event_seq}`}
+        {(content.title as string) ??
+          `Closure report #${report.closure_event_seq}`}
       </h1>
       <p className={styles.meta}>
         Generated {new Date(report.generated_at).toLocaleString()} · seq{" "}
         {report.closure_event_seq}
       </p>
 
-      <section className={styles.section}>
-        <h3>Asset</h3>
+      <section className={styles.section} data-domain="people">
+        <h3>
+          <span
+            className={styles.domainDot}
+            style={{ background: "var(--domain-people)" }}
+          />
+          Asset
+        </h3>
         <p>
           <strong>{String(asset?.name ?? "—")}</strong> · zone{" "}
           {String(asset?.zone ?? "—")}
         </p>
       </section>
 
-      <section className={styles.section}>
-        <h3>Assessment snapshot</h3>
+      <section className={styles.section} data-domain="evidence">
+        <h3>
+          <span
+            className={styles.domainDot}
+            style={{ background: "var(--domain-evidence)" }}
+          />
+          Assessment snapshot
+        </h3>
         {assessment ? (
           <>
             <p>
-              <span className="badge" data-risk={String(assessment.risk_level ?? "")}>
+              <span
+                className="badge"
+                data-risk={String(assessment.risk_level ?? "")}
+              >
                 {String(assessment.risk_level ?? "—")}
               </span>
             </p>
-            <p>{String(assessment.summary ?? "")}</p>
+            <p className={styles.bodyText}>
+              {String(assessment.summary ?? "")}
+            </p>
             {meta && (
               <p className={styles.meta}>
-                {String(meta.provider ?? "—")} · retrieval {String(meta.retrieval_mode ?? "—")} (
+                {String(meta.provider ?? "—")} · retrieval{" "}
+                {String(meta.retrieval_mode ?? "—")} (
                 {String(meta.retrieval_quality ?? "—")})
               </p>
             )}
@@ -117,12 +136,20 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
         )}
       </section>
 
-      <section className={styles.section}>
-        <h3>Decision</h3>
+      <section className={styles.section} data-domain="permits">
+        <h3>
+          <span
+            className={styles.domainDot}
+            style={{ background: "var(--domain-permits)" }}
+          />
+          Decision
+        </h3>
         {decision ? (
           <>
             <p>
-              <strong>{String(decision.outcome).replaceAll("_", " ")}</strong>
+              <strong>
+                {String(decision.outcome).replaceAll("_", " ")}
+              </strong>
             </p>
             {decision.conditions ? (
               <p>Conditions: {String(decision.conditions)}</p>
@@ -136,8 +163,14 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
         )}
       </section>
 
-      <section className={styles.section}>
-        <h3>Evidence (frozen)</h3>
+      <section className={styles.section} data-domain="sensors">
+        <h3>
+          <span
+            className={styles.domainDot}
+            style={{ background: "var(--domain-sensors)" }}
+          />
+          Evidence (frozen)
+        </h3>
         {evidence ? (
           <>
             <p className={styles.meta}>Evidence id · {String(evidence.id)}</p>

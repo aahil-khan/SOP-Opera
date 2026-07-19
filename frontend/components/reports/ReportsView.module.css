@@ -64,13 +64,39 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--surface-panel);
+  border-left-width: 3px;
+}
+
+.section[data-domain="people"] {
+  border-left-color: var(--domain-people);
+}
+.section[data-domain="evidence"] {
+  border-left-color: var(--domain-evidence);
+}
+.section[data-domain="permits"] {
+  border-left-color: var(--domain-permits);
+}
+.section[data-domain="sensors"] {
+  border-left-color: var(--domain-sensors);
 }
 
 .section h3 {
   margin: 0 0 var(--space-3);
-  font-size: var(--text-sm);
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
-  color: var(--text-primary);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.domainDot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 
 .section p {
@@ -78,6 +104,10 @@
   font-size: var(--text-sm);
   line-height: var(--leading-relaxed);
   color: var(--text-secondary);
+}
+
+.bodyText {
+  color: var(--text-primary) !important;
 }
 
 .recList {
