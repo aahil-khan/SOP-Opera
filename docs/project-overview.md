@@ -31,11 +31,11 @@ This is the person who authorizes high-risk work on a shift — hot work, confin
 
 ## What SOP Opera is
 
-**One sentence:** SOP Opera is a decision-support layer that helps a shift supervisor run a structured, explainable **Operational Review** before authorizing high-risk work — using context the plant already has (or can enter manually), an AI-generated **Assessment**, and the supervisor's own **Decision**.
+**One sentence:** SOP Opera is an **agentic industrial safety intelligence layer** — a LangGraph multi-agent brain over plant context (sensors, permits, maintenance, workforce) that detects compound risk, cites historical near-misses, and helps a shift supervisor run a structured, explainable **Operational Review** before authorizing high-risk work.
 
-**Important framing:** We are not inventing a new decision. Supervisors already make this call every day — via paper, phone, WhatsApp, SCADA, and experience. We are making that decision **structured, explainable, and auditable**.
+**Important framing:** We are not inventing a new decision. Supervisors already make this call every day — via paper, phone, WhatsApp, SCADA, and experience. We are making that decision **structured, explainable, and auditable** — with a visible multi-agent reasoning stream inspired by Unified Operations Centers.
 
-**What we are not:** A SCADA replacement, an ERP, a chatbot, an auto-approval system, or a system that controls plant equipment.
+**What we are not:** A SCADA replacement, an ERP, a freeform chatbot, an auto-approval system, or a system that controls plant equipment.
 
 ---
 
@@ -99,16 +99,18 @@ The signature demo is **Compound Risk**: gas rises, a worker enters a hazardous 
 
 Judges will ask: *"Couldn't rules or SQL do this?"*
 
-**Yes — for detection.** That is intentional. Rules produce the facts (and we have more than the problem statement's three example signals).
+**Yes — for hard facts.** Deterministic rules (exposed as agent **tools**) produce grounded facts. A BLOCK verdict must be backed by at least one rule output.
 
-**AI does two jobs:**
+**LangGraph multi-agent AI does the rest:**
 
-1. **Retrieve** — find the relevant regulations, SOPs, and historical incidents for *this* combination of facts (semantic search over a seeded knowledge corpus). If retrieval quality is weak, a deterministic SQL rules map is the guaranteed fallback — same references, different path.
-2. **Synthesize** — turn those facts + references into plant-floor language, recommendations, and an explainable assessment a supervisor can defend.
+1. **Source agents** (SCADA, Permit, Maintenance, Workforce) interpret their silo and emit local risk
+2. **Spatial Agent** queries a plant knowledge graph for hot-work within Xm of a gas spike (incl. vertical adjacency)
+3. **Incident Pattern Agent** RAG-echoes prior near-misses (path + score visible)
+4. **Orchestrator** fuses signals into a compound verdict + assessment
+5. **Shift Handover Agent** drafts briefs for the incoming supervisor
+6. **LangSmith** (optional) traces every agent/LLM call for AI Ops
 
-**The product value is not "AI detected gas."** The product value is **"here is the full picture, here is why it matters (including matching history and cited regs), here is what we recommend, and here is a permanent record of what you decided."**
-
-Do not lead with AI buzzwords. Lead with the supervisor's decision moment. When asked about RAG, show the reasoning-trace "Retrieved References" node with path and score — not a slide.
+**The product value is not "AI detected gas."** The product value is **"independent plant systems don't talk — our agents do, live, and leave an audit trail."**
 
 ---
 

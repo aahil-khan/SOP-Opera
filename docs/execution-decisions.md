@@ -16,11 +16,17 @@ The discussion shifted from *"what should we build?"* to *"how do we present and
 
 ---
 
-## Architecture is frozen
+## Architecture is frozen — with one deliberate pivot
 
-No architectural changes based on the review.
+Architecture stayed frozen through implementation **except** the pre-demo agentic pivot:
 
-Going forward, only **implementation details** that naturally emerge during the build are in scope. The TDS state machine, Assessment pipeline, Digital Twin, Context Provider interface, and Manual Assessment fallback are settled.
+- Assessment generation is now a **LangGraph multi-agent StateGraph** (not a single synthesis call)
+- Deterministic rules remain as **tools** (grounding for BLOCK)
+- Knowledge graph (NetworkX) + Spatial Agent for radius co-occurrence
+- Per-source plant simulators (SCADA / PTW / Maintenance / Workforce) coordinated by an Orchestrator Sim
+- LangSmith optional for AI Ops traces
+
+The review state machine, Decision outcomes, Manual Assessment fallback, and evidence freeze are unchanged.
 
 ---
 
@@ -50,16 +56,15 @@ The most important technical question judges will ask.
 
 | Layer | Responsibility |
 | --- | --- |
-| **Rules (deterministic)** | Produce facts — thirteen rules spanning process, people, and environment hazards: elevated gas, permit conflict, zone occupied, incomplete isolation, simultaneous ops (SIMOPS), certification expiring, **over temperature**, **equipment vibration**, **effluent quality**, **tank level critical**, **PPE noncompliance**, **lifting conflict**, **weather hold** |
-| **Retrieval (hybrid)** | Orchestrator builds the query. **RAG** (pgvector) finds matching regs / SOPs / incidents; a **quality gate** grades hits; weak/empty/timeout falls back to deterministic SQL. LLM does not pick tools. |
-| **LLM** | Does **not** detect these facts |
-| **LLM** | Synthesizes facts + retrieved references → operational reasoning, recommendations, explainable assessment, decision record |
+| **Rules (deterministic tools)** | Produce facts — thirteen rules spanning process, people, and environment. Agents call these; they do not invent safety facts. |
+| **LangGraph agents** | SCADA / Permit / Maintenance / Workforce / Spatial / Incident Pattern / Shift Handover → Orchestrator fuses into compound verdict |
+| **Knowledge graph** | Asset–permit–zone relationships + spatial radius (NEAR / ABOVE) |
+| **Retrieval (hybrid)** | RAG (pgvector) + quality gate + deterministic SQL fallback for regs / SOPs / incidents |
+| **LangSmith** | Optional per-agent traces, latency, tokens, cost (AI Ops) |
 
-**Product value:** synthesis, grounded retrieval, and explainability — not replacing deterministic engineering logic.
+**Product value:** multi-agent synthesis of siloed plant systems — not replacing deterministic engineering logic.
 
-**Not PS karaoke:** The problem statement lists gas / permit / worker-in-zone as examples. We ship those *plus* isolation, SIMOPS, and certification — and a graded RAG layer with an honest deterministic fallback. When a judge asks "show me retrieval," the reasoning-trace References node shows path (`rag` / `deterministic`) and score. The fallback is a **reliability flex**, not a failure.
-
-Make this distinction **explicit during the demo**, not only in Q&A.
+**Demo cue:** show the **Brain** panel streaming `agent.step` events, then click the asset for spatial KG links + incident echo.
 
 ---
 
