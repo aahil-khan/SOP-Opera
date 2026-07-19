@@ -11,7 +11,14 @@
   overflow: hidden;
   background: var(--surface-panel);
   box-shadow: var(--shadow-sm);
-  transition: right var(--duration-normal) var(--ease-out);
+  opacity: 0.5;
+  transition:
+    right var(--duration-normal) var(--ease-out),
+    opacity var(--duration-normal) var(--ease-out);
+}
+
+.controls:hover {
+  opacity: 1;
 }
 
 .controls[data-shift="true"] {

@@ -276,6 +276,16 @@ export function DigitalTwin() {
         )}
 
         <div className={styles.floorTabs} role="tablist" aria-label="Plant floors">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={viewMode === "overview"}
+            className={styles.floorTab}
+            data-active={viewMode === "overview" ? "true" : undefined}
+            onClick={showOverview}
+          >
+            Industry Plan
+          </button>
           {FLOOR_ORDER.map((id) => {
             const selected = viewMode === "detail" && activeFloor === id;
             return (
@@ -347,15 +357,17 @@ export function DigitalTwin() {
           />
         ) : null}
 
-        <MapControls
-          onZoomIn={() => mapRef.current?.zoomIn()}
-          onZoomOut={() => mapRef.current?.zoomOut()}
-          onReset={() => mapRef.current?.resetView()}
-          onOverview={viewMode === "detail" ? showOverview : undefined}
-          legendOpen={legendOpen}
-          onToggleLegend={() => setLegendOpen((open) => !open)}
-          shiftForDrawer={Boolean(selected) && viewMode === "detail"}
-        />
+        {viewMode === "detail" ? (
+          <MapControls
+            onZoomIn={() => mapRef.current?.zoomIn()}
+            onZoomOut={() => mapRef.current?.zoomOut()}
+            onReset={() => mapRef.current?.resetView()}
+            onOverview={showOverview}
+            legendOpen={legendOpen}
+            onToggleLegend={() => setLegendOpen((open) => !open)}
+            shiftForDrawer={Boolean(selected)}
+          />
+        ) : null}
 
         {selected && viewMode === "detail" ? (
           <AssetPanel view={selected} onClose={() => selectAsset(null)} />
