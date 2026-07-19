@@ -1,0 +1,9 @@
+# Auto-detect text files and normalize line endings
+* text=auto
+
+# Keep shell scripts LF so they run in Git Bash / WSL / macOS / Linux
+*.sh text eol=lf
+*.mjs text eol=lf
+*.py text eol=lf
+Dockerfile text eol=lf
+docker-compose.yml text eol=lf

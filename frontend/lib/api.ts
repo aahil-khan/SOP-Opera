@@ -1,6 +1,6 @@
 import type { PingResponse } from "@/shared/api_contracts";
 import type { Assessment, RetrievedReference } from "@/shared/schemas";
-// Real files under frontend/shared (synced from repo root shared/ via scripts/sync-shared.sh).
+// Real files under frontend/shared (synced from repo root shared/ via scripts/sync-shared.mjs).
 // Turbopack rejects symlinks and imports that point outside the Next.js project root.
 import fixtures from "@/shared/fixtures.json";
 

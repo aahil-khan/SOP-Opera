@@ -33,7 +33,10 @@ import { presentNotification } from "@/lib/notificationPresentation";
 
 const NOTIFICATION_CAP = 50;
 const AGENT_STEP_CAP = 100;
-const TELEMETRY_RING_CAP = 60;
+const TELEMETRY_RING_CAP = 30;
+/** Coalesce rapid soft samples into one Zustand write. */
+const TELEMETRY_FLUSH_MS = 250;
+
 
 export type TelemetrySource = "scada" | "ptw" | "maintenance" | "workforce" | string;
 
@@ -110,66 +113,91 @@ function ingestTelemetrySample(
     telemetryStatus: TelemetryStatusChip[];
   },
   sample: TelemetrySample,
-): Partial<{
+): {
   telemetrySeries: Record<string, TelemetryPoint[]>;
   telemetryLatest: Record<string, TelemetrySample>;
   telemetryBySource: Record<string, TelemetrySample>;
   telemetryStatus: TelemetryStatusChip[];
-}> {
+} {
   const t = Date.parse(sample.ts) || Date.now();
-  const series = { ...state.telemetrySeries };
+  // Mutate copies once per sample; callers batch then single set()
+  const series = state.telemetrySeries;
   let touchedNumeric = false;
   for (const key of NUMERIC_METRICS) {
     const raw = sample.payload[key];
     if (typeof raw !== "number") continue;
     touchedNumeric = true;
     const rk = ringKey(sample.asset_id, key);
-    const prev = series[rk] ?? [];
-    series[rk] = [...prev, { t, v: raw }].slice(-TELEMETRY_RING_CAP);
+    const prev = series[rk];
+    if (prev) {
+      if (prev.length >= TELEMETRY_RING_CAP) {
+        series[rk] = [...prev.slice(-(TELEMETRY_RING_CAP - 1)), { t, v: raw }];
+      } else {
+        series[rk] = [...prev, { t, v: raw }];
+      }
+    } else {
+      series[rk] = [{ t, v: raw }];
+    }
   }
 
-  const latest = {
-    ...state.telemetryLatest,
-    [sample.asset_id]: sample,
-  };
-  const bySource = {
-    ...state.telemetryBySource,
-    [`${sample.source}:${sample.asset_id}`]: sample,
-    [sample.source]: sample,
-  };
+  state.telemetryLatest[sample.asset_id] = sample;
+  state.telemetryBySource[`${sample.source}:${sample.asset_id}`] = sample;
+  state.telemetryBySource[sample.source] = sample;
 
-  let status = state.telemetryStatus;
-  if (!touchedNumeric || ["permit", "isolation_status", "worker_location", "ppe_status", "lift_plan"].includes(sample.category)) {
-    if (
-      ["permit", "isolation_status", "worker_location", "ppe_status", "lift_plan"].includes(
-        sample.category,
-      )
-    ) {
-      const chip: TelemetryStatusChip = {
-        source: sample.source,
-        asset_id: sample.asset_id,
-        category: sample.category,
-        label: statusLabel(sample.category, sample.payload),
-        ts: sample.ts,
-      };
-      status = [
-        chip,
-        ...state.telemetryStatus.filter(
-          (c) =>
-            !(
-              c.asset_id === chip.asset_id &&
-              c.category === chip.category
-            ),
-        ),
-      ].slice(0, 40);
-    }
+  if (
+    ["permit", "isolation_status", "worker_location", "ppe_status", "lift_plan"].includes(
+      sample.category,
+    )
+  ) {
+    const chip: TelemetryStatusChip = {
+      source: sample.source,
+      asset_id: sample.asset_id,
+      category: sample.category,
+      label: statusLabel(sample.category, sample.payload),
+      ts: sample.ts,
+    };
+    state.telemetryStatus = [
+      chip,
+      ...state.telemetryStatus.filter(
+        (c) => !(c.asset_id === chip.asset_id && c.category === chip.category),
+      ),
+    ].slice(0, 24);
+  } else if (!touchedNumeric) {
+    /* ignore */
   }
 
   return {
     telemetrySeries: series,
-    telemetryLatest: latest,
-    telemetryBySource: bySource,
-    telemetryStatus: status,
+    telemetryLatest: state.telemetryLatest,
+    telemetryBySource: state.telemetryBySource,
+    telemetryStatus: state.telemetryStatus,
+  };
+}
+
+function applyTelemetrySamples(
+  state: {
+    telemetrySeries: Record<string, TelemetryPoint[]>;
+    telemetryLatest: Record<string, TelemetrySample>;
+    telemetryBySource: Record<string, TelemetrySample>;
+    telemetryStatus: TelemetryStatusChip[];
+  },
+  samples: TelemetrySample[],
+) {
+  // Shallow-clone containers once for the whole batch
+  const draft = {
+    telemetrySeries: { ...state.telemetrySeries },
+    telemetryLatest: { ...state.telemetryLatest },
+    telemetryBySource: { ...state.telemetryBySource },
+    telemetryStatus: state.telemetryStatus,
+  };
+  for (const sample of samples) {
+    ingestTelemetrySample(draft, sample);
+  }
+  return {
+    telemetrySeries: draft.telemetrySeries,
+    telemetryLatest: draft.telemetryLatest,
+    telemetryBySource: draft.telemetryBySource,
+    telemetryStatus: draft.telemetryStatus,
   };
 }
 
@@ -386,7 +414,26 @@ export function spatialLinksFromAssessment(
   return links;
 }
 
-export const useLiveStore = create<LiveState>((set, get) => ({
+export const useLiveStore = create<LiveState>((set, get) => {
+  const pendingTelemetry: TelemetrySample[] = [];
+  let telemetryFlushTimer: ReturnType<typeof setTimeout> | null = null;
+
+  const flushTelemetry = () => {
+    telemetryFlushTimer = null;
+    if (pendingTelemetry.length === 0) return;
+    const batch = pendingTelemetry.splice(0, pendingTelemetry.length);
+    set((state) => applyTelemetrySamples(state, batch));
+  };
+
+  const enqueueTelemetry = (samples: TelemetrySample[]) => {
+    if (samples.length === 0) return;
+    pendingTelemetry.push(...samples);
+    if (telemetryFlushTimer == null) {
+      telemetryFlushTimer = setTimeout(flushTelemetry, TELEMETRY_FLUSH_MS);
+    }
+  };
+
+  return {
   assets: [],
   reviews: [],
   reviewDetails: {},
@@ -503,6 +550,11 @@ export const useLiveStore = create<LiveState>((set, get) => ({
   },
 
   clearTelemetry: () => {
+    pendingTelemetry.length = 0;
+    if (telemetryFlushTimer != null) {
+      clearTimeout(telemetryFlushTimer);
+      telemetryFlushTimer = null;
+    }
     set({
       telemetrySeries: {},
       telemetryLatest: {},
@@ -565,9 +617,20 @@ export const useLiveStore = create<LiveState>((set, get) => ({
 
     if (type === "telemetry.sample") {
       const sample = asTelemetrySample(payload);
-      if (sample) {
-        set((state) => ingestTelemetrySample(state, sample));
+      if (sample) enqueueTelemetry([sample]);
+      return;
+    }
+
+    if (type === "telemetry.batch") {
+      const raw = payload.samples;
+      if (!Array.isArray(raw)) return;
+      const samples: TelemetrySample[] = [];
+      for (const item of raw) {
+        if (!item || typeof item !== "object") continue;
+        const sample = asTelemetrySample(item as Record<string, unknown>);
+        if (sample) samples.push(sample);
       }
+      enqueueTelemetry(samples);
       return;
     }
 
@@ -596,7 +659,7 @@ export const useLiveStore = create<LiveState>((set, get) => ({
         if (type === "sim.source_emit") {
           const sample = asTelemetrySample(payload);
           if (sample) {
-            Object.assign(next, ingestTelemetrySample(state, sample));
+            Object.assign(next, applyTelemetrySamples(state, [sample]));
           }
         }
         return next;
@@ -645,7 +708,8 @@ export const useLiveStore = create<LiveState>((set, get) => ({
       }
     }
   },
-}));
+  };
+});
 
 export function telemetryRingKey(assetId: string, metric: string): string {
   return ringKey(assetId, metric);

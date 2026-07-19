@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "sync-shared": "bash ../scripts/sync-shared.sh",
+    "sync-shared": "node ../scripts/sync-shared.mjs",
     "predev": "npm run sync-shared",
     "dev": "next dev",
     "prebuild": "npm run sync-shared",

@@ -62,12 +62,13 @@ class Settings(BaseSettings):
     agent_timeout_seconds: float = 45.0
     agent_llm_timeout_seconds: float = 20.0
 
-    # Always-on ambient plant telemetry
+    # Always-on ambient plant telemetry (tuned for low WS/UI load)
     ambient_enabled: bool = True
-    ambient_tick_seconds: float = 1.5
-    ambient_coincidence_probability: float = 0.02
-    ambient_heartbeat_seconds: float = 30.0
-    ambient_batch_size: int = 4
+    ambient_tick_seconds: float = 3.0
+    ambient_coincidence_probability: float = 0.01
+    ambient_heartbeat_seconds: float = 120.0
+    ambient_batch_size: int = 2
+    ambient_status_every_n_ticks: int = 4
 
     @property
     def cors_origin_list(self) -> list[str]:

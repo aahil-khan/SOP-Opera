@@ -15,8 +15,18 @@ from app.simulator.engine import DemoController
 def test_nominal_samples_stay_below_thresholds():
     settings = get_settings()
     rng = random.Random(42)
-    for _ in range(80):
+    for _ in range(40):
         payload = nominal_sensor_payload(rng, settings)
+        assert_nominal_below_thresholds(payload, settings)
+
+
+def test_scada_bundle_stays_below_thresholds():
+    from app.simulator.ambient import nominal_scada_bundle
+
+    settings = get_settings()
+    rng = random.Random(7)
+    for _ in range(40):
+        payload = nominal_scada_bundle(rng, settings)
         assert_nominal_below_thresholds(payload, settings)
 
 

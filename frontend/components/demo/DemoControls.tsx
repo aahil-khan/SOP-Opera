@@ -111,7 +111,7 @@ export function DemoControls() {
     // Poll ambient even when demo is idle so Live indicator stays accurate
     const id = setInterval(() => {
       void refreshStatus();
-    }, status?.running ? 800 : 2500);
+    }, status?.running ? 1500 : 8000);
     return () => clearInterval(id);
   }, [status?.running, refreshStatus]);
 

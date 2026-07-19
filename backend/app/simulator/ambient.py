@@ -1,13 +1,19 @@
-"""Always-on ambient plant telemetry — soft WS samples + rare hard failures."""
+"""Always-on ambient plant telemetry — soft WS samples + rare hard failures.
+
+Performance notes:
+- Soft samples are batched into one `telemetry.batch` WS frame per tick.
+- Each asset gets a single multi-metric SCADA payload (not N separate events).
+- Status chips emit sparsely; hard heartbeat is rare and quiet (no orch spam).
+"""
 
 from __future__ import annotations
 
 import asyncio
 import logging
 import random
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
-from uuid import uuid4
+from uuid import UUID, uuid4
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -61,7 +67,7 @@ COINCIDENCE_SIGNALS: list[dict[str, Any]] = [
 
 
 def nominal_sensor_payload(rng: random.Random, settings: Any) -> dict[str, Any]:
-    """SCADA-shaped readings strictly below rule thresholds."""
+    """Single-metric SCADA sample (used by coincidence / heartbeat / tests)."""
     gas_ceiling = max(1.0, float(settings.gas_elevated_threshold) - 2.0)
     temp_ceiling = max(20.0, float(settings.temp_elevated_threshold) - 5.0)
     vib_ceiling = max(0.5, float(settings.vibration_anomaly_threshold) - 0.5)
@@ -100,38 +106,46 @@ def nominal_sensor_payload(rng: random.Random, settings: Any) -> dict[str, Any]:
     }
 
 
-def nominal_status_samples(rng: random.Random) -> list[tuple[str, dict[str, Any]]]:
-    """Sparse non-SCADA soft status (PTW / maintenance / workforce)."""
-    out: list[tuple[str, dict[str, Any]]] = []
-    if rng.random() < 0.35:
-        out.append(
-            (
-                "permit",
-                {
-                    "permit_id": f"idle-{rng.randint(1, 9)}",
-                    "status": "idle",
-                    "work_type": rng.choice(["cold_work", "inspection"]),
-                },
-            )
+def nominal_scada_bundle(rng: random.Random, settings: Any) -> dict[str, Any]:
+    """Multi-metric payload — one WS sample updates several gauges."""
+    gas_ceiling = max(1.0, float(settings.gas_elevated_threshold) - 2.0)
+    temp_ceiling = max(20.0, float(settings.temp_elevated_threshold) - 5.0)
+    vib_ceiling = max(0.5, float(settings.vibration_anomaly_threshold) - 0.5)
+    level_lo = float(settings.tank_level_low_pct) + 5.0
+    level_hi = float(settings.tank_level_high_pct) - 5.0
+    # Small jitter so sparklines move without looking chaotic
+    return {
+        "gas_reading": round(rng.uniform(0.5, gas_ceiling), 1),
+        "temp_reading": round(rng.uniform(28.0, temp_ceiling), 1),
+        "vibration_mm_s": round(rng.uniform(0.3, vib_ceiling), 2),
+        "level_pct": round(rng.uniform(level_lo, level_hi), 1),
+        "unit": "ppm",
+    }
+
+
+def nominal_status_sample(rng: random.Random) -> tuple[str, dict[str, Any]] | None:
+    """At most one sparse non-SCADA soft status."""
+    roll = rng.random()
+    if roll < 0.34:
+        return (
+            "permit",
+            {
+                "permit_id": f"idle-{rng.randint(1, 9)}",
+                "status": "idle",
+                "work_type": rng.choice(["cold_work", "inspection"]),
+            },
         )
-    if rng.random() < 0.25:
-        out.append(
-            (
-                "isolation_status",
-                {"complete": True, "verified": True},
-            )
+    if roll < 0.55:
+        return ("isolation_status", {"complete": True, "verified": True})
+    if roll < 0.75:
+        return (
+            "worker_location",
+            {
+                "worker_id": "55555555-5555-5555-5555-555555555552",
+                "zone": "safe",
+            },
         )
-    if rng.random() < 0.3:
-        out.append(
-            (
-                "worker_location",
-                {
-                    "worker_id": "55555555-5555-5555-5555-555555555552",
-                    "zone": "safe",
-                },
-            )
-        )
-    return out
+    return None
 
 
 def assert_nominal_below_thresholds(payload: dict[str, Any], settings: Any) -> None:
@@ -170,6 +184,28 @@ async def _load_assets(session: AsyncSession) -> list[dict[str, str]]:
     ]
 
 
+def _sample_dict(
+    *,
+    source: str,
+    asset_id: str,
+    asset_name: str,
+    category: str,
+    payload: dict[str, Any],
+    mode: str = "ambient",
+    ts: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "source": source,
+        "label": SOURCE_LABELS.get(source, source),
+        "asset_id": asset_id,
+        "asset_name": asset_name,
+        "category": category,
+        "payload": payload,
+        "ts": ts or datetime.now(timezone.utc).isoformat(),
+        "mode": mode,
+    }
+
+
 async def broadcast_telemetry_sample(
     *,
     source: str,
@@ -179,19 +215,25 @@ async def broadcast_telemetry_sample(
     payload: dict[str, Any],
     mode: str = "ambient",
 ) -> None:
-    ts = datetime.now(timezone.utc).isoformat()
     await manager.broadcast(
         "telemetry.sample",
-        {
-            "source": source,
-            "label": SOURCE_LABELS.get(source, source),
-            "asset_id": asset_id,
-            "asset_name": asset_name,
-            "category": category,
-            "payload": payload,
-            "ts": ts,
-            "mode": mode,
-        },
+        _sample_dict(
+            source=source,
+            asset_id=asset_id,
+            asset_name=asset_name,
+            category=category,
+            payload=payload,
+            mode=mode,
+        ),
+    )
+
+
+async def broadcast_telemetry_batch(samples: list[dict[str, Any]]) -> None:
+    if not samples:
+        return
+    await manager.broadcast(
+        "telemetry.batch",
+        {"samples": samples, "count": len(samples)},
     )
 
 
@@ -218,22 +260,20 @@ class AmbientPlantLoop:
     def status(self) -> dict[str, Any]:
         from app.simulator.engine import demo_controller
 
+        settings = get_settings()
         return {
             "running": self.running,
-            "enabled_default": get_settings().ambient_enabled,
-            "tick_seconds": get_settings().ambient_tick_seconds,
-            "coincidence_probability": get_settings().ambient_coincidence_probability,
-            "heartbeat_seconds": get_settings().ambient_heartbeat_seconds,
+            "enabled_default": settings.ambient_enabled,
+            "tick_seconds": settings.ambient_tick_seconds,
+            "coincidence_probability": settings.ambient_coincidence_probability,
+            "heartbeat_seconds": settings.ambient_heartbeat_seconds,
+            "batch_size": settings.ambient_batch_size,
             "demo_locked_assets": sorted(demo_controller.locked_asset_ids),
         }
 
     def start(self) -> asyncio.Task | None:
         if self.running:
             return self._task
-        settings = get_settings()
-        if not settings.ambient_enabled and self._task is None:
-            # Explicit start() still allowed via API even if default off
-            pass
         self._running = True
         self._task = asyncio.create_task(self._loop(), name="ambient-plant")
         logger.info("ambient plant loop started")
@@ -267,35 +307,44 @@ class AmbientPlantLoop:
             self._cursor = (self._cursor + 1) % total
         return batch
 
-    async def _soft_tick(self, locked: set[str]) -> None:
-        settings = get_settings()
+    async def _soft_tick(self, locked: set[str], *, tick: int, settings: Any) -> None:
         batch = self._next_batch(settings.ambient_batch_size)
+        ts = datetime.now(timezone.utc).isoformat()
+        samples: list[dict[str, Any]] = []
+        emit_status = tick % max(1, int(settings.ambient_status_every_n_ticks)) == 0
+
         for asset in batch:
             if asset["id"] in locked:
                 continue
-            # Primary SCADA sample
-            payload = nominal_sensor_payload(self._rng, settings)
-            category = "weather" if "wind_ms" in payload else "sensor"
-            source = CATEGORY_TO_SOURCE.get(category, "scada")
-            await broadcast_telemetry_sample(
-                source=source,
-                asset_id=asset["id"],
-                asset_name=asset["name"],
-                category=category,
-                payload=payload,
-            )
-            for cat, status_payload in nominal_status_samples(self._rng):
-                src = CATEGORY_TO_SOURCE.get(cat, "scada")
-                await broadcast_telemetry_sample(
-                    source=src,
+            payload = nominal_scada_bundle(self._rng, settings)
+            samples.append(
+                _sample_dict(
+                    source="scada",
                     asset_id=asset["id"],
                     asset_name=asset["name"],
-                    category=cat,
-                    payload=status_payload,
+                    category="sensor",
+                    payload=payload,
+                    ts=ts,
                 )
+            )
+            if emit_status:
+                status = nominal_status_sample(self._rng)
+                if status is not None:
+                    cat, status_payload = status
+                    samples.append(
+                        _sample_dict(
+                            source=CATEGORY_TO_SOURCE.get(cat, "scada"),
+                            asset_id=asset["id"],
+                            asset_name=asset["name"],
+                            category=cat,
+                            payload=status_payload,
+                            ts=ts,
+                        )
+                    )
 
-    async def _coincidence(self, locked: set[str]) -> None:
-        settings = get_settings()
+        await broadcast_telemetry_batch(samples)
+
+    async def _coincidence(self, locked: set[str], settings: Any) -> None:
         if self._rng.random() >= settings.ambient_coincidence_probability:
             return
         unlocked = [a for a in self._assets_cache if a["id"] not in locked]
@@ -321,7 +370,6 @@ class AmbientPlantLoop:
                     step_index=0,
                     total_steps=1,
                 )
-                # Lock coincidental asset so ambient heartbeat won't clear it
                 from app.simulator.engine import demo_controller
 
                 demo_controller.lock_asset(asset["id"])
@@ -333,8 +381,8 @@ class AmbientPlantLoop:
         except Exception:  # noqa: BLE001
             logger.exception("ambient coincidence failed")
 
-    async def _heartbeat(self, locked: set[str]) -> None:
-        settings = get_settings()
+    async def _heartbeat(self, locked: set[str], settings: Any) -> None:
+        """Rare quiet hard-ingest — refreshes context without Orchestrator WS spam."""
         now = datetime.now(timezone.utc)
         if self._last_heartbeat is not None:
             elapsed = (now - self._last_heartbeat).total_seconds()
@@ -344,26 +392,32 @@ class AmbientPlantLoop:
         unlocked = [a for a in self._assets_cache if a["id"] not in locked]
         if not unlocked:
             return
-        # One nominal hard ingest per heartbeat (rotate)
         asset = unlocked[self._cursor % len(unlocked)]
         payload = nominal_sensor_payload(self._rng, settings)
         category = "weather" if "wind_ms" in payload else "sensor"
-        step = ScenarioStep(
-            asset=asset["name"],
-            category=category,
-            payload=payload,
-            confidence=1.0,
-            delay_seconds=0,
-            valid_for_hours=1.0,
-        )
+        source = CATEGORY_TO_SOURCE.get(category, "scada")
         try:
+            from app.context.schemas import ContextIn
+            from app.simulator.provider import SimulatorProvider
+
             async with SessionLocal() as session:
-                await self._orch.run_step(
-                    session,
-                    step,
-                    step_index=0,
-                    total_steps=1,
+                body = ContextIn(
+                    asset_id=UUID(asset["id"]),
+                    category=category,
+                    payload=payload,
+                    provider=f"simulator:{source}",
+                    valid_from=now,
+                    valid_until=now + timedelta(hours=1.0),
+                    confidence=1.0,
                 )
+                await SimulatorProvider(session).emit(body)
+            await broadcast_telemetry_sample(
+                source=source,
+                asset_id=asset["id"],
+                asset_name=asset["name"],
+                category=category,
+                payload=payload,
+            )
         except Exception:  # noqa: BLE001
             logger.debug("ambient heartbeat ingest failed", exc_info=True)
 
@@ -375,12 +429,16 @@ class AmbientPlantLoop:
             while self._running:
                 from app.simulator.engine import demo_controller
 
+                # Re-read settings infrequently so env tweaks apply without restart spam
+                if ticks % 10 == 0:
+                    settings = get_settings()
+
                 locked = set(demo_controller.locked_asset_ids)
-                if ticks % 20 == 0:
+                if ticks % 40 == 0:
                     await self._refresh_assets()
-                await self._soft_tick(locked)
-                await self._coincidence(locked)
-                await self._heartbeat(locked)
+                await self._soft_tick(locked, tick=ticks, settings=settings)
+                await self._coincidence(locked, settings)
+                await self._heartbeat(locked, settings)
                 ticks += 1
                 await asyncio.sleep(settings.ambient_tick_seconds)
         except asyncio.CancelledError:

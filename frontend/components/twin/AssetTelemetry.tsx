@@ -1,7 +1,7 @@
 "use client";
 
+import { useMemo } from "react";
 import {
-  getAssetMetricSeries,
   useLiveStore,
   type TelemetryMetricKey,
   type TelemetryPoint,
@@ -76,12 +76,39 @@ interface AssetTelemetryProps {
 }
 
 export function AssetTelemetry({ assetId }: AssetTelemetryProps) {
-  const series = useLiveStore((s) => s.telemetrySeries);
-  const status = useLiveStore((s) => s.telemetryStatus);
+  // Narrow selectors — avoid re-rendering on every plant-wide sample
+  const gas = useLiveStore((s) => s.telemetrySeries[`${assetId}::gas_reading`]);
+  const temp = useLiveStore((s) => s.telemetrySeries[`${assetId}::temp_reading`]);
+  const vibe = useLiveStore(
+    (s) => s.telemetrySeries[`${assetId}::vibration_mm_s`],
+  );
+  const level = useLiveStore((s) => s.telemetrySeries[`${assetId}::level_pct`]);
+  const ph = useLiveStore((s) => s.telemetrySeries[`${assetId}::ph`]);
+  const wind = useLiveStore((s) => s.telemetrySeries[`${assetId}::wind_ms`]);
+  const assetStatusSig = useLiveStore((s) =>
+    s.telemetryStatus
+      .filter((c) => c.asset_id === assetId)
+      .map((c) => `${c.category}:${c.label}:${c.ts}`)
+      .join("|"),
+  );
+  const assetStatus = useMemo(() => {
+    void assetStatusSig;
+    return useLiveStore
+      .getState()
+      .telemetryStatus.filter((c) => c.asset_id === assetId);
+  }, [assetId, assetStatusSig]);
 
-  const assetStatus = status.filter((s) => s.asset_id === assetId);
+  const seriesMap: Record<string, TelemetryPoint[] | undefined> = {
+    gas_reading: gas,
+    temp_reading: temp,
+    vibration_mm_s: vibe,
+    level_pct: level,
+    ph,
+    wind_ms: wind,
+  };
+
   const gauges = GAUGES.map((g) => {
-    const points = getAssetMetricSeries(series, assetId, g.key);
+    const points = seriesMap[g.key] ?? [];
     const last = points[points.length - 1];
     return { ...g, points, value: last?.v ?? null };
   }).filter((g) => g.value != null || g.points.length > 0);
