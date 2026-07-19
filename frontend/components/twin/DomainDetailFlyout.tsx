@@ -5,13 +5,31 @@ import type { LiveAssetView } from "@/lib/liveStore";
 import { spatialLinksFromAssessment } from "@/lib/liveStore";
 import type { DomainId } from "@/lib/domains";
 import { DOMAIN_META } from "@/lib/domains";
+import type { ReferenceSource } from "@/shared/enums";
+import type { AreaOwner, RetrievedReference } from "@/shared/schemas";
 import { AssetTelemetry } from "./AssetTelemetry";
 import { SpatialGraphPanel } from "./SpatialGraphPanel";
 import styles from "./DomainDetailFlyout.module.css";
 
+const REF_SECTIONS: {
+  source: ReferenceSource;
+  label: string;
+  short: string;
+}[] = [
+  { source: "regulations", label: "Regulations", short: "Code & statute" },
+  { source: "sops", label: "SOPs", short: "Plant procedure" },
+  {
+    source: "historical_incidents",
+    label: "Past incidents",
+    short: "Near-miss history",
+  },
+];
+
 interface DomainDetailFlyoutProps {
   domain: DomainId | null;
   view: LiveAssetView;
+  /** Fallback when review detail is not loaded (e.g. nominal assets). */
+  areaOwner?: AreaOwner | null;
   onClose: () => void;
 }
 
@@ -52,17 +70,38 @@ function refLabel(r: {
   return r.source.replaceAll("_", " ");
 }
 
+function EvidenceRefItem({ reference: r }: { reference: RetrievedReference }) {
+  return (
+    <li className={styles.listItem} data-source={r.source}>
+      <div className={styles.refMeta}>
+        <span className={styles.pathBadge} data-path={r.retrieval_path}>
+          {r.retrieval_path === "rag" ? "RAG" : "Rule"}
+        </span>
+        {r.triggered_by_fact && (
+          <span className={styles.triggerBadge}>
+            via {r.triggered_by_fact.replaceAll("_", " ")}
+          </span>
+        )}
+      </div>
+      <span className={styles.refTitle}>{refLabel(r)}</span>
+      {r.snippet && <p className={styles.refSnippet}>{r.snippet}</p>}
+    </li>
+  );
+}
+
 function DomainBody({
   domain,
   view,
+  areaOwner: areaOwnerProp,
 }: {
   domain: DomainId;
   view: LiveAssetView;
+  areaOwner?: AreaOwner | null;
 }) {
   const context = view.detail?.context ?? [];
   const derivedFacts = view.detail?.derived_facts ?? [];
   const references = view.assessment?.retrieved_references ?? [];
-  const areaOwner = view.detail?.area_owner ?? null;
+  const areaOwner = view.detail?.area_owner ?? areaOwnerProp ?? null;
   const spatialLinks = spatialLinksFromAssessment(view.assessment);
 
   if (domain === "sensors") {
@@ -113,36 +152,59 @@ function DomainBody({
     if (derivedFacts.length === 0 && references.length === 0) {
       return <p className={styles.muted}>No evidence available yet.</p>;
     }
+
+    const refsBySource = REF_SECTIONS.map((section) => ({
+      ...section,
+      items: references.filter((r) => r.source === section.source),
+    })).filter((s) => s.items.length > 0);
+
     return (
-      <>
+      <div className={styles.evidenceStack}>
         {derivedFacts.length > 0 && (
-          <div className={styles.chipRow}>
-            {derivedFacts.map((f) => (
-              <span key={f.id} className={styles.chip}>
-                {String(f.fact_type).replaceAll("_", " ")}
-              </span>
-            ))}
-          </div>
+          <section className={styles.evidenceSection} data-kind="facts">
+            <header className={styles.evidenceHead}>
+              <span className={styles.evidenceMark}>Facts</span>
+              <span className={styles.evidenceLabel}>Derived signals</span>
+              <span className={styles.evidenceCount}>{derivedFacts.length}</span>
+            </header>
+            <ul className={styles.factList}>
+              {derivedFacts.map((f) => (
+                <li key={f.id} className={styles.factItem}>
+                  <span className={styles.factType}>
+                    {String(f.fact_type).replaceAll("_", " ")}
+                  </span>
+                  <span className={styles.factValue}>
+                    {typeof f.value === "boolean"
+                      ? f.value
+                        ? "Active"
+                        : "Clear"
+                      : String(f.value)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </section>
         )}
-        {references.length > 0 && (
-          <ul className={styles.list}>
-            {references.map((r) => (
-              <li key={`${r.source}-${r.id}`} className={styles.listItem}>
-                <span
-                  className={styles.pathBadge}
-                  data-path={r.retrieval_path}
-                >
-                  {r.retrieval_path === "rag" ? "RAG" : "Rule"}
-                </span>
-                <span className={styles.refTitle}>{refLabel(r)}</span>
-                {r.snippet && (
-                  <p className={styles.refSnippet}>{r.snippet}</p>
-                )}
-              </li>
-            ))}
-          </ul>
-        )}
-      </>
+
+        {refsBySource.map((section) => (
+          <section
+            key={section.source}
+            className={styles.evidenceSection}
+            data-kind={section.source}
+          >
+            <header className={styles.evidenceHead}>
+              <span className={styles.evidenceMark}>{section.label}</span>
+              <span className={styles.evidenceLabel}>{section.short}</span>
+              <span className={styles.evidenceCount}>{section.items.length}</span>
+            </header>
+            <ul className={styles.list}>
+              {section.items.map((r) => (
+                <EvidenceRefItem key={`${r.source}-${r.id}`} reference={r} />
+              ))}
+            </ul>
+          </section>
+        ))}
+      </div>
     );
   }
 
@@ -159,6 +221,7 @@ function DomainBody({
 export function DomainDetailFlyout({
   domain,
   view,
+  areaOwner = null,
   onClose,
 }: DomainDetailFlyoutProps) {
   const [rendered, setRendered] = useState<DomainId | null>(domain);
@@ -246,7 +309,7 @@ export function DomainDetailFlyout({
       </header>
 
       <div key={slideKey} className={styles.body}>
-        <DomainBody domain={rendered} view={view} />
+        <DomainBody domain={rendered} view={view} areaOwner={areaOwner} />
       </div>
     </div>
   );
