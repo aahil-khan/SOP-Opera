@@ -35,6 +35,8 @@ async def client():
 
     os.environ["AI_PROVIDER"] = "mock"
     os.environ["EMBEDDING_PROVIDER"] = "mock"
+    os.environ["BLOCKED_INACTIVE_MIN_SECONDS"] = "0.1"
+    os.environ["BLOCKED_INACTIVE_MAX_SECONDS"] = "0.1"
     get_settings.cache_clear()
 
     await close_vector_pool()
@@ -46,8 +48,10 @@ async def client():
 
     from app.main import app
     from app.assessment.orchestrator import orchestrator
+    from app.simulator.engine import demo_controller
 
     orchestrator.start()
+    demo_controller.clear_locks()
 
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as ac:
@@ -223,3 +227,54 @@ async def test_decision_rejected_without_complete_assessment(client: AsyncClient
     )
     assert resp.status_code == 409
     assert "complete Assessment" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_blocking_assessment_rejects_approved_outcome(client: AsyncClient):
+    review_id, assessments = await _bring_to_pending_decision(client)
+    complete = next(a for a in assessments if a["status"] == "complete")
+    rec_id = complete["recommendations"][0]["id"]
+    assert complete["risk_level"] == "blocking"
+
+    resp = await client.post(
+        f"/reviews/{review_id}/decisions",
+        json={
+            "outcome": "approved",
+            "recommendation_dispositions": {rec_id: "accepted"},
+            "conditions": None,
+        },
+    )
+    assert resp.status_code == 409
+    assert "only be submitted with outcome=blocked" in resp.json()["detail"]
+
+
+@pytest.mark.asyncio
+async def test_blocked_decision_locks_asset_until_close_and_timer(
+    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+):
+    review_id, assessments = await _bring_to_pending_decision(client)
+    complete = next(a for a in assessments if a["status"] == "complete")
+    rec_id = complete["recommendations"][0]["id"]
+
+    from app.simulator.engine import demo_controller
+    monkeypatch.setattr("app.decisions.service.random.uniform", lambda _a, _b: 0.1)
+
+    decision_resp = await client.post(
+        f"/reviews/{review_id}/decisions",
+        json={
+            "outcome": "blocked",
+            "recommendation_dispositions": {rec_id: "accepted"},
+            "conditions": None,
+        },
+    )
+    assert decision_resp.status_code == 201, decision_resp.text
+    assert str(VESSEL_A) in demo_controller.inactive_asset_ids
+
+    # Timer alone is not enough — review must also close.
+    await asyncio.sleep(0.2)
+    assert str(VESSEL_A) in demo_controller.inactive_asset_ids
+
+    close = await client.post(f"/reviews/{review_id}/close")
+    assert close.status_code == 200, close.text
+    await asyncio.sleep(0.2)
+    assert str(VESSEL_A) not in demo_controller.inactive_asset_ids

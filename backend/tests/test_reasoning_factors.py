@@ -167,3 +167,101 @@ def test_critical_gas_suppresses_elevated_and_uses_peak_reading():
 
 def test_empty_facts_yields_empty_factors():
     assert build_reasoning_factors([], [], []) == []
+
+
+def test_over_temperature_uses_reading_not_derived_jargon():
+    sensor_id = uuid4()
+    context = [
+        {
+            "id": str(sensor_id),
+            "category": "sensor",
+            "payload": {"temp_reading": 92.0, "unit": "C"},
+        }
+    ]
+    factors = build_reasoning_factors(
+        [_fact("over_temperature", sensor_id)],
+        context,
+        [],
+        asset_name="Raw Material Yard",
+    )
+    assert len(factors) == 1
+    detail = factors[0].detail
+    assert "92" in detail
+    assert "80" in detail  # safe-band threshold
+    assert "°C" in detail
+    assert "Raw Material Yard" in detail
+    assert "derived fact" not in detail.lower()
+    assert factors[0].headline == "Over temperature"
+
+
+def test_vibration_effluent_tank_weather_include_readings():
+    vib_id = uuid4()
+    ph_id = uuid4()
+    tank_id = uuid4()
+    weather_id = uuid4()
+    context = [
+        {
+            "id": str(vib_id),
+            "category": "sensor",
+            "payload": {"vibration_mm_s": 9.5, "unit": "mm/s"},
+        },
+        {
+            "id": str(ph_id),
+            "category": "sensor",
+            "payload": {"ph": 5.2},
+        },
+        {
+            "id": str(tank_id),
+            "category": "sensor",
+            "payload": {"level_pct": 97.0},
+        },
+        {
+            "id": str(weather_id),
+            "category": "weather",
+            "payload": {"wind_ms": 18.0},
+        },
+    ]
+    factors = build_reasoning_factors(
+        [
+            _fact("equipment_vibration_anomaly", vib_id),
+            _fact("effluent_quality_breach", ph_id),
+            _fact("tank_level_critical", tank_id),
+            _fact("weather_hold", weather_id),
+        ],
+        context,
+        [],
+        asset_name="ETP",
+    )
+    by_type = {f.fact_type: f.detail for f in factors}
+    assert "9.5" in by_type["equipment_vibration_anomaly"]
+    assert "7.1" in by_type["equipment_vibration_anomaly"]
+    assert "5.2" in by_type["effluent_quality_breach"]
+    assert "97" in by_type["tank_level_critical"]
+    assert "95" in by_type["tank_level_critical"]
+    assert "18" in by_type["weather_hold"]
+    assert "15" in by_type["weather_hold"]
+    for detail in by_type.values():
+        assert "derived fact" not in detail.lower()
+
+
+def test_format_fact_detail_public_api():
+    from app.assessment.reasoning import format_fact_detail
+
+    sensor_id = uuid4()
+    context = [
+        {
+            "id": str(sensor_id),
+            "category": "sensor",
+            "payload": {"temp_reading": 125.0, "unit": "C"},
+        }
+    ]
+    detail = format_fact_detail(
+        "critical_temperature",
+        context,
+        asset_name="ETP",
+        source_ids=[sensor_id],
+    )
+    assert "125" in detail
+    assert "120" in detail
+    assert "ETP" in detail
+

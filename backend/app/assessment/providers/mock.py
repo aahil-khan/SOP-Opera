@@ -72,6 +72,10 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
         "Hold hot work and outdoor lifts until weather all-clear is declared.",
         "Weather conditions breach site hold criteria with exposed work active.",
     ),
+    "predicted_trend_risk": (
+        "Increase monitoring and pre-stage isolation before thresholds are crossed.",
+        "OLS trend projects a threshold crossing inside the forecast window.",
+    ),
 }
 
 
@@ -110,8 +114,8 @@ class MockProvider:
             text, rationale = FACT_RECOMMENDATIONS.get(
                 ft,
                 (
-                    f"Review and mitigate derived fact '{ft}'.",
-                    f"Fact '{ft}' is active and requires supervisor action.",
+                    f"Review and mitigate '{ft.replace('_', ' ')}'.",
+                    f"{ft.replace('_', ' ').title()} requires supervisor action.",
                 ),
             )
             recommendations.append(RecommendationIn(text=text, rationale=rationale))
@@ -119,7 +123,7 @@ class MockProvider:
             recommendations.append(
                 RecommendationIn(
                     text="Continue routine monitoring; no elevated facts detected.",
-                    rationale="No active derived facts at assessment time.",
+                    rationale="No elevated conditions at assessment time.",
                 )
             )
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import random
 from typing import Literal
 from uuid import UUID
 
@@ -33,11 +34,11 @@ class DecisionError(Exception):
 
 async def _load_complete_assessment(
     session: AsyncSession, review_id: UUID
-) -> UUID | None:
+) -> tuple[UUID, str | None] | None:
     result = await session.execute(
         text(
             """
-            SELECT id FROM assessments
+            SELECT id, risk_level FROM assessments
             WHERE review_id = CAST(:review_id AS uuid)
               AND status = 'complete'
             ORDER BY version DESC, created_at DESC
@@ -47,7 +48,10 @@ async def _load_complete_assessment(
         {"review_id": str(review_id)},
     )
     row = result.first()
-    return row._mapping["id"] if row else None
+    if row is None:
+        return None
+    m = row._mapping
+    return m["id"], m.get("risk_level")
 
 
 async def _recommendation_ids_for_assessment(
@@ -130,10 +134,16 @@ async def submit_decision(
             status_code=409,
         )
 
-    assessment_id = await _load_complete_assessment(session, review_id)
-    if assessment_id is None:
+    assessment_meta = await _load_complete_assessment(session, review_id)
+    if assessment_meta is None:
         raise DecisionError(
             "A complete Assessment is required before a Decision can be submitted",
+            status_code=409,
+        )
+    assessment_id, assessment_risk_level = assessment_meta
+    if assessment_risk_level == "blocking" and body.outcome != "blocked":
+        raise DecisionError(
+            "Blocking assessments can only be submitted with outcome=blocked",
             status_code=409,
         )
 
@@ -266,6 +276,27 @@ async def submit_decision(
         )
     except IllegalTransitionError as exc:
         raise DecisionError(str(exc), status_code=409) from exc
+
+    if body.outcome == "blocked":
+        settings = get_settings()
+        low = min(
+            float(settings.blocked_inactive_min_seconds),
+            float(settings.blocked_inactive_max_seconds),
+        )
+        high = max(
+            float(settings.blocked_inactive_min_seconds),
+            float(settings.blocked_inactive_max_seconds),
+        )
+        duration = random.uniform(low, high)
+        from app.simulator.engine import demo_controller
+
+        demo_controller.lock_asset_inactive(
+            asset_id=review.asset_id, review_id=review_id, duration_seconds=duration
+        )
+    else:
+        from app.simulator.engine import demo_controller
+
+        demo_controller.clear_inactive_lock_for_review(review_id)
 
     await manager.broadcast(
         "decision.submitted",

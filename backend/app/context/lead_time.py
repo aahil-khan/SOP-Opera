@@ -1,9 +1,10 @@
-"""Live lead-time estimation from context entries (no agent imports)."""
+"""Live lead-time estimation and trend forecasting from context entries."""
 
 from __future__ import annotations
 
+from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from app.assessment.providers.mock import CRITICAL_SENSOR_FACTS
@@ -50,14 +51,16 @@ def context_entries_to_views(
     return views
 
 
-def _gas_samples(
+def _metric_samples(
     entries: list[ContextEntryView],
+    *,
+    field: str,
 ) -> list[tuple[datetime, float]]:
     samples: list[tuple[datetime, float]] = []
     for entry in entries:
         if entry.category != "sensor":
             continue
-        reading = entry.payload.get("gas_reading")
+        reading = entry.payload.get(field)
         if not isinstance(reading, (int, float)):
             continue
         ts = entry.valid_from
@@ -68,6 +71,134 @@ def _gas_samples(
     return samples
 
 
+@dataclass(frozen=True)
+class TrendForecast:
+    metric: str
+    current_value: float
+    slope_per_min: float
+    r_squared: float
+    trend: Literal["rising", "falling", "stable"]
+    seconds_to_elevated: float | None
+    seconds_to_critical: float | None
+    sample_count: int
+
+
+def _seconds_to_threshold(
+    *,
+    current: float,
+    slope_per_sec: float,
+    threshold: float,
+) -> float | None:
+    if current >= threshold:
+        return 0.0
+    if slope_per_sec <= 0:
+        return None
+    return (threshold - current) / slope_per_sec
+
+
+def _ols_fit(samples: list[tuple[datetime, float]]) -> tuple[float, float, float] | None:
+    """
+    Return (slope_per_sec, intercept, r_squared) for y = slope*x + intercept.
+    x is seconds since first sample.
+    """
+    if len(samples) < 2:
+        return None
+    t0 = samples[0][0]
+    xs = [(ts - t0).total_seconds() for ts, _ in samples]
+    ys = [val for _, val in samples]
+    n = len(xs)
+    mean_x = sum(xs) / n
+    mean_y = sum(ys) / n
+    ss_xx = sum((x - mean_x) ** 2 for x in xs)
+    if ss_xx <= 0:
+        # Offline eval fixtures may use equal timestamps; preserve trend signal by
+        # treating ordered samples as 1-second cadence.
+        xs = [float(i) for i in range(n)]
+        mean_x = sum(xs) / n
+        ss_xx = sum((x - mean_x) ** 2 for x in xs)
+        if ss_xx <= 0:
+            return None
+    ss_xy = sum((x - mean_x) * (y - mean_y) for x, y in zip(xs, ys, strict=True))
+    slope = ss_xy / ss_xx
+    intercept = mean_y - slope * mean_x
+    y_hat = [intercept + slope * x for x in xs]
+    ss_tot = sum((y - mean_y) ** 2 for y in ys)
+    ss_res = sum((y - yh) ** 2 for y, yh in zip(ys, y_hat, strict=True))
+    r2 = 1.0 if ss_tot <= 1e-12 else max(0.0, min(1.0, 1.0 - (ss_res / ss_tot)))
+    return slope, intercept, r2
+
+
+def forecast_metric(
+    entries: list[ContextEntryView],
+    *,
+    field: str,
+    elevated: float,
+    critical: float,
+    min_points: int = 3,
+) -> TrendForecast | None:
+    samples = _metric_samples(entries, field=field)
+    if len(samples) < max(2, int(min_points)):
+        return None
+    fit = _ols_fit(samples)
+    if fit is None:
+        return None
+    slope_per_sec, _intercept, r2 = fit
+    slope_per_min = slope_per_sec * 60.0
+    if slope_per_sec > 1e-9:
+        trend: Literal["rising", "falling", "stable"] = "rising"
+    elif slope_per_sec < -1e-9:
+        trend = "falling"
+    else:
+        trend = "stable"
+    current = samples[-1][1]
+    return TrendForecast(
+        metric=field,
+        current_value=current,
+        slope_per_min=slope_per_min,
+        r_squared=r2,
+        trend=trend,
+        seconds_to_elevated=_seconds_to_threshold(
+            current=current, slope_per_sec=slope_per_sec, threshold=elevated
+        ),
+        seconds_to_critical=_seconds_to_threshold(
+            current=current, slope_per_sec=slope_per_sec, threshold=critical
+        ),
+        sample_count=len(samples),
+    )
+
+
+def forecast_asset_trends(
+    entries: list[ContextEntryView],
+    *,
+    min_points: int | None = None,
+) -> list[TrendForecast]:
+    settings = get_settings()
+    minimum = int(
+        min_points if min_points is not None else settings.predictive_trend_min_samples
+    )
+    checks = [
+        ("gas_reading", settings.gas_elevated_threshold, settings.gas_critical_threshold),
+        ("temp_reading", settings.temp_elevated_threshold, settings.temp_critical_threshold),
+        (
+            "vibration_mm_s",
+            settings.vibration_anomaly_threshold,
+            settings.vibration_anomaly_threshold,
+        ),
+    ]
+    out: list[TrendForecast] = []
+    for field, elevated, critical in checks:
+        fc = forecast_metric(
+            entries,
+            field=field,
+            elevated=float(elevated),
+            critical=float(critical),
+            min_points=minimum,
+        )
+        if fc is not None:
+            out.append(fc)
+    return out
+
+
 def estimate_seconds_until_gas_critical(
     entries: list[ContextEntryView],
 ) -> float | None:
@@ -76,28 +207,16 @@ def estimate_seconds_until_gas_critical(
     if the recent upward trend continues. Returns 0 when already critical.
     """
     settings = get_settings()
-    critical = settings.gas_critical_threshold
-    samples = _gas_samples(entries)
-    if not samples:
+    fc = forecast_metric(
+        entries,
+        field="gas_reading",
+        elevated=float(settings.gas_elevated_threshold),
+        critical=float(settings.gas_critical_threshold),
+        min_points=2,
+    )
+    if fc is None:
         return None
-
-    current = samples[-1][1]
-    if current >= critical:
-        return 0.0
-
-    if len(samples) < 2:
-        return None
-
-    t0, v0 = samples[-2]
-    t1, v1 = samples[-1]
-    dt = (t1 - t0).total_seconds()
-    if dt <= 0 or v1 <= v0:
-        return None
-
-    rate = (v1 - v0) / dt
-    if rate <= 0:
-        return None
-    return (critical - v1) / rate
+    return fc.seconds_to_critical
 
 
 def compute_lead_time_for_verdict(

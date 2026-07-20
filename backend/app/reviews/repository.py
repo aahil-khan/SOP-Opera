@@ -197,6 +197,11 @@ async def transition_review(
 
         await enqueue_for_review(session, updated)
     if new_state == "closed":
+        from app.simulator.engine import demo_controller
+
+        demo_controller.mark_review_closed(
+            review_id=updated.id, asset_id=updated.asset_id
+        )
         from app.reports.service import generate_report_on_closure
 
         await generate_report_on_closure(session, updated)

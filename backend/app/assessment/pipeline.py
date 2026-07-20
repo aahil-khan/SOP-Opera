@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
@@ -15,7 +16,11 @@ from app.agents.graph import run_agent_assessment
 from app.agents.routing import should_load_plant_neighborhood
 from app.ai_ops.events import record_ai_ops_event
 from app.assessment.orchestrator import PROMPT_VERSION
-from app.assessment.reasoning import build_reasoning_factors, serialize_factor
+from app.assessment.reasoning import (
+    build_reasoning_factors,
+    format_predicted_trend_detail,
+    serialize_factor,
+)
 from app.assessment.retrieval import build_retrieval_query, retrieve
 from app.assessment.retrieval.enrich import enrich_references, serialize_ref
 from app.context.derived_facts import load_valid_context, load_valid_context_for_assets
@@ -26,7 +31,7 @@ from app.realtime.connection_manager import manager
 from app.reviews.ownership import get_zone_owner, resolve_worker_names
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import ReviewEvent
-from shared.python.schemas import DerivedFact, RetrievedReference
+from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReference
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +56,130 @@ def _serialize_refs(refs: list[RetrievedReference]) -> list[dict]:
 
 def _serialize_factors(factors: list) -> list[dict]:
     return [serialize_factor(f) for f in factors]
+
+
+def _trend_forecasts_from_trace(agent_trace: list[dict]) -> list[dict[str, Any]]:
+    """Prefer orchestrator verdict forecasts; fall back to predictive-trend agent detail."""
+    verdict_forecasts: list[dict[str, Any]] = []
+    agent_forecasts: list[dict[str, Any]] = []
+    for step in agent_trace:
+        if not isinstance(step, dict):
+            continue
+        detail = step.get("detail") or {}
+        if not isinstance(detail, dict):
+            continue
+        raw = detail.get("forecasts") or detail.get("trend_forecasts")
+        if not isinstance(raw, list):
+            continue
+        cleaned = [f for f in raw if isinstance(f, dict)]
+        if not cleaned:
+            continue
+        if step.get("agent") == "orchestrator" and step.get("kind") == "verdict":
+            verdict_forecasts = cleaned
+        elif step.get("agent") == "predictive_trend":
+            agent_forecasts = cleaned
+    return verdict_forecasts or agent_forecasts
+
+
+def _augment_reasoning_with_predictive_trend(
+    *,
+    reasoning_factors: list[ReasoningFactor],
+    agent_trace: list[dict],
+    asset_name: str,
+    settings: Any,
+) -> list[ReasoningFactor]:
+    """
+    Persist a deterministic Why-factor for predicted_trend_risk.
+
+    The forecast is computed inside the LangGraph run, so it isn't present in
+    DB-derived facts loaded by _load_true_facts().
+    """
+
+    try:
+        if any(f.fact_type == "predicted_trend_risk" for f in reasoning_factors):
+            return reasoning_factors
+
+        predictive_hit = any(
+            isinstance(s, dict)
+            and s.get("agent") == "predictive_trend"
+            and s.get("kind") == "observation"
+            and s.get("finding") == "risk"
+            for s in agent_trace
+        )
+        if not predictive_hit:
+            return reasoning_factors
+
+        horizon_seconds = max(
+            0.0, float(settings.predictive_trend_horizon_minutes) * 60.0
+        )
+        min_r2 = float(settings.predictive_trend_min_r2)
+        trend_forecasts = _trend_forecasts_from_trace(agent_trace)
+
+        candidates: list[tuple[float, dict[str, Any]]] = []
+        for f in trend_forecasts:
+            metric = f.get("metric")
+            r2 = f.get("r_squared")
+            slope = f.get("slope_per_min")
+            eta_elev = f.get("seconds_to_elevated")
+            eta_crit = f.get("seconds_to_critical")
+
+            if not isinstance(metric, str):
+                continue
+            if not isinstance(slope, (int, float)):
+                continue
+            if not isinstance(r2, (int, float)) or float(r2) < min_r2:
+                continue
+
+            sort_key: float | None = None
+            if isinstance(eta_crit, (int, float)) and 0.0 <= float(eta_crit) <= horizon_seconds:
+                sort_key = float(eta_crit)
+            elif isinstance(eta_elev, (int, float)) and 0.0 <= float(eta_elev) <= horizon_seconds:
+                sort_key = float(eta_elev) + 1e6
+
+            if sort_key is not None:
+                candidates.append((sort_key, f))
+
+        if candidates:
+            top = sorted(candidates, key=lambda item: item[0])[0][1]
+            reasoning_factors.append(
+                ReasoningFactor(
+                    fact_type="predicted_trend_risk",
+                    headline="Rising sensor trend",
+                    detail=format_predicted_trend_detail(
+                        asset_name=asset_name,
+                        metric=str(top.get("metric") or ""),
+                        slope_per_min=float(top.get("slope_per_min") or 0.0),
+                        r_squared=float(top.get("r_squared") or 0.0),
+                        seconds_to_elevated=(
+                            float(top["seconds_to_elevated"])
+                            if top.get("seconds_to_elevated") is not None
+                            else None
+                        ),
+                        seconds_to_critical=(
+                            float(top["seconds_to_critical"])
+                            if top.get("seconds_to_critical") is not None
+                            else None
+                        ),
+                    ),
+                )
+            )
+            return reasoning_factors
+
+        # Sparse-data fallback: elevated gas + hot work without OLS confidence yet.
+        reasoning_factors.append(
+            ReasoningFactor(
+                fact_type="predicted_trend_risk",
+                headline="Rising sensor trend",
+                detail=(
+                    f"Elevated gas with active hot work on {asset_name} — "
+                    "anticipatory forecast flagged before regression confirms trajectory."
+                ),
+            )
+        )
+        return reasoning_factors
+    except Exception:  # noqa: BLE001
+        logger.debug("augment predictive trend reasoning failed", exc_info=True)
+        return reasoning_factors
 
 
 async def _load_true_facts(
@@ -505,7 +634,12 @@ async def run_assessment_job(
             retrieval_score=hybrid.best_score,
             embedding_model=hybrid.embedding_model,
             failure_reason=None,
-            reasoning_factors=reasoning_factors,
+            reasoning_factors=_augment_reasoning_with_predictive_trend(
+                reasoning_factors=reasoning_factors,
+                agent_trace=agent_trace,
+                asset_name=asset_name,
+                settings=settings,
+            ),
             agent_trace=agent_trace,
             llm_attempt_count=int(llm_stats.get("llm_attempt_count") or 0),
             llm_fallback_count=int(llm_stats.get("llm_fallback_count") or 0),

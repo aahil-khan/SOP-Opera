@@ -43,6 +43,7 @@ def _base_state(**overrides) -> AgentState:
         "observations": [],
         "agent_trace": [],
         "spatial_links": [],
+        "trend_forecasts": [],
         "incident_echoes": [],
         "shift_handover_note": None,
         "verdict": None,
@@ -76,8 +77,34 @@ def test_serialize_ref_keeps_title_and_triggered_by():
 async def test_source_agent_uses_template_under_mock():
     out = await scada_agent(_base_state(provider_name="mock"))
     obs = out["observations"][0]["observation"]
-    assert "Gas reading exceeds action threshold" in obs
+    assert "28" in obs
+    assert "20" in obs  # elevated gas threshold
+    assert "Vessel A" in obs
     assert out["observations"][0]["agent"] == "scada"
+
+
+@pytest.mark.asyncio
+async def test_source_agent_temp_observation_includes_reading_and_limit():
+    sensor_id = str(uuid4())
+    out = await scada_agent(
+        _base_state(
+            provider_name="mock",
+            fact_types=["over_temperature"],
+            asset_name="ETP",
+            context_entries=[
+                {
+                    "id": sensor_id,
+                    "category": "sensor",
+                    "payload": {"temp_reading": 92.0, "unit": "C"},
+                }
+            ],
+        )
+    )
+    obs = out["observations"][0]["observation"]
+    assert "92" in obs
+    assert "80" in obs
+    assert "ETP" in obs
+    assert "above safe band" not in obs.lower()
 
 
 @pytest.mark.asyncio
@@ -94,9 +121,7 @@ async def test_source_agent_uses_llm_text_when_model_available(monkeypatch):
     )
     out = await scada_agent(_base_state(provider_name="openai"))
     assert "CO above the action band" in out["observations"][0]["observation"]
-    assert "Gas reading exceeds action threshold" not in out["observations"][0][
-        "observation"
-    ]
+    assert "28 ppm" not in out["observations"][0]["observation"]
 
 
 @pytest.mark.asyncio
@@ -116,7 +141,7 @@ async def test_source_clearance_skips_llm(monkeypatch):
         _base_state(fact_types=[], context_entries=[{"category": "sensor", "payload": {}}])
     )
     assert called["n"] == 0
-    assert "no active hazards" in out["observations"][0]["observation"]
+    assert "no active hazards" in out["observations"][0]["observation"].lower()
 
 
 def test_build_summary_prompt_includes_refs_and_fuse_instruction():
