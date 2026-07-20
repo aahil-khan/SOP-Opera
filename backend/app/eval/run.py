@@ -13,11 +13,15 @@ def main() -> int:
     lt = report.hero_lead_time
     summary = {
         "single_sensor_fn_rate": report.single_sensor.false_negative_rate,
+        "forecast_fn_rate": report.forecast.false_negative_rate,
         "compound_fn_rate": report.compound.false_negative_rate,
         "fn_reduction_pct": report.fn_reduction_pct,
         "hero_case_id": report.hero_case_id,
         "hero_lead_time_seconds": (
             lt.lead_time_seconds if lt is not None else None
+        ),
+        "hero_t_forecast_seconds": (
+            lt.t_forecast_seconds if lt is not None else None
         ),
         "hero_t_compound_seconds": (
             lt.t_compound_seconds if lt is not None else None

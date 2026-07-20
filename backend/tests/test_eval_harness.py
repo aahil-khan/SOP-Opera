@@ -7,7 +7,7 @@ from uuid import uuid4
 
 from app.context.derived_facts import ContextEntryView
 from app.eval.dataset import build_dataset, hero_checkpoint, static_cases
-from app.eval.detectors import compound_alarm, single_sensor_alarm
+from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
 from app.context.lead_time import (
     compute_lead_time_for_verdict,
     estimate_seconds_until_gas_critical,
@@ -69,6 +69,8 @@ def test_compound_fn_rate_beats_single_sensor_baseline():
     assert report.compound.false_negative_rate < report.single_sensor.false_negative_rate
     assert report.fn_reduction_pct > 0
     assert report.compound.recall > report.single_sensor.recall
+    assert report.forecast.name == "Predictive forecast (ML trend)"
+    assert report.forecast.tp >= 1
 
 
 def test_vsp_timeline_fn_only_on_subcritical_steps():
@@ -105,6 +107,9 @@ def test_dataset_has_expected_cases():
 
 def test_vsp_hero_lead_time_from_scenario_delays():
     lt = hero_lead_time()
+    assert lt.t_forecast_seconds is not None
+    assert lt.t_forecast_seconds <= lt.t_single_sensor_seconds
+    assert lt.t_forecast_seconds <= lt.t_compound_seconds
     assert lt.t_compound_seconds == 8.0
     assert lt.t_single_sensor_seconds == 26.0
     assert lt.lead_time_seconds == 18.0
@@ -168,4 +173,14 @@ def test_report_includes_lead_time_section():
     assert report.hero_lead_time.lead_time_seconds == 18.0
     md = report.to_markdown()
     assert "Prediction lead time" in md
+    assert "Predictive forecast (ML trend)" in md
     assert "18s lead time" in md
+
+
+def test_forecast_alarm_fires_on_rising_subcritical_signal():
+    entries = [
+        _gas_entry(20.0, offset_seconds=0),
+        _gas_entry(28.0, offset_seconds=60),
+        _gas_entry(37.0, offset_seconds=120),
+    ]
+    assert forecast_alarm(entries) is True

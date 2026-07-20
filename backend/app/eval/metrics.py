@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from app.eval.dataset import EvalCase, build_dataset, hero_checkpoint
-from app.eval.detectors import compound_alarm, single_sensor_alarm
+from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
 from app.eval.lead_time import ScenarioLeadTime, compute_scenario_lead_time, hero_lead_time
 
 
@@ -52,6 +52,7 @@ class CaseResult:
 @dataclass
 class EvalReport:
     single_sensor: DetectorMetrics
+    forecast: DetectorMetrics
     compound: DetectorMetrics
     case_results: list[CaseResult] = field(default_factory=list)
     fn_reduction_pct: float = 0.0
@@ -70,7 +71,7 @@ class EvalReport:
             "| Detector | Accuracy | Recall | FN rate | Precision |",
             "| --- | ---: | ---: | ---: | ---: |",
         ]
-        for m in (self.single_sensor, self.compound):
+        for m in (self.single_sensor, self.forecast, self.compound):
             lines.append(
                 f"| {m.name} | {m.accuracy:.1%} | {m.recall:.1%} | "
                 f"{m.false_negative_rate:.1%} | {m.precision:.1%} |"
@@ -84,11 +85,16 @@ class EvalReport:
         )
         if self.hero_lead_time and self.hero_lead_time.lead_time_seconds is not None:
             lt = self.hero_lead_time
+            forecast_bit = (
+                f"forecast alarm at **{lt.t_forecast_seconds:.0f}s**, "
+                if lt.t_forecast_seconds is not None
+                else ""
+            )
             lines.extend(
                 [
                     "## Prediction lead time (hero scenario)",
                     "",
-                    f"VSP coke-oven timeline: compound alarm at **{lt.t_compound_seconds:.0f}s**, "
+                    f"VSP coke-oven timeline: {forecast_bit}compound alarm at **{lt.t_compound_seconds:.0f}s**, "
                     f"single-sensor critical at **{lt.t_single_sensor_seconds:.0f}s** → "
                     f"**{lt.lead_time_seconds:.0f}s lead time** before incident threshold.",
                     "",
@@ -153,6 +159,9 @@ def _confusion(
 def run_evaluation(cases: list[EvalCase] | None = None) -> EvalReport:
     cases = cases or build_dataset()
     single, _ = _confusion(cases, name="Single-sensor baseline", alarm_fn=single_sensor_alarm)
+    forecast, _ = _confusion(
+        cases, name="Predictive forecast (ML trend)", alarm_fn=forecast_alarm
+    )
     compound, case_results = _confusion(
         cases, name="Compound engine", alarm_fn=compound_alarm
     )
@@ -167,6 +176,7 @@ def run_evaluation(cases: list[EvalCase] | None = None) -> EvalReport:
     hero = hero_checkpoint()
     return EvalReport(
         single_sensor=single,
+        forecast=forecast,
         compound=compound,
         case_results=case_results,
         fn_reduction_pct=fn_reduction,
