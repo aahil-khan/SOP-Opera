@@ -17,6 +17,10 @@
   color: var(--text-secondary);
 }
 
+.headlineBody {
+  color: var(--text-primary);
+}
+
 .riskWord {
   font-weight: var(--weight-bold);
   text-transform: capitalize;
@@ -33,6 +37,42 @@
 
 .riskWord[data-risk="nominal"] {
   color: var(--status-nominal);
+}
+
+.riskWord[data-risk="critical"] {
+  color: var(--status-critical);
+}
+
+.notice {
+  padding: var(--space-3);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--surface-overlay);
+}
+
+.notice[data-tone="blocking"] {
+  border-color: color-mix(in srgb, var(--status-blocking) 35%, var(--border-default));
+  background: color-mix(in srgb, var(--status-blocking) 8%, var(--surface-overlay));
+}
+
+.notice[data-tone="critical"] {
+  border-color: color-mix(in srgb, var(--status-critical) 40%, var(--border-default));
+  background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-overlay));
+}
+
+.noticeTitle {
+  margin: 0 0 var(--space-1);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
+}
+
+.noticeBody {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+  line-height: var(--leading-relaxed);
 }
 
 .headlineSep {
@@ -61,7 +101,7 @@
 
 .toggleIcon {
   display: inline-block;
-  font-size: 0.7rem;
+  font-size: var(--text-sm);
   line-height: 1;
   transform: translateY(-1px);
   transition: transform var(--duration-fast) var(--ease-out);

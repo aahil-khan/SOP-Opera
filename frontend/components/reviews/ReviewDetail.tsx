@@ -7,11 +7,16 @@ import {
 } from "@/lib/liveStore";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { AssessmentPanel } from "@/components/assessment/AssessmentPanel";
-import { AssessingBanner } from "@/components/assessment/AssessingBanner";
+import {
+  AssessingBanner,
+  priorSettledAssessment,
+} from "@/components/assessment/AssessingBanner";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
 import { AgentTracePanel } from "@/components/trace/AgentTracePanel";
+import { IssueReport } from "@/components/reviews/IssueReport";
 import { nextActionForView, ownerNameForView } from "@/lib/openWork";
+import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 import actionStyles from "@/components/decision/RecommendedAction.module.css";
 import styles from "./ReviewDetail.module.css";
 
@@ -86,6 +91,10 @@ export function ReviewDetail({
     latest?.status === "pending" ||
     latest?.status === "generating";
 
+  const priorAssessment = assessmentInProgress
+    ? priorSettledAssessment(assessmentList)
+    : null;
+
   if (loadError && !detail) {
     return (
       <div className={styles.missing} data-variant={variant}>
@@ -134,29 +143,25 @@ export function ReviewDetail({
         </header>
       )}
 
-      {embedded && (
-        <header className={styles.embeddedMeta} data-risk={view.risk_level}>
-          <p className={styles.embeddedSub}>
-            Triggered by {review.triggered_by.replaceAll("_", " ")} ·{" "}
-            {new Date(review.created_at).toLocaleString()}
-            {detail.area_owner ? ` · ${detail.area_owner.name}` : ""}
-          </p>
-        </header>
-      )}
+      {assessmentInProgress ? (
+        <AssessingBanner
+          priorRisk={priorAssessment?.risk_level ?? null}
+          provisionalRisk={openWorkDisplayRisk(
+            view.risk_level,
+            view.sensor_critical,
+          )}
+          sensorCritical={view.sensor_critical}
+        />
+      ) : null}
 
-      {assessmentInProgress ? <AssessingBanner /> : null}
-
-      <AgentTracePanel
-        reviewId={review.id}
-        assessment={latest as AssessmentHistoryItem | null}
-        inProgress={assessmentInProgress}
-      />
-
-      <AssessmentPanel
-        reviewId={review.id}
-        reviewState={review.state}
-        assessment={latest as AssessmentHistoryItem | null}
-        inProgress={assessmentInProgress}
+      <IssueReport
+        view={view}
+        assessment={
+          (assessmentInProgress ? priorAssessment : latest) as
+            | AssessmentHistoryItem
+            | null
+        }
+        inProgress={assessmentInProgress && priorAssessment == null}
       />
 
       {showRecommended && !assessmentInProgress && (
@@ -231,6 +236,20 @@ export function ReviewDetail({
           ) : null}
         </section>
       )}
+
+      <AgentTracePanel
+        reviewId={review.id}
+        assessment={latest as AssessmentHistoryItem | null}
+        inProgress={assessmentInProgress}
+      />
+
+      <AssessmentPanel
+        reviewId={review.id}
+        reviewState={review.state}
+        assessment={latest as AssessmentHistoryItem | null}
+        inProgress={assessmentInProgress}
+        reassessing={priorAssessment != null}
+      />
 
       {!embedded && (
         <DecisionCard title="Decision">

@@ -19,17 +19,24 @@ import {
   columnForReviewState,
   nextActionForView,
   ownerNameForView,
+  workStatusForView,
   type OpenWorkColumnId,
 } from "@/lib/openWork";
 import { relativeTime } from "@/lib/relativeTime";
 import { useNewEntries } from "@/lib/useNewEntries";
 import { OverviewPanel } from "./OverviewPanel";
+import { useHorizontalResize } from "./useHorizontalResize";
 import styles from "./ReviewSidebar.module.css";
 
 interface ReviewSidebarProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   affectedCount: number;
+  width: number;
+  minWidth: number;
+  maxWidth: number;
+  onWidthChange: (width: number) => void;
+  onResizingChange?: (resizing: boolean) => void;
 }
 
 type RiskFilter = "all" | "critical" | "blocking" | "elevated";
@@ -44,14 +51,14 @@ const RISK_FILTERS: { id: RiskFilter; label: string }[] = [
 function matchesSearch(view: LiveAssetView, query: string): boolean {
   if (!query) return true;
   const q = query.toLowerCase();
-  const displayRisk = openWorkDisplayRisk(view.risk_level, view.sensor_critical);
+  const status = workStatusForView(view);
   const owner = ownerNameForView(view) ?? "";
   const next = nextActionForView(view);
   const haystack = [
     view.asset.name,
     view.asset.zone,
     view.review?.state.replaceAll("_", " ") ?? "signal",
-    displayRisk,
+    status.label,
     owner,
     next,
   ]
@@ -117,7 +124,7 @@ function WorkCard({
 }) {
   const next = nextActionForView(view);
   const owner = ownerNameForView(view);
-  const displayRisk = openWorkDisplayRisk(view.risk_level, view.sensor_critical);
+  const status = workStatusForView(view);
   const when = view.review?.created_at
     ? relativeTime(view.review.created_at, now)
     : null;
@@ -127,7 +134,8 @@ function WorkCard({
       type="button"
       className={styles.item}
       data-active={active}
-      data-risk={displayRisk}
+      data-risk={status.badgeRisk}
+      data-resolved={status.resolved ? "true" : undefined}
       onClick={onSelect}
     >
       <span className={styles.itemTop}>
@@ -135,8 +143,8 @@ function WorkCard({
           {isNew ? <span className={styles.dot} aria-label="New" /> : null}
           {view.asset.name}
         </span>
-        <span className="badge" data-risk={displayRisk}>
-          {displayRisk}
+        <span className="badge" data-risk={status.badgeRisk}>
+          {status.label}
         </span>
       </span>
       <span className={styles.itemMeta}>
@@ -164,6 +172,11 @@ export function ReviewSidebar({
   open,
   onOpenChange,
   affectedCount,
+  width,
+  minWidth,
+  maxWidth,
+  onWidthChange,
+  onResizingChange,
 }: ReviewSidebarProps) {
   const allViews = useLiveAssetViews();
   const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
@@ -176,9 +189,41 @@ export function ReviewSidebar({
   const tablistRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Partial<Record<OpenWorkColumnId, HTMLButtonElement | null>>>({});
   const searchRef = useRef<HTMLInputElement>(null);
+
+  const { resizing, handleProps } = useHorizontalResize({
+    width,
+    onWidthChange,
+    minWidth,
+    maxWidth,
+    edge: "e",
+    disabled: !open,
+  });
+
+  useEffect(() => {
+    onResizingChange?.(resizing);
+  }, [resizing, onResizingChange]);
   const [slider, setSlider] = useState({ left: 0, width: 0 });
+  const [tabScroll, setTabScroll] = useState({ left: false, right: false });
 
   const hasActiveFilter = searchQuery.trim().length > 0 || riskFilter !== "all";
+
+  const updateTabScroll = useCallback(() => {
+    const track = tablistRef.current;
+    if (!track) return;
+    const maxScroll = track.scrollWidth - track.clientWidth;
+    const left = track.scrollLeft > 1;
+    const right = maxScroll > 1 && track.scrollLeft < maxScroll - 1;
+    setTabScroll((prev) =>
+      prev.left === left && prev.right === right ? prev : { left, right },
+    );
+  }, []);
+
+  const scrollTabs = useCallback((direction: -1 | 1) => {
+    const track = tablistRef.current;
+    if (!track) return;
+    const amount = Math.max(100, Math.round(track.clientWidth * 0.7));
+    track.scrollBy({ left: direction * amount, behavior: "smooth" });
+  }, []);
 
   const views = useMemo(
     () =>
@@ -245,6 +290,7 @@ export function ReviewSidebar({
         left: tab.offsetLeft,
         width: tab.offsetWidth,
       });
+      updateTabScroll();
     };
 
     update();
@@ -252,15 +298,30 @@ export function ReviewSidebar({
     const ro = new ResizeObserver(update);
     ro.observe(track);
     ro.observe(tab);
-    return () => ro.disconnect();
-  }, [activeColumn, byColumn]);
+    track.addEventListener("scroll", updateTabScroll, { passive: true });
+    return () => {
+      ro.disconnect();
+      track.removeEventListener("scroll", updateTabScroll);
+    };
+  }, [activeColumn, byColumn, updateTabScroll, open]);
 
   useEffect(() => {
-    tabRefs.current[activeColumn]?.scrollIntoView({
-      inline: "nearest",
-      block: "nearest",
-      behavior: "smooth",
-    });
+    const track = tablistRef.current;
+    const tab = tabRefs.current[activeColumn];
+    if (!track || !tab) return;
+
+    const tabLeft = tab.offsetLeft;
+    const tabRight = tabLeft + tab.offsetWidth;
+    const viewLeft = track.scrollLeft;
+    const viewRight = viewLeft + track.clientWidth;
+    if (tabLeft < viewLeft + 4) {
+      track.scrollTo({ left: Math.max(0, tabLeft - 8), behavior: "smooth" });
+    } else if (tabRight > viewRight - 4) {
+      track.scrollTo({
+        left: tabRight - track.clientWidth + 8,
+        behavior: "smooth",
+      });
+    }
   }, [activeColumn]);
 
   return (
@@ -284,9 +345,21 @@ export function ReviewSidebar({
         id="open-work-panel"
         className={styles.sidebar}
         data-open={open}
+        data-resizing={resizing ? "true" : undefined}
         aria-label="Open work board"
         aria-hidden={!open}
       >
+        <div
+          className={styles.resizeHandle}
+          role="separator"
+          aria-orientation="vertical"
+          aria-label="Resize open work panel"
+          aria-valuenow={width}
+          aria-valuemin={minWidth}
+          aria-valuemax={maxWidth}
+          tabIndex={open ? 0 : -1}
+          {...handleProps}
+        />
         <header className={styles.header}>
           <div className={styles.headerText}>
             <h2 className={styles.title}>Open work</h2>
@@ -340,7 +413,24 @@ export function ReviewSidebar({
           </div>
         </header>
 
-        <div className={styles.columnTabs} aria-label="Work columns">
+        <div
+          className={styles.columnTabs}
+          aria-label="Work columns"
+          data-scroll-left={tabScroll.left ? "true" : undefined}
+          data-scroll-right={tabScroll.right ? "true" : undefined}
+        >
+          {tabScroll.left ? (
+            <button
+              type="button"
+              className={styles.columnTabArrow}
+              data-side="left"
+              aria-label="Scroll columns left"
+              title="Scroll left"
+              onClick={() => scrollTabs(-1)}
+            >
+              ‹
+            </button>
+          ) : null}
           <div
             ref={tablistRef}
             className={styles.columnTabTrack}
@@ -387,6 +477,18 @@ export function ReviewSidebar({
               );
             })}
           </div>
+          {tabScroll.right ? (
+            <button
+              type="button"
+              className={styles.columnTabArrow}
+              data-side="right"
+              aria-label="Scroll columns right"
+              title="Scroll right"
+              onClick={() => scrollTabs(1)}
+            >
+              ›
+            </button>
+          ) : null}
         </div>
 
         {views.length > 0 && filtersOpen ? (

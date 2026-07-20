@@ -8,6 +8,7 @@ import {
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
+  type SyntheticEvent,
 } from "react";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import {
@@ -23,6 +24,7 @@ const AGENT_LABELS: Record<string, string> = {
   permit: "Permit",
   maintenance: "Maintenance",
   workforce: "Workforce",
+  predictive_trend: "Forecast",
   spatial: "Spatial",
   incident_pattern: "Incident",
   shift_handover: "Handover",
@@ -43,12 +45,62 @@ const AGENT_ROLES: Record<string, string> = {
   sim_maintenance: "Cross-checks maintenance state",
   workforce: "Looks at crew & ownership",
   sim_workforce: "Looks at crew & ownership",
+  predictive_trend: "Projects sensor trends toward thresholds",
   spatial: "Correlates nearby hazards by distance/floor",
   incident_pattern: "Matches known incident patterns",
   shift_handover: "Reads shift handover notes",
   orchestrator: "Synthesizes findings into a verdict",
   sim_orchestrator: "Synthesizes findings into a verdict",
 };
+
+type PipelinePhaseId = "sources" | "analysis" | "verdict" | "enrichment";
+
+const PIPELINE_PHASES: {
+  id: PipelinePhaseId;
+  title: string;
+  blurb: string;
+  agents: string[];
+}[] = [
+  {
+    id: "sources",
+    title: "Sources",
+    blurb: "Domain scanners",
+    agents: [
+      "scada",
+      "sim_scada",
+      "permit",
+      "sim_ptw",
+      "maintenance",
+      "sim_maintenance",
+      "workforce",
+      "sim_workforce",
+    ],
+  },
+  {
+    id: "analysis",
+    title: "Analysis",
+    blurb: "Neighborhood & forecast",
+    agents: ["spatial", "predictive_trend"],
+  },
+  {
+    id: "verdict",
+    title: "Verdict",
+    blurb: "Compound judgment",
+    agents: ["orchestrator", "sim_orchestrator"],
+  },
+  {
+    id: "enrichment",
+    title: "Enrichment",
+    blurb: "Post-verdict context",
+    agents: ["incident_pattern", "shift_handover"],
+  },
+];
+
+const AGENT_PHASE = new Map<string, PipelinePhaseId>(
+  PIPELINE_PHASES.flatMap((p) => p.agents.map((a) => [a, p.id] as const)),
+);
+
+const CANONICAL_AGENT_ORDER = PIPELINE_PHASES.flatMap((p) => p.agents);
 
 const KIND_LABELS: Record<AgentStepKind, string> = {
   started: "Starting",
@@ -59,9 +111,6 @@ const KIND_LABELS: Record<AgentStepKind, string> = {
   completed: "Done",
   error: "Error",
 };
-
-/** Groups collapse when they exceed this many content steps. */
-const COLLAPSE_THRESHOLD = 4;
 
 function kindClass(kind: string): string {
   if (kind === "verdict") return styles.kindVerdict;
@@ -83,6 +132,7 @@ function flowLabel(agent: string): string {
   const short: Record<string, string> = {
     orchestrator: "Orch",
     sim_orchestrator: "Orch Sim",
+    predictive_trend: "Forecast",
     incident_pattern: "Incident",
     shift_handover: "Handover",
     sim_maintenance: "Maint",
@@ -103,31 +153,110 @@ function contentSteps(steps: AgentStepEvent[]): AgentStepEvent[] {
   return steps.filter((s) => s.kind !== "started" && s.kind !== "completed");
 }
 
-function groupByAgent(steps: AgentStepEvent[]): {
+function canonicalAgentIndex(agent: string): number {
+  const idx = CANONICAL_AGENT_ORDER.indexOf(agent);
+  return idx >= 0 ? idx : CANONICAL_AGENT_ORDER.length + 1;
+}
+
+function groupByAgentCanonical(steps: AgentStepEvent[]): {
   agent: string;
   steps: AgentStepEvent[];
 }[] {
-  const order: string[] = [];
   const map = new Map<string, AgentStepEvent[]>();
   for (const s of steps) {
-    if (!map.has(s.agent)) {
-      map.set(s.agent, []);
-      order.push(s.agent);
-    }
+    if (!map.has(s.agent)) map.set(s.agent, []);
     map.get(s.agent)!.push(s);
   }
-  return order.map((agent) => ({ agent, steps: map.get(agent)! }));
+  return [...map.entries()]
+    .map(([agent, agentSteps]) => ({ agent, steps: agentSteps }))
+    .filter((g) => contentSteps(g.steps).length > 0)
+    .sort(
+      (a, b) =>
+        canonicalAgentIndex(a.agent) - canonicalAgentIndex(b.agent) ||
+        a.agent.localeCompare(b.agent),
+    );
 }
 
-function groupTone(agent: string, steps: AgentStepEvent[]): "risk" | "clearance" | "verdict" | "neutral" {
+function groupIntoPhases(
+  groups: { agent: string; steps: AgentStepEvent[] }[],
+): {
+  id: PipelinePhaseId | "other";
+  title: string;
+  blurb: string;
+  groups: { agent: string; steps: AgentStepEvent[] }[];
+}[] {
+  const byPhase = new Map<
+    PipelinePhaseId | "other",
+    { agent: string; steps: AgentStepEvent[] }[]
+  >();
+
+  for (const g of groups) {
+    const phase = AGENT_PHASE.get(g.agent) ?? "other";
+    if (!byPhase.has(phase)) byPhase.set(phase, []);
+    byPhase.get(phase)!.push(g);
+  }
+
+  const ordered: {
+    id: PipelinePhaseId | "other";
+    title: string;
+    blurb: string;
+    groups: { agent: string; steps: AgentStepEvent[] }[];
+  }[] = [];
+
+  for (const phase of PIPELINE_PHASES) {
+    const phaseGroups = byPhase.get(phase.id);
+    if (phaseGroups && phaseGroups.length > 0) {
+      ordered.push({
+        id: phase.id,
+        title: phase.title,
+        blurb: phase.blurb,
+        groups: phaseGroups,
+      });
+    }
+  }
+
+  const other = byPhase.get("other");
+  if (other && other.length > 0) {
+    ordered.push({
+      id: "other",
+      title: "Other",
+      blurb: "Additional agents",
+      groups: other,
+    });
+  }
+
+  return ordered;
+}
+
+function groupTone(
+  _agent: string,
+  steps: AgentStepEvent[],
+): "risk" | "clearance" | "verdict" | "neutral" {
   if (steps.some((s) => s.kind === "verdict")) return "verdict";
-  if (steps.some((s) => s.finding === "risk" || s.kind === "local_risk" || s.kind === "error")) {
+  if (
+    steps.some(
+      (s) =>
+        s.finding === "risk" || s.kind === "local_risk" || s.kind === "error",
+    )
+  ) {
     return "risk";
   }
   if (steps.length > 0 && steps.every((s) => s.finding === "clearance")) {
     return "clearance";
   }
   return "neutral";
+}
+
+function agentHeadline(steps: AgentStepEvent[]): AgentStepEvent | null {
+  const verdict = steps.find((s) => s.kind === "verdict");
+  if (verdict) return verdict;
+  const obs = [...steps].reverse().find((s) => s.kind === "observation");
+  if (obs) return obs;
+  const risk = steps.find((s) => s.kind === "local_risk");
+  if (risk) return risk;
+  const err = steps.find((s) => s.kind === "error");
+  if (err) return err;
+  return steps[0] ?? null;
 }
 
 function StepRow({
@@ -180,43 +309,53 @@ function AgentGroup({
   const visible = contentSteps(steps);
   if (visible.length === 0) return null;
 
-  const collapse = visible.length > COLLAPSE_THRESHOLD;
-  const header = (
-    <div className={styles.groupHeader}>
-      <span className={styles.groupAgent}>{agentLabel(agent)}</span>
-      <span className={styles.groupRole}>{agentRole(agent)}</span>
-      <span className={styles.groupCount}>{visible.length}</span>
-    </div>
-  );
-
-  const list = (
-    <ul className={styles.stepList}>
-      {visible.map((s) => (
-        <StepRow key={s.id} step={s} inProgress={inProgress} />
-      ))}
-    </ul>
-  );
+  const tone = groupTone(agent, visible);
+  const headline = agentHeadline(visible);
+  const detailSteps = headline
+    ? visible.filter((s) => s.id !== headline.id)
+    : visible;
 
   const focusAttrs = {
     ref: groupRef,
     "data-agent": agent,
+    "data-tone": tone,
     "data-focused": focused ? "true" : undefined,
     "data-dimmed": dimmed ? "true" : undefined,
   } as const;
 
-  if (collapse) {
-    return (
-      <details className={styles.group} {...focusAttrs} open>
-        <summary className={styles.groupSummary}>{header}</summary>
-        {list}
-      </details>
-    );
-  }
-
   return (
     <section className={styles.group} {...focusAttrs}>
-      {header}
-      {list}
+      <div className={styles.groupHeader}>
+        <span className={styles.groupAgent}>{agentLabel(agent)}</span>
+        <span className={styles.groupRole}>{agentRole(agent)}</span>
+        <span className={styles.groupTone} data-tone={tone}>
+          {tone === "verdict"
+            ? "Verdict"
+            : tone === "risk"
+              ? "Risk"
+              : tone === "clearance"
+                ? "Clear"
+                : "Neutral"}
+        </span>
+      </div>
+      {headline ? (
+        <p className={styles.headline} data-kind={headline.kind}>
+          {headline.message}
+        </p>
+      ) : null}
+      {detailSteps.length > 0 ? (
+        <details className={styles.stepDetails}>
+          <summary className={styles.stepDetailsSummary}>
+            {detailSteps.length} detail
+            {detailSteps.length === 1 ? "" : "s"}
+          </summary>
+          <ul className={styles.stepList}>
+            {detailSteps.map((s) => (
+              <StepRow key={s.id} step={s} inProgress={inProgress} />
+            ))}
+          </ul>
+        </details>
+      ) : null}
     </section>
   );
 }
@@ -232,7 +371,9 @@ function agentAccentVar(agent: string): string {
   ) {
     return "var(--domain-people)";
   }
-  if (agent === "spatial") return "var(--domain-spatial)";
+  if (agent === "spatial" || agent === "predictive_trend") {
+    return "var(--domain-spatial)";
+  }
   if (agent === "incident_pattern" || agent === "shift_handover") {
     return "var(--domain-evidence)";
   }
@@ -262,6 +403,9 @@ type SimNode = FlowNodeModel & {
 const FLOW_W = 168;
 const FLOW_PAD_X = 56;
 const FLOW_PAD_Y = 32;
+/** Minimum vertical spacing so bubble pills do not overlap */
+const FLOW_MIN_ROW_GAP = 32;
+const FLOW_MAX_ROW_GAP = 48;
 const FLOW_MAX_PULL = 20;
 const FLOW_SPRING = 0.12;
 const FLOW_DAMP = 0.82;
@@ -300,17 +444,31 @@ function RubberFlowGraph({
   const t0Ref = useRef(performance.now());
   const runningRef = useRef(false);
   const visibleRef = useRef(true);
-  const canvasHRef = useRef(280);
-  const [canvasH, setCanvasH] = useState(280);
+  const viewportHRef = useRef(280);
+  const contentHRef = useRef(280);
+  const [viewportH, setViewportH] = useState(280);
 
   const structureKey = nodes
     .map((n) => `${n.agent}:${n.count}:${n.tone}`)
     .join("|");
   const nCount = Math.max(nodes.length, 1);
+  const minContentH =
+    nCount <= 1
+      ? viewportH
+      : FLOW_PAD_Y * 2 + (nCount - 1) * FLOW_MIN_ROW_GAP;
+  const contentH = Math.max(viewportH, minContentH);
   const rowGap =
     nCount <= 1
       ? 0
-      : Math.max(48, (canvasH - FLOW_PAD_Y * 2) / (nCount - 1));
+      : Math.min(
+          FLOW_MAX_ROW_GAP,
+          (contentH - FLOW_PAD_Y * 2) / (nCount - 1),
+        );
+  const scrollable = contentH > viewportH + 1;
+
+  useEffect(() => {
+    contentHRef.current = contentH;
+  }, [contentH]);
 
   const paint = useCallback(() => {
     const sim = simRef.current;
@@ -346,8 +504,8 @@ function RubberFlowGraph({
     const update = () => {
       const h = Math.floor(el.getBoundingClientRect().height);
       if (h > 0) {
-        canvasHRef.current = h;
-        setCanvasH(h);
+        viewportHRef.current = h;
+        setViewportH(h);
       }
     };
     update();
@@ -408,7 +566,7 @@ function RubberFlowGraph({
         if (!runningRef.current) return;
         const t = (now - t0Ref.current) / 1000;
         const dragging = dragRef.current?.agent ?? null;
-        const h = wrapRef.current?.clientHeight || canvasHRef.current;
+        const h = contentHRef.current;
         for (const n of simRef.current) {
           if (n.agent === dragging) continue;
 
@@ -459,7 +617,10 @@ function RubberFlowGraph({
     const el = wrapRef.current;
     if (!el) return { x: 0, y: 0 };
     const r = el.getBoundingClientRect();
-    return { x: clientX - r.left, y: clientY - r.top };
+    return {
+      x: clientX - r.left,
+      y: clientY - r.top + el.scrollTop,
+    };
   }, []);
 
   const nearestAgent = useCallback((x: number, y: number): string | null => {
@@ -479,7 +640,7 @@ function RubberFlowGraph({
     (e: ReactPointerEvent<HTMLDivElement>) => {
       const p = clientToLocal(e.clientX, e.clientY);
       const drag = dragRef.current;
-      const h = wrapRef.current?.clientHeight || canvasHRef.current;
+      const h = contentHRef.current;
       if (drag) {
         const n = simRef.current.find((x) => x.agent === drag.agent);
         if (!n) return;
@@ -589,56 +750,62 @@ function RubberFlowGraph({
       <div
         ref={wrapRef}
         className={styles.flowCanvas}
+        data-scrollable={scrollable ? "true" : undefined}
         onPointerDown={onCanvasPointerDown}
         onPointerMove={onCanvasPointerMove}
         onPointerUp={onPointerUp}
         onPointerCancel={onPointerUp}
         onPointerLeave={onCanvasLeave}
       >
-        <svg
-          className={styles.flowSvg}
-          width={FLOW_W}
-          height={canvasH}
-          aria-hidden
+        <div
+          className={styles.flowInner}
+          style={{ height: contentH, width: FLOW_W }}
         >
-          {sim.slice(1).map((n, i) => {
-            const prev = sim[i];
-            if (!prev) return null;
+          <svg
+            className={styles.flowSvg}
+            width={FLOW_W}
+            height={contentH}
+            aria-hidden
+          >
+            {sim.slice(1).map((n, i) => {
+              const prev = sim[i];
+              if (!prev) return null;
+              return (
+                <line
+                  key={`e-${prev.agent}-${n.agent}`}
+                  ref={(el) => setEdgeRef(i, el)}
+                  x1={prev.x}
+                  y1={prev.y}
+                  x2={n.x}
+                  y2={n.y}
+                  className={styles.flowEdge}
+                />
+              );
+            })}
+          </svg>
+          {sim.map((n) => {
+            const active = focusedAgent === n.agent;
             return (
-              <line
-                key={`e-${prev.agent}-${n.agent}`}
-                ref={(el) => setEdgeRef(i, el)}
-                x1={prev.x}
-                y1={prev.y}
-                x2={n.x}
-                y2={n.y}
-                className={styles.flowEdge}
-              />
+              <div
+                key={n.agent}
+                ref={(el) => setBubbleRef(n.agent, el)}
+                className={styles.flowBubble}
+                data-active={active ? "true" : undefined}
+                style={
+                  {
+                    left: n.x,
+                    top: n.y,
+                    "--flow-accent": flowAccent(n.agent, n.tone),
+                  } as CSSProperties
+                }
+              >
+                <span className={styles.flowDot} aria-hidden />
+                <span className={styles.flowLabel}>{flowLabel(n.agent)}</span>
+                <span className={styles.flowMeta}>{n.count}</span>
+              </div>
             );
           })}
-        </svg>
-        {sim.map((n) => {
-          const active = focusedAgent === n.agent;
-          return (
-            <div
-              key={n.agent}
-              ref={(el) => setBubbleRef(n.agent, el)}
-              className={styles.flowBubble}
-              data-active={active ? "true" : undefined}
-              style={
-                {
-                  left: n.x,
-                  top: n.y,
-                  "--flow-accent": flowAccent(n.agent, n.tone),
-                } as CSSProperties
-              }
-            >
-              <span className={styles.flowDot} aria-hidden />
-              <span className={styles.flowLabel}>{flowLabel(n.agent)}</span>
-              <span className={styles.flowMeta}>{n.count}</span>
-            </div>
-          );
-        })}
+        </div>
       </div>
     </aside>
   );
@@ -662,8 +829,10 @@ export function AgentTracePanel({
 }: AgentTracePanelProps) {
   const liveSteps = useAgentStepsForReview(reviewId);
   const listRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDetailsElement>(null);
   const groupEls = useRef(new Map<string, HTMLElement>());
   const [focusedAgent, setFocusedAgent] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState(false);
 
   const steps = useMemo(() => {
     if (liveSteps.length > 0) return liveSteps;
@@ -680,11 +849,9 @@ export function AgentTracePanel({
     return normalizeAgentTrace(raw, assessment);
   }, [liveSteps, assessment]);
 
-  const groups = useMemo(() => {
-    return groupByAgent(steps).filter(
-      (g) => contentSteps(g.steps).length > 0,
-    );
-  }, [steps]);
+  const groups = useMemo(() => groupByAgentCanonical(steps), [steps]);
+
+  const phases = useMemo(() => groupIntoPhases(groups), [groups]);
 
   const flowNodes = useMemo(
     () =>
@@ -701,10 +868,6 @@ export function AgentTracePanel({
     [groups, inProgress],
   );
 
-  const verdict = useMemo(
-    () => [...steps].reverse().find((s) => s.kind === "verdict") ?? null,
-    [steps],
-  );
   const stepCount = contentSteps(steps).length;
 
   const setGroupRef = useCallback((agent: string, el: HTMLElement | null) => {
@@ -769,68 +932,106 @@ export function AgentTracePanel({
     scrollTimers.current = [];
   }, []);
 
+  const onToggle = useCallback((e: SyntheticEvent<HTMLDetailsElement>) => {
+    const open = e.currentTarget.open;
+    setExpanded(open);
+    if (!open) return;
+    requestAnimationFrame(() => {
+      rootRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "nearest",
+      });
+    });
+  }, []);
+
   return (
-    <section
+    <details
+      ref={rootRef}
       className={styles.root}
       data-in-progress={inProgress ? "true" : undefined}
       aria-label="Agent investigation trace"
       aria-busy={inProgress ? "true" : undefined}
+      onToggle={onToggle}
     >
-      <header className={styles.header}>
-        {inProgress ? (
-          <span className={styles.liveDot} aria-hidden />
-        ) : null}
-        <h3 className={styles.title}>Agent trace</h3>
-        {inProgress ? (
-          <span className={styles.inProgressBadge}>In progress</span>
-        ) : null}
-        {stepCount > 0 && (
-          <span className={styles.count}>{stepCount}</span>
-        )}
-      </header>
-
-      {steps.length === 0 || groups.length === 0 ? (
-        inProgress ? (
-          <div className={styles.starting}>
-            <span className={styles.startingPulse} aria-hidden />
-            <p>Agents are starting — steps will appear here as they run.</p>
+      <summary className={styles.header}>
+        <div className={styles.headerMain}>
+          <div className={styles.headerRow}>
+            {inProgress ? (
+              <span className={styles.liveDot} aria-hidden />
+            ) : null}
+            <h3 className={styles.title}>Agent trace</h3>
+            {inProgress ? (
+              <span className={styles.inProgressBadge}>In progress</span>
+            ) : null}
+            {stepCount > 0 && (
+              <span className={styles.count}>{stepCount}</span>
+            )}
+            <span className={styles.chevron} aria-hidden>
+              ⌄
+            </span>
           </div>
-        ) : (
-          <p className={styles.empty}>
-            No agent trace recorded for this review yet.
+          <p className={styles.blurb}>
+            Step-by-step view of how the system checked sensors, nearby hazards,
+            and reached a verdict — from start to finish.
           </p>
-        )
-      ) : (
-        <div className={styles.layout}>
-          <div className={styles.detailPane} ref={listRef}>
-            <div className={styles.body}>
-              {groups.map(({ agent, steps: agentSteps }) => (
-                <AgentGroup
-                  key={agent}
-                  agent={agent}
-                  steps={agentSteps}
-                  focused={focusedAgent === agent}
-                  dimmed={focusedAgent != null && focusedAgent !== agent}
-                  groupRef={(el) => setGroupRef(agent, el)}
-                  inProgress={inProgress}
-                />
-              ))}
-              {verdict && !inProgress && (
-                <aside className={styles.verdictBanner} aria-label="Compound verdict">
-                  <span className={styles.verdictEyebrow}>Outcome</span>
-                  <p className={styles.verdictText}>{verdict.message}</p>
-                </aside>
-              )}
-            </div>
-          </div>
-          <RubberFlowGraph
-            nodes={flowNodes}
-            focusedAgent={focusedAgent}
-            onFocus={focusAgent}
-            onClear={clearFocus}
-          />
         </div>
-      )}
-    </section>
+      </summary>
+
+      {expanded ? (
+        steps.length === 0 || groups.length === 0 ? (
+          inProgress ? (
+            <div className={styles.starting}>
+              <span className={styles.startingPulse} aria-hidden />
+              <p>Agents are starting — steps will appear here as they run.</p>
+            </div>
+          ) : (
+            <p className={styles.empty}>
+              No agent trace recorded for this review yet.
+            </p>
+          )
+        ) : (
+          <div className={styles.layout}>
+            <div className={styles.detailPane} ref={listRef}>
+              <div className={styles.body}>
+                {phases.map((phase) => (
+                  <div
+                    key={phase.id}
+                    className={styles.phase}
+                    data-phase={phase.id}
+                  >
+                    <header className={styles.phaseHeader}>
+                      <h4 className={styles.phaseTitle}>{phase.title}</h4>
+                      <p className={styles.phaseBlurb}>{phase.blurb}</p>
+                    </header>
+                    <div className={styles.phaseBody}>
+                      {phase.groups.map(({ agent, steps: agentSteps }) => (
+                        <AgentGroup
+                          key={agent}
+                          agent={agent}
+                          steps={agentSteps}
+                          focused={focusedAgent === agent}
+                          dimmed={
+                            focusedAgent != null && focusedAgent !== agent
+                          }
+                          groupRef={(el) => setGroupRef(agent, el)}
+                          inProgress={inProgress}
+                        />
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+            <RubberFlowGraph
+              nodes={flowNodes}
+              focusedAgent={focusedAgent}
+              onFocus={focusAgent}
+              onClear={clearFocus}
+            />
+          </div>
+        )
+      ) : null}
+    </details>
   );
 }

@@ -40,37 +40,6 @@
   gap: var(--space-2);
 }
 
-.embeddedMeta {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-muted);
-  border-left: 3px solid var(--status-info);
-  background: color-mix(in srgb, var(--surface-canvas) 55%, transparent);
-}
-
-.embeddedMeta[data-risk="elevated"] {
-  border-left-color: var(--status-elevated);
-}
-
-.embeddedMeta[data-risk="blocking"] {
-  border-left-color: var(--status-blocking);
-}
-
-.embeddedMeta[data-risk="nominal"] {
-  border-left-color: var(--status-nominal);
-}
-
-.embeddedSub {
-  margin: 0;
-  font-size: var(--text-sm);
-  line-height: var(--leading-relaxed);
-  color: var(--text-secondary);
-  text-transform: capitalize;
-}
-
 .missing {
   padding: var(--space-8) var(--space-5);
   color: var(--text-muted);

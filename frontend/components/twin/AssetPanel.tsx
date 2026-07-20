@@ -6,11 +6,17 @@ import type { LiveAssetView } from "@/lib/liveStore";
 import { useLiveStore } from "@/lib/liveStore";
 import { AgentBrainPanel } from "./AgentBrainPanel";
 import { DomainRadar } from "./DomainRadar";
+import { TrendForecastCard } from "./TrendForecastCard";
 import { WhyBrief } from "./WhyBrief";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
-import { AssessingBanner } from "@/components/assessment/AssessingBanner";
-import { nextActionForView, ownerNameForView } from "@/lib/openWork";
+import {
+  AssessingBanner,
+  priorSettledAssessment,
+} from "@/components/assessment/AssessingBanner";
+import { nextActionForView, ownerNameForView, workStatusForView } from "@/lib/openWork";
+import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
+import { useHorizontalResize } from "./useHorizontalResize";
 import actionStyles from "@/components/decision/RecommendedAction.module.css";
 import styles from "./AssetPanel.module.css";
 
@@ -28,6 +34,11 @@ const ReviewDetail = dynamic(
 interface AssetPanelProps {
   view: LiveAssetView;
   onClose: () => void;
+  width: number;
+  minWidth: number;
+  maxWidth: number;
+  onWidthChange: (width: number) => void;
+  onResizingChange?: (resizing: boolean) => void;
 }
 
 const EXIT_MS = 160;
@@ -126,7 +137,15 @@ function QuickDecisionSection({
   );
 }
 
-export function AssetPanel({ view, onClose }: AssetPanelProps) {
+export function AssetPanel({
+  view,
+  onClose,
+  width,
+  minWidth,
+  maxWidth,
+  onWidthChange,
+  onResizingChange,
+}: AssetPanelProps) {
   const { asset, risk_level, sensor_critical, review, assessment, detail } = view;
   const decision = detail?.decision ?? null;
   const recommendations = assessment?.recommendations ?? [];
@@ -136,9 +155,24 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
   const [quickDecisionOpen, setQuickDecisionOpen] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
+  const { resizing, handleProps } = useHorizontalResize({
+    width,
+    onWidthChange,
+    minWidth,
+    maxWidth,
+    edge: "w",
+  });
+
+  useEffect(() => {
+    onResizingChange?.(resizing);
+  }, [resizing, onResizingChange]);
+
   const assetPanelMode = useLiveStore((s) => s.assetPanelMode);
   const setAssetPanelMode = useLiveStore((s) => s.setAssetPanelMode);
   const loadReviewDetail = useLiveStore((s) => s.loadReviewDetail);
+  const assessmentHistory = useLiveStore((s) =>
+    review ? s.assessmentsByReview[review.id] : undefined,
+  );
   const isFullReview = assetPanelMode === "fullReview";
 
   const assessmentInProgress =
@@ -146,14 +180,30 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
     assessment?.status === "pending" ||
     assessment?.status === "generating";
 
+  const priorAssessment = assessmentInProgress
+    ? priorSettledAssessment(assessmentHistory) ??
+      (assessment?.status === "complete" || assessment?.status === "failed"
+        ? assessment
+        : null)
+    : null;
+  const provisionalDisplayRisk = openWorkDisplayRisk(risk_level, sensor_critical);
+
   const openReview =
     review != null &&
     review.state !== "closed" &&
     review.state !== "decided";
 
+  const reviewClosed = review?.state === "closed";
+  const workStatus = workStatusForView(view);
+
   /** Healthy asset — no open incident work. Keep domains for live context. */
   const isHappy =
-    risk_level === "nominal" && !assessmentInProgress && !openReview;
+    !assessmentInProgress &&
+    !openReview &&
+    (!review ||
+      (reviewClosed &&
+        workStatus.kind === "closed" &&
+        workStatus.badgeRisk === "nominal"));
 
   const otherRecommendations = recommendations.slice(1);
 
@@ -179,27 +229,39 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
     <aside
       className={styles.drawer}
       data-mode={assetPanelMode}
+      data-resizing={resizing ? "true" : undefined}
       aria-label={
         isFullReview ? `${asset.name} full review` : `${asset.name} detail`
       }
     >
+      <div
+        className={styles.resizeHandle}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label="Resize asset panel"
+        aria-valuenow={width}
+        aria-valuemin={minWidth}
+        aria-valuemax={maxWidth}
+        tabIndex={0}
+        {...handleProps}
+      />
       <header className={styles.header}>
         <div className={styles.titleBlock}>
           <h2 className={styles.title}>{asset.name}</h2>
           <p className={styles.subtitle}>
-            <span className="badge" data-risk={risk_level}>
-              {risk_level}
+            <span className="badge" data-risk={workStatus.badgeRisk}>
+              {workStatus.label}
             </span>
-            {sensor_critical ? (
+            {sensor_critical && !workStatus.resolved ? (
               <span className={styles.criticalBadge}>sensor critical</span>
             ) : null}
-            {review && !isHappy && (
+            {review && !isHappy && !reviewClosed && (
               <span className="badge">
                 {review.state.replaceAll("_", " ")}
               </span>
             )}
           </p>
-          {review && !isHappy && !isFullReview && (
+          {review && !isHappy && !isFullReview && !reviewClosed && (
             <p className={styles.trigger} data-risk={risk_level}>
               <span className={styles.triggerLabel}>Triggered by</span>
               <span className={styles.triggerValue}>
@@ -269,15 +331,19 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
             ) : (
               <section
                 className={styles.whyCard}
-                data-risk={risk_level}
+                data-risk={workStatus.badgeRisk}
                 aria-labelledby="why-heading"
               >
                 <h3 id="why-heading" className={styles.sectionTitle}>
-                  Why
+                  {reviewClosed ? "Status" : "Why"}
                 </h3>
                 {assessmentInProgress && review ? (
                   <>
-                    <AssessingBanner />
+                    <AssessingBanner
+                      priorRisk={priorAssessment?.risk_level ?? null}
+                      provisionalRisk={provisionalDisplayRisk}
+                      sensorCritical={sensor_critical}
+                    />
                     <AgentBrainPanel reviewId={review.id} />
                   </>
                 ) : (
@@ -288,7 +354,14 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
 
             {!assessmentInProgress && <DomainRadar view={view} />}
 
-            {!isHappy && !assessmentInProgress && (
+            {!isHappy && (
+              <TrendForecastCard
+                assessment={assessment}
+                reviewId={review?.id}
+              />
+            )}
+
+            {!isHappy && !assessmentInProgress && !reviewClosed && (
               <section
                 className={actionStyles.actionSection}
                 aria-labelledby="do-heading"
@@ -365,7 +438,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
           </>
         )}
 
-        {review && !isHappy && (
+        {review && !isHappy && !reviewClosed && (
           <QuickDecisionSection
             open={quickDecisionOpen}
             onClose={() => setQuickDecisionOpen(false)}
@@ -381,9 +454,9 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
       {review && !isHappy && (
         <div
           className={styles.footer}
-          data-single-action={assessmentInProgress ? "true" : undefined}
+          data-single-action={assessmentInProgress || reviewClosed ? "true" : undefined}
         >
-          {!assessmentInProgress && (
+          {!assessmentInProgress && !reviewClosed && (
             <button
               type="button"
               className={`btn ${styles.footerBtn}`}

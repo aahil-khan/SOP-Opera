@@ -13,6 +13,7 @@ const AGENT_LABELS: Record<string, string> = {
   permit: "Permit",
   maintenance: "Maintenance",
   workforce: "Workforce",
+  predictive_trend: "Forecast",
   spatial: "Spatial",
   incident_pattern: "Incident",
   shift_handover: "Handover",
@@ -58,6 +59,34 @@ function formatLeadTime(seconds: number): string {
 
 function leadTimeLine(detail: Record<string, unknown> | undefined): string | null {
   if (!detail) return null;
+  const forecasts = Array.isArray(detail.trend_forecasts)
+    ? (detail.trend_forecasts as Array<Record<string, unknown>>)
+    : [];
+  const bestForecast = forecasts
+    .filter(
+      (f) =>
+        typeof f.seconds_to_critical === "number" &&
+        Number.isFinite(f.seconds_to_critical as number) &&
+        typeof f.r_squared === "number",
+    )
+    .sort(
+      (a, b) =>
+        (a.seconds_to_critical as number) - (b.seconds_to_critical as number),
+    )[0];
+  if (bestForecast) {
+    const metric =
+      typeof bestForecast.metric === "string"
+        ? bestForecast.metric.replaceAll("_", " ")
+        : "sensor";
+    const eta = bestForecast.seconds_to_critical as number;
+    const r2 = bestForecast.r_squared as number;
+    if (eta > 0) {
+      return `${metric} projected to hit critical in ${formatLeadTime(eta)} (R²=${r2.toFixed(2)}).`;
+    }
+    if (eta <= 0) {
+      return `${metric} at or above critical threshold (R²=${r2.toFixed(2)}).`;
+    }
+  }
   const grounded = detail.grounded_fact_types;
   const hasElevated =
     Array.isArray(grounded) && grounded.includes("elevated_gas");
