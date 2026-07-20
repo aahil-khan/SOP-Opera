@@ -8,9 +8,10 @@ import {
   type PointerEvent,
 } from "react";
 import { createPortal } from "react-dom";
-import type { RiskLevel } from "@/shared/enums";
-import type { PlantFloor } from "@/shared/enums";
+import type { PlantFloor, RiskLevel } from "@/shared/enums";
+import type { SpatialLinkLine } from "@/lib/riskHeatmap";
 import floorPlanMap from "@/lib/floor_plan_map.json";
+import { SpatialLinksLayer } from "./SpatialLinksLayer";
 import { AssetMarker } from "./AssetMarker";
 import { MAP_VIEWBOX, MAP_WORLD } from "./MapViewport";
 import { loadFloorSchematic } from "./floorPlanShared";
@@ -40,8 +41,10 @@ type HoverTip = {
 interface FloorPlanProps {
   floor: PlantFloor;
   riskByAsset: Record<string, RiskLevel>;
+  criticalByAsset?: Record<string, boolean>;
   selectedAssetId: string | null;
   onSelectAsset: (id: string | null) => void;
+  spatialLinks?: SpatialLinkLine[];
 }
 
 const MAP = floorPlanMap as Record<string, FloorEntry>;
@@ -67,8 +70,10 @@ function tipFromTarget(
 export function FloorPlan({
   floor,
   riskByAsset,
+  criticalByAsset = {},
   selectedAssetId,
   onSelectAsset,
+  spatialLinks = [],
 }: FloorPlanProps) {
   const [schematic, setSchematic] = useState<string>("");
   const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
@@ -172,6 +177,7 @@ export function FloorPlan({
         {floorEntries.map(([assetId, entry]) => {
           if (!entry.hit) return null;
           const risk = riskByAsset[assetId] ?? "nominal";
+          const sensorCritical = criticalByAsset[assetId] ?? false;
           const selected = selectedAssetId === assetId;
           const { x, y, w, h, angle } = entry.hit;
           const cx = x + w / 2;
@@ -180,6 +186,7 @@ export function FloorPlan({
             <rect
               className={styles.hitRegion}
               data-risk={risk}
+              data-sensor-critical={sensorCritical ? "true" : undefined}
               data-selected={selected ? "true" : undefined}
               data-map-marker=""
               data-svg-id={entry.svg_element_id}
@@ -211,7 +218,8 @@ export function FloorPlan({
 
         {floorEntries.map(([assetId, entry]) => {
           const risk = riskByAsset[assetId] ?? "nominal";
-          if (risk === "nominal" && entry.hit) return null;
+          const sensorCritical = criticalByAsset[assetId] ?? false;
+          if (risk === "nominal" && !sensorCritical && entry.hit) return null;
           return (
             <AssetMarker
               key={assetId}
@@ -220,6 +228,7 @@ export function FloorPlan({
               x={entry.x}
               y={entry.y}
               risk={risk}
+              sensorCritical={sensorCritical}
               selected={selectedAssetId === assetId}
               hovered={hoveredAssetId === assetId}
               onSelect={onSelectAsset}
@@ -227,6 +236,8 @@ export function FloorPlan({
           );
         })}
       </svg>
+
+      <SpatialLinksLayer links={spatialLinks} />
 
       {mounted &&
         hoverTip &&

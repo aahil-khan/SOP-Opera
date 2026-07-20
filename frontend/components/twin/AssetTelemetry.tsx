@@ -6,6 +6,11 @@ import {
   type TelemetryMetricKey,
   type TelemetryPoint,
 } from "@/lib/liveStore";
+import {
+  metricCriticalAt,
+  metricElevatedAt,
+  sensorRiskBand,
+} from "@/lib/sensorThresholds";
 import styles from "./AssetTelemetry.module.css";
 
 const GAUGES: {
@@ -13,14 +18,13 @@ const GAUGES: {
   label: string;
   unit: string;
   max: number;
-  warnAt: number;
 }[] = [
-  { key: "gas_reading", label: "Gas", unit: "ppm", max: 50, warnAt: 20 },
-  { key: "temp_reading", label: "Temperature", unit: "°C", max: 160, warnAt: 80 },
-  { key: "vibration_mm_s", label: "Vibration", unit: "mm/s", max: 15, warnAt: 7.1 },
-  { key: "level_pct", label: "Level", unit: "%", max: 100, warnAt: 95 },
-  { key: "ph", label: "pH", unit: "", max: 14, warnAt: 9 },
-  { key: "wind_ms", label: "Wind", unit: "m/s", max: 30, warnAt: 15 },
+  { key: "gas_reading", label: "Gas", unit: "ppm", max: 60 },
+  { key: "temp_reading", label: "Temperature", unit: "°C", max: 160 },
+  { key: "vibration_mm_s", label: "Vibration", unit: "mm/s", max: 15 },
+  { key: "level_pct", label: "Level", unit: "%", max: 100 },
+  { key: "ph", label: "pH", unit: "", max: 14 },
+  { key: "wind_ms", label: "Wind", unit: "m/s", max: 30 },
 ];
 
 const CHART_W = 280;
@@ -49,6 +53,7 @@ function MiniChart({
   warnAt,
   maxScale,
   elevated,
+  critical,
   metricKey,
   unit,
 }: {
@@ -56,6 +61,7 @@ function MiniChart({
   warnAt: number;
   maxScale: number;
   elevated: boolean;
+  critical: boolean;
   metricKey: TelemetryMetricKey;
   unit: string;
 }) {
@@ -134,7 +140,7 @@ function MiniChart({
   return (
     <div
       className={styles.chartFrame}
-      data-risk={elevated ? "elevated" : "nominal"}
+      data-risk={critical ? "critical" : elevated ? "elevated" : "nominal"}
       data-hovering={hover ? "true" : undefined}
     >
       <div className={styles.chartPlotWrap}>
@@ -296,6 +302,7 @@ export function AssetTelemetry({
   assetId,
   embedded = false,
 }: AssetTelemetryProps) {
+  const thresholdsConfig = useLiveStore((s) => s.thresholdsConfig);
   const gas = useLiveStore((s) => s.telemetrySeries[`${assetId}::gas_reading`]);
   const temp = useLiveStore((s) => s.telemetrySeries[`${assetId}::temp_reading`]);
   const vibe = useLiveStore(
@@ -329,7 +336,15 @@ export function AssetTelemetry({
   const gauges = GAUGES.map((g) => {
     const points = seriesMap[g.key] ?? [];
     const last = points[points.length - 1];
-    return { ...g, points, value: last?.v ?? null };
+    const warnAt = metricElevatedAt(g.key, thresholdsConfig) ?? 0;
+    const criticalAt = metricCriticalAt(g.key, thresholdsConfig);
+    return {
+      ...g,
+      points,
+      value: last?.v ?? null,
+      warnAt,
+      criticalAt,
+    };
   }).filter((g) => g.value != null || g.points.length > 0);
 
   const heading = !embedded ? (
@@ -359,18 +374,31 @@ export function AssetTelemetry({
       {heading}
       <div className={styles.gaugeGrid}>
         {gauges.map((g) => {
-          const elevated = g.value != null && g.value >= g.warnAt;
+          const band =
+            g.value != null
+              ? sensorRiskBand(g.key, g.value, thresholdsConfig)
+              : "nominal";
+          const elevated = band === "elevated" || band === "critical";
+          const critical = band === "critical";
           return (
             <article
               key={g.key}
               className={styles.gauge}
-              data-risk={elevated ? "elevated" : "nominal"}
+              data-risk={band}
             >
               <div className={styles.gaugeHead}>
                 <div className={styles.gaugeTitle}>
-                  <span className={styles.gaugeLabel}>{g.label}</span>
+                  <span className={styles.gaugeLabel}>
+                    {g.label}
+                    {critical ? (
+                      <span className={styles.criticalFlag}>CRITICAL</span>
+                    ) : null}
+                  </span>
                   <span className={styles.gaugeMeta}>
                     {g.points.length} samples · warn ≥ {formatValue(g.key, g.warnAt)}
+                    {g.criticalAt != null
+                      ? ` · critical ≥ ${formatValue(g.key, g.criticalAt)}`
+                      : ""}
                     {g.unit ? ` ${g.unit}` : ""}
                   </span>
                 </div>
@@ -386,6 +414,7 @@ export function AssetTelemetry({
                 warnAt={g.warnAt}
                 maxScale={g.max}
                 elevated={elevated}
+                critical={critical}
                 metricKey={g.key}
                 unit={g.unit}
               />

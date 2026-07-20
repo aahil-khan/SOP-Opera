@@ -49,6 +49,36 @@ function agentLabel(agent: string): string {
   return AGENT_LABELS[agent] ?? agent;
 }
 
+function formatLeadTime(seconds: number): string {
+  if (seconds <= 0) return "at incident threshold now";
+  if (seconds < 60) return `~${Math.round(seconds)}s`;
+  const mins = Math.round(seconds / 60);
+  return mins === 1 ? "~1 min" : `~${mins} min`;
+}
+
+function leadTimeLine(detail: Record<string, unknown> | undefined): string | null {
+  if (!detail) return null;
+  const grounded = detail.grounded_fact_types;
+  const hasElevated =
+    Array.isArray(grounded) && grounded.includes("elevated_gas");
+  const hasCritical =
+    Array.isArray(grounded) &&
+    (grounded.includes("critical_gas") || grounded.includes("critical_temperature"));
+  const raw = detail.lead_time_seconds;
+  if (typeof raw === "number" && Number.isFinite(raw)) {
+    if (raw <= 0 && hasCritical) {
+      return "Single-sensor critical threshold already crossed.";
+    }
+    if (raw > 0) {
+      return `Compound flagged ${formatLeadTime(raw)} before single-sensor critical threshold.`;
+    }
+  }
+  if (hasElevated && !hasCritical) {
+    return "Compound blocked before single-sensor critical threshold.";
+  }
+  return null;
+}
+
 function StepRow({
   step,
   variant,
@@ -119,6 +149,10 @@ export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
     () => [...steps].reverse().find((s) => s.kind === "verdict"),
     [steps],
   );
+  const verdictLeadTime = useMemo(
+    () => (verdict ? leadTimeLine(verdict.detail) : null),
+    [verdict],
+  );
   const pinnedClearances = useMemo(() => {
     if (!verdict) return [];
     return steps.filter(
@@ -161,7 +195,12 @@ export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
       </header>
 
       {verdict && (
-        <p className={styles.verdictBanner}>{verdict.message}</p>
+        <>
+          <p className={styles.verdictBanner}>{verdict.message}</p>
+          {verdictLeadTime && (
+            <p className={styles.leadTimeBanner}>{verdictLeadTime}</p>
+          )}
+        </>
       )}
       {pinnedClearances.length > 0 && (
         <div className={styles.clearancePin} aria-label="Clearance findings">

@@ -14,7 +14,10 @@ export interface NotificationPresentation {
   toastable: boolean;
 }
 
-function riskFromSummary(summary: string): "blocking" | "elevated" | null {
+function riskFromSummary(
+  summary: string,
+): "critical" | "blocking" | "elevated" | null {
+  if (/\bcritical\b/i.test(summary)) return "critical";
   if (/\bblocking\b/i.test(summary)) return "blocking";
   if (/\belevated\b/i.test(summary)) return "elevated";
   return null;
@@ -48,6 +51,15 @@ export function presentNotification(n: Notification): NotificationPresentation {
       };
     case "assessment.completed": {
       const risk = riskFromSummary(n.summary);
+      if (risk === "critical") {
+        return {
+          label: "Critical",
+          title: "Critical risk",
+          detail: n.summary,
+          severity: "error",
+          toastable: true,
+        };
+      }
       if (risk === "blocking") {
         return {
           label: "Blocking risk",
@@ -92,10 +104,10 @@ export function presentNotification(n: Notification): NotificationPresentation {
     case "review.escalated":
       return {
         label: "Escalated",
-        title: "Escalated",
+        title: "Situation escalated",
         detail: n.summary,
-        severity: "warning",
-        toastable: false,
+        severity: "error",
+        toastable: /\bprior decision\b/i.test(n.summary),
       };
     default:
       return {

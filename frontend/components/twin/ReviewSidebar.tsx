@@ -1,6 +1,7 @@
 "use client";
 
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -12,6 +13,7 @@ import {
   useLiveStore,
   type LiveAssetView,
 } from "@/lib/liveStore";
+import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 import {
   OPEN_WORK_COLUMNS,
   columnForReviewState,
@@ -28,6 +30,52 @@ interface ReviewSidebarProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   affectedCount: number;
+}
+
+type RiskFilter = "all" | "critical" | "blocking" | "elevated";
+
+const RISK_FILTERS: { id: RiskFilter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "critical", label: "Critical" },
+  { id: "blocking", label: "Blocking" },
+  { id: "elevated", label: "Elevated" },
+];
+
+function matchesSearch(view: LiveAssetView, query: string): boolean {
+  if (!query) return true;
+  const q = query.toLowerCase();
+  const displayRisk = openWorkDisplayRisk(view.risk_level, view.sensor_critical);
+  const owner = ownerNameForView(view) ?? "";
+  const next = nextActionForView(view);
+  const haystack = [
+    view.asset.name,
+    view.asset.zone,
+    view.review?.state.replaceAll("_", " ") ?? "signal",
+    displayRisk,
+    owner,
+    next,
+  ]
+    .join(" ")
+    .toLowerCase();
+  return haystack.includes(q);
+}
+
+function matchesRiskFilter(view: LiveAssetView, riskFilter: RiskFilter): boolean {
+  if (riskFilter === "all") return true;
+  const displayRisk = openWorkDisplayRisk(view.risk_level, view.sensor_critical);
+  return displayRisk === riskFilter;
+}
+
+function filterWorkItems(
+  items: LiveAssetView[],
+  searchQuery: string,
+  riskFilter: RiskFilter,
+): LiveAssetView[] {
+  const query = searchQuery.trim();
+  if (!query && riskFilter === "all") return items;
+  return items.filter(
+    (v) => matchesSearch(v, query) && matchesRiskFilter(v, riskFilter),
+  );
 }
 
 function arrivedAt(view: LiveAssetView): number {
@@ -69,6 +117,7 @@ function WorkCard({
 }) {
   const next = nextActionForView(view);
   const owner = ownerNameForView(view);
+  const displayRisk = openWorkDisplayRisk(view.risk_level, view.sensor_critical);
   const when = view.review?.created_at
     ? relativeTime(view.review.created_at, now)
     : null;
@@ -78,7 +127,7 @@ function WorkCard({
       type="button"
       className={styles.item}
       data-active={active}
-      data-risk={view.risk_level}
+      data-risk={displayRisk}
       onClick={onSelect}
     >
       <span className={styles.itemTop}>
@@ -86,8 +135,8 @@ function WorkCard({
           {isNew ? <span className={styles.dot} aria-label="New" /> : null}
           {view.asset.name}
         </span>
-        <span className="badge" data-risk={view.risk_level}>
-          {view.risk_level}
+        <span className="badge" data-risk={displayRisk}>
+          {displayRisk}
         </span>
       </span>
       <span className={styles.itemMeta}>
@@ -121,9 +170,15 @@ export function ReviewSidebar({
   const selectAsset = useLiveStore((s) => s.selectAsset);
 
   const [activeColumn, setActiveColumn] = useState<OpenWorkColumnId>("awaiting_decision");
+  const [searchQuery, setSearchQuery] = useState("");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
+  const [filtersOpen, setFiltersOpen] = useState(false);
   const tablistRef = useRef<HTMLDivElement>(null);
   const tabRefs = useRef<Partial<Record<OpenWorkColumnId, HTMLButtonElement | null>>>({});
+  const searchRef = useRef<HTMLInputElement>(null);
   const [slider, setSlider] = useState({ left: 0, width: 0 });
+
+  const hasActiveFilter = searchQuery.trim().length > 0 || riskFilter !== "all";
 
   const views = useMemo(
     () =>
@@ -157,8 +212,28 @@ export function ReviewSidebar({
   const { isNew, now } = useNewEntries(entryIds);
 
   const items = byColumn[activeColumn];
+  const filteredItems = useMemo(
+    () => filterWorkItems(items, searchQuery, riskFilter),
+    [items, searchQuery, riskFilter],
+  );
   const activeColMeta = OPEN_WORK_COLUMNS.find((c) => c.id === activeColumn);
   const showNew = activeColumn !== "closed";
+
+  const clearFilters = useCallback(() => {
+    setSearchQuery("");
+    setRiskFilter("all");
+    searchRef.current?.focus();
+  }, []);
+
+  const toggleFilters = useCallback(() => {
+    setFiltersOpen((open) => !open);
+  }, []);
+
+  useEffect(() => {
+    if (filtersOpen) {
+      searchRef.current?.focus();
+    }
+  }, [filtersOpen]);
 
   useLayoutEffect(() => {
     const track = tablistRef.current;
@@ -218,6 +293,41 @@ export function ReviewSidebar({
             <p className={styles.subtitle}>Calls for help · select to locate</p>
           </div>
           <div className={styles.headerControls}>
+            {views.length > 0 ? (
+              <button
+                type="button"
+                className={styles.filterToggle}
+                data-open={filtersOpen ? "true" : undefined}
+                data-active={hasActiveFilter ? "true" : undefined}
+                onClick={toggleFilters}
+                aria-expanded={filtersOpen}
+                aria-controls="open-work-filters"
+                aria-label={
+                  hasActiveFilter
+                    ? "Search and filter open work (filters active)"
+                    : "Search and filter open work"
+                }
+                title="Search & filter"
+              >
+                <svg
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                {hasActiveFilter ? (
+                  <span className={styles.filterActiveDot} aria-hidden />
+                ) : null}
+              </button>
+            ) : null}
             <button
               type="button"
               className={styles.collapse}
@@ -279,6 +389,80 @@ export function ReviewSidebar({
           </div>
         </div>
 
+        {views.length > 0 && filtersOpen ? (
+          <div id="open-work-filters" className={styles.filters}>
+              <div className={styles.searchWrap}>
+                <svg
+                  className={styles.searchIcon}
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  aria-hidden
+                >
+                  <circle cx="11" cy="11" r="8" />
+                  <path d="m21 21-4.35-4.35" />
+                </svg>
+                <input
+                  ref={searchRef}
+                  type="search"
+                  className={styles.searchInput}
+                  placeholder="Search assets, zones, owners…"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                  aria-label="Search open work"
+                />
+                {searchQuery ? (
+                  <button
+                    type="button"
+                    className={styles.searchClear}
+                    onClick={() => setSearchQuery("")}
+                    aria-label="Clear search"
+                    title="Clear search"
+                  >
+                    ×
+                  </button>
+                ) : null}
+              </div>
+              <div className={styles.riskFilters} role="group" aria-label="Filter by risk">
+                {RISK_FILTERS.map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    className={styles.riskChip}
+                    data-active={riskFilter === f.id ? "true" : undefined}
+                    data-risk={f.id !== "all" ? f.id : undefined}
+                    onClick={() => setRiskFilter(f.id)}
+                    aria-pressed={riskFilter === f.id}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              {hasActiveFilter && items.length > 0 ? (
+                <p className={styles.filterMeta} role="status">
+                  {filteredItems.length} of {items.length}
+                  {filteredItems.length === 0 ? (
+                    <>
+                      {" · "}
+                      <button
+                        type="button"
+                        className={styles.filterClearLink}
+                        onClick={clearFilters}
+                      >
+                        Clear filters
+                      </button>
+                    </>
+                  ) : null}
+                </p>
+              ) : null}
+            </div>
+        ) : null}
+
         {views.length === 0 ? (
           <div className={styles.emptyState} role="status">
             <ListeningOrbit />
@@ -298,8 +482,25 @@ export function ReviewSidebar({
                     Work will appear as reviews move into this stage.
                   </p>
                 </li>
+              ) : filteredItems.length === 0 ? (
+                <li className={styles.columnEmpty} role="status">
+                  <p className={styles.emptyTitle}>No matches</p>
+                  <p className={styles.emptyCopy}>
+                    Try a different search term or risk filter.
+                  </p>
+                  <button
+                    type="button"
+                    className={styles.filterClearBtn}
+                    onClick={() => {
+                      clearFilters();
+                      setFiltersOpen(true);
+                    }}
+                  >
+                    Clear filters
+                  </button>
+                </li>
               ) : (
-                items.map((v) => {
+                filteredItems.map((v) => {
                   const id = v.review?.id ?? `signal:${v.asset.id}`;
                   const fresh = showNew && isNew(id);
                   return (

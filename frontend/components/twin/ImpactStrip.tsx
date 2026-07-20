@@ -1,10 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import {
-  getLiveAssetViews,
-  useLiveStore,
-} from "@/lib/liveStore";
+import { useLiveAssetViews, useLiveStore } from "@/lib/liveStore";
 import {
   isBlockedWork,
   isElevatedOrBlocking,
@@ -26,20 +23,10 @@ function countHazardousWorkers(
 }
 
 export function ImpactStrip({ shiftForDrawer = false }: ImpactStripProps) {
-  const assets = useLiveStore((s) => s.assets);
-  const reviews = useLiveStore((s) => s.reviews);
-  const reviewDetails = useLiveStore((s) => s.reviewDetails);
-  const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  const views = useLiveAssetViews();
   const telemetryStatus = useLiveStore((s) => s.telemetryStatus);
 
   const kpis = useMemo(() => {
-    const views = getLiveAssetViews({
-      assets,
-      reviews,
-      reviewDetails,
-      assessmentsByReview,
-    });
-
     const openReviews = views.filter(
       (v) => v.review != null && v.review.state !== "closed",
     ).length;
@@ -79,7 +66,7 @@ export function ImpactStrip({ shiftForDrawer = false }: ImpactStripProps) {
         warn: blockedWork > 0,
       },
     ];
-  }, [assets, reviews, reviewDetails, assessmentsByReview, telemetryStatus]);
+  }, [views, telemetryStatus]);
 
   return (
     <div

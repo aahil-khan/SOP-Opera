@@ -223,6 +223,31 @@ export function DomainRadar({ view }: DomainRadarProps) {
     setPinned(null);
   }, [assetId]);
 
+  const domainFocusRequest = useLiveStore((s) => s.domainFocusRequest);
+  const clearDomainFocusRequest = useLiveStore((s) => s.clearDomainFocusRequest);
+
+  // Map spatial-link pills → pin domain on the pentagon and scroll into view.
+  useEffect(() => {
+    if (!domainFocusRequest || domainFocusRequest.assetId !== assetId) return;
+    const { domain } = domainFocusRequest;
+    const score = scores.find((s) => s.domain === domain);
+    clearDomainFocusRequest();
+    if (score?.empty) return;
+    setPinned(domain);
+    const scrollRadar = () => {
+      rootRef.current?.scrollIntoView({
+        behavior: "smooth",
+        block: "nearest",
+        inline: "nearest",
+      });
+    };
+    requestAnimationFrame(() => {
+      requestAnimationFrame(scrollRadar);
+    });
+    window.setTimeout(scrollRadar, 50);
+    window.setTimeout(scrollRadar, 240);
+  }, [domainFocusRequest, assetId, scores, clearDomainFocusRequest]);
+
   const activePreview = pinned ? null : hovered;
   const previewScore: DomainScore | undefined = activePreview
     ? scores.find((s) => s.domain === activePreview)

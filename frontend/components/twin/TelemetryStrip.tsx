@@ -6,6 +6,7 @@ import {
   type TelemetryMetricKey,
   type TelemetrySample,
 } from "@/lib/liveStore";
+import { sensorRiskBand } from "@/lib/sensorThresholds";
 import styles from "./TelemetryStrip.module.css";
 
 const SOURCES = [
@@ -17,14 +18,14 @@ const SOURCES = [
 
 const METRIC_META: Record<
   TelemetryMetricKey,
-  { label: string; unit: string; warnAt?: number }
+  { label: string; unit: string }
 > = {
-  gas_reading: { label: "Gas", unit: "ppm", warnAt: 20 },
-  temp_reading: { label: "Temperature", unit: "°C", warnAt: 80 },
-  vibration_mm_s: { label: "Vibration", unit: "mm/s", warnAt: 7.1 },
+  gas_reading: { label: "Gas", unit: "ppm" },
+  temp_reading: { label: "Temperature", unit: "°C" },
+  vibration_mm_s: { label: "Vibration", unit: "mm/s" },
   level_pct: { label: "Level", unit: "%" },
   ph: { label: "pH", unit: "" },
-  wind_ms: { label: "Wind", unit: "m/s", warnAt: 15 },
+  wind_ms: { label: "Wind", unit: "m/s" },
 };
 
 function latestNumericAcrossPlant(
@@ -76,6 +77,7 @@ interface TelemetryStripProps {
 export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) {
   const bySource = useLiveStore((s) => s.telemetryBySource);
   const status = useLiveStore((s) => s.telemetryStatus);
+  const thresholdsConfig = useLiveStore((s) => s.thresholdsConfig);
   const [source, setSource] = useState<(typeof SOURCES)[number]["id"]>("scada");
 
   const cards = useMemo(() => {
@@ -84,15 +86,17 @@ export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) 
         (metric) => {
           const hit = latestNumericAcrossPlant(bySource, "scada", metric);
           const meta = METRIC_META[metric];
-          const elevated =
-            hit != null && meta.warnAt != null && hit.value >= meta.warnAt;
+          const band =
+            hit != null
+              ? sensorRiskBand(metric, hit.value, thresholdsConfig)
+              : "nominal";
           return {
             key: metric,
             label: meta.label,
             value: hit ? hit.value.toFixed(metric === "vibration_mm_s" ? 2 : 1) : "—",
             unit: meta.unit,
             hint: hit?.asset,
-            risk: elevated ? "elevated" : "nominal",
+            risk: band,
           };
         },
       );
@@ -136,7 +140,7 @@ export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) 
         risk: countHazardousWorkers(status) > 0 ? "elevated" : "nominal",
       },
     ];
-  }, [bySource, source, status]);
+  }, [bySource, source, status, thresholdsConfig]);
 
   const sampleCount = Object.keys(bySource).length;
 
@@ -170,7 +174,12 @@ export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) 
       <div className={styles.cards}>
         {cards.map((c) => (
           <div key={c.key} className={styles.card} data-risk={c.risk}>
-            <span className={styles.cardLabel}>{c.label}</span>
+            <span className={styles.cardLabel}>
+              {c.label}
+              {c.risk === "critical" ? (
+                <span className={styles.criticalFlag}>CRITICAL</span>
+              ) : null}
+            </span>
             <span className={styles.cardValue}>
               {c.value}
               {c.unit ? <span className={styles.unit}>{c.unit}</span> : null}

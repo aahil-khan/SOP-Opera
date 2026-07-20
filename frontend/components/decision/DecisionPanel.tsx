@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import Link from "next/link";
 import type { Decision } from "@/shared/schemas";
 import type { Report } from "@/shared/schemas";
@@ -17,10 +17,30 @@ interface DecisionPanelProps {
   existing: Decision | null;
 }
 
-const OUTCOMES: { value: DecisionOutcome; label: string }[] = [
-  { value: "approved", label: "Approved" },
-  { value: "approved_with_conditions", label: "Approved w/ conditions" },
-  { value: "blocked", label: "Blocked" },
+const OUTCOMES: {
+  value: DecisionOutcome;
+  title: string;
+  description: string;
+  icon: string;
+}[] = [
+  {
+    value: "approved",
+    title: "Approved",
+    description: "Proceed as recommended — all actions accepted.",
+    icon: "✓",
+  },
+  {
+    value: "approved_with_conditions",
+    title: "Approved with conditions",
+    description: "Proceed, but with added requirements before execution.",
+    icon: "◑",
+  },
+  {
+    value: "blocked",
+    title: "Blocked",
+    description: "Halt — do not proceed until the situation is resolved.",
+    icon: "✕",
+  },
 ];
 
 function DecisionForm({
@@ -31,11 +51,10 @@ function DecisionForm({
   assessment: AssessmentHistoryItem;
 }) {
   const submitDecision = useLiveStore((s) => s.submitDecision);
-  const [outcome, setOutcome] = useState<DecisionOutcome>("blocked");
+  const [outcome, setOutcome] = useState<DecisionOutcome | null>(null);
   const [conditions, setConditions] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const conditionsRef = useRef<HTMLDivElement>(null);
   const initialDispositions: Record<string, "accepted" | "rejected"> =
     Object.fromEntries(
       assessment.recommendations.map((rec) => [rec.id, "accepted" as const]),
@@ -43,19 +62,11 @@ function DecisionForm({
   const [dispositions, setDispositions] = useState(initialDispositions);
 
   const needsConditions = outcome === "approved_with_conditions";
-  const canSubmit = !needsConditions || conditions.trim().length > 0;
-
-  useEffect(() => {
-    if (!needsConditions) return;
-    const el = conditionsRef.current;
-    if (!el) return;
-    const timer = window.setTimeout(() => {
-      el.scrollIntoView({ behavior: "smooth", block: "nearest" });
-    }, 40);
-    return () => window.clearTimeout(timer);
-  }, [needsConditions]);
+  const canSubmit =
+    outcome !== null && (!needsConditions || conditions.trim().length > 0);
 
   async function onSubmit() {
+    if (!outcome) return;
     setBusy(true);
     setError(null);
     try {
@@ -73,63 +84,131 @@ function DecisionForm({
 
   return (
     <div className={styles.panel}>
-      <p className={styles.label}>Outcome</p>
-      <div className={styles.outcomes}>
-        {OUTCOMES.map((o) => (
-          <button
-            key={o.value}
-            type="button"
-            className={`btn ${styles.outcome}`}
-            data-active={outcome === o.value}
-            data-outcome={o.value}
-            onClick={() => setOutcome(o.value)}
-          >
-            {o.label}
-          </button>
-        ))}
-      </div>
-
       {assessment.recommendations.length > 0 && (
-        <div className={styles.block}>
-          <p className={styles.label}>Dispositions</p>
-          <div className={styles.dispList}>
-            {assessment.recommendations.map((rec) => (
-              <div key={rec.id} className={styles.dispRow}>
-                <span className={styles.dispText}>{rec.text}</span>
-                <div className={styles.toggles}>
-                  {(["accepted", "rejected"] as const).map((kind) => (
-                    <button
-                      key={kind}
-                      type="button"
-                      className={`btn ${styles.toggle}`}
-                      data-active={dispositions[rec.id] === kind}
-                      data-kind={kind}
-                      onClick={() =>
-                        setDispositions((d) => ({ ...d, [rec.id]: kind }))
-                      }
+        <section className={styles.section} aria-labelledby="decision-recs-heading">
+          <p id="decision-recs-heading" className={styles.label}>
+            Review recommendations
+          </p>
+          <p className={styles.sectionHint}>
+            Accept or reject each action before making your call.
+          </p>
+          <div className={styles.recList}>
+            {assessment.recommendations.map((rec, index) => {
+              const disposition = dispositions[rec.id];
+              return (
+                <article
+                  key={rec.id}
+                  className={styles.recCard}
+                  data-rejected={disposition === "rejected"}
+                >
+                  <div className={styles.recCardHeader}>
+                    <span className={styles.recIndex} aria-hidden>
+                      {index + 1}
+                    </span>
+                    <div className={styles.recBody}>
+                      <p className={styles.recText}>{rec.text}</p>
+                      {rec.rationale ? (
+                        <p className={styles.recRationale}>{rec.rationale}</p>
+                      ) : null}
+                    </div>
+                    <div
+                      className={styles.recToggle}
+                      role="group"
+                      aria-label={`Disposition for recommendation ${index + 1}`}
                     >
-                      {kind}
-                    </button>
-                  ))}
-                </div>
-              </div>
-            ))}
+                      {(["accepted", "rejected"] as const).map((kind) => (
+                        <button
+                          key={kind}
+                          type="button"
+                          className={styles.recToggleBtn}
+                          data-active={disposition === kind}
+                          data-kind={kind}
+                          aria-pressed={disposition === kind}
+                          onClick={() =>
+                            setDispositions((d) => ({ ...d, [rec.id]: kind }))
+                          }
+                        >
+                          <span className={styles.recToggleIcon} aria-hidden>
+                            {kind === "accepted" ? "✓" : "✕"}
+                          </span>
+                          {kind === "accepted" ? "Accept" : "Reject"}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </article>
+              );
+            })}
           </div>
-        </div>
+        </section>
       )}
 
-      {needsConditions && (
-        <div ref={conditionsRef} className={styles.block}>
-          <p className={styles.label}>Conditions</p>
-          <textarea
-            className={styles.textarea}
-            value={conditions}
-            onChange={(e) => setConditions(e.target.value)}
-            rows={2}
-            placeholder="Required for approved with conditions…"
-          />
+      <section className={styles.section} aria-labelledby="decision-outcome-heading">
+        <p id="decision-outcome-heading" className={styles.label}>
+          Make the call
+        </p>
+        <p className={styles.sectionHint}>
+          Choose the final outcome for this review.
+        </p>
+        <div className={styles.outcomeList} role="radiogroup" aria-label="Decision outcome">
+          {OUTCOMES.map((o) => {
+            const selected = outcome === o.value;
+            const isConditions = o.value === "approved_with_conditions";
+            return (
+              <div
+                key={o.value}
+                className={styles.outcomeCard}
+                data-outcome={o.value}
+                data-active={selected}
+                role="radio"
+                aria-checked={selected}
+              >
+                <button
+                  type="button"
+                  className={styles.outcomeCardSelect}
+                  onClick={() => setOutcome(o.value)}
+                >
+                  <div className={styles.outcomeCardInner}>
+                    <span className={styles.outcomeAccent} aria-hidden />
+                    <span className={styles.outcomeIcon} aria-hidden>
+                      {o.icon}
+                    </span>
+                    <div className={styles.outcomeContent}>
+                      <p className={styles.outcomeTitle}>{o.title}</p>
+                      <p className={styles.outcomeDesc}>{o.description}</p>
+                    </div>
+                  </div>
+                </button>
+                {isConditions ? (
+                  <div
+                    className={styles.outcomeConditionsWrap}
+                    data-expanded={selected}
+                  >
+                    <div className={styles.outcomeConditionsInner}>
+                      <label
+                        className={styles.conditionsLabel}
+                        htmlFor="decision-conditions"
+                      >
+                        Conditions required before proceeding
+                      </label>
+                      <textarea
+                        id="decision-conditions"
+                        className={styles.textarea}
+                        value={conditions}
+                        onChange={(e) => setConditions(e.target.value)}
+                        rows={2}
+                        placeholder="e.g. Re-inspect isolation valve, confirm gas levels below threshold…"
+                        tabIndex={selected ? 0 : -1}
+                        aria-hidden={!selected}
+                      />
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+            );
+          })}
         </div>
-      )}
+      </section>
 
       <button
         type="button"
@@ -187,6 +266,15 @@ export function DecisionPanel({
   const [closing, setClosing] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
 
+  const canDecide =
+    (reviewState === "pending_decision" || reviewState === "escalated") &&
+    assessment?.status === "complete";
+
+  const priorDecisionSuperseded =
+    Boolean(existing) &&
+    Boolean(assessment) &&
+    existing!.assessment_id !== assessment!.id;
+
   if (reviewState === "closed") {
     return <ClosedReportLink reviewId={reviewId} />;
   }
@@ -222,7 +310,7 @@ export function DecisionPanel({
     );
   }
 
-  if (existing) {
+  if (existing && !canDecide && reviewState !== "decided") {
     return (
       <div className={styles.panel}>
         <p className={styles.done}>
@@ -236,10 +324,6 @@ export function DecisionPanel({
     );
   }
 
-  const canDecide =
-    (reviewState === "pending_decision" || reviewState === "escalated") &&
-    assessment?.status === "complete";
-
   if (!canDecide) {
     return (
       <div className={styles.panel}>
@@ -251,10 +335,19 @@ export function DecisionPanel({
   }
 
   return (
-    <DecisionForm
-      key={assessment.id}
-      reviewId={reviewId}
-      assessment={assessment}
-    />
+    <div className={styles.panel}>
+      {priorDecisionSuperseded && existing ? (
+        <p className={styles.superseded}>
+          Prior decision ({existing.outcome.replaceAll("_", " ")}) superseded
+          — situation escalated since{" "}
+          {new Date(existing.submitted_at).toLocaleTimeString()}.
+        </p>
+      ) : null}
+      <DecisionForm
+        key={assessment.id}
+        reviewId={reviewId}
+        assessment={assessment}
+      />
+    </div>
   );
 }

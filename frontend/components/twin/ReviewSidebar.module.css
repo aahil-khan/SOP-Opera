@@ -260,6 +260,252 @@
   background: color-mix(in srgb, var(--text-primary) 12%, transparent);
 }
 
+.filterToggle {
+  position: relative;
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.filterToggle:hover {
+  color: var(--text-primary);
+  background: var(--interactive-hover);
+  border-color: var(--border-hover);
+}
+
+.filterToggle[data-open="true"] {
+  color: var(--text-primary);
+  background: var(--surface-card, var(--surface-raised, var(--surface-panel)));
+  border-color: var(--border-hover);
+}
+
+.filterToggle[data-active="true"] {
+  border-color: color-mix(in srgb, var(--status-info) 40%, var(--border-muted));
+}
+
+.filterActiveDot {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--status-info);
+  box-shadow: 0 0 0 1px var(--surface-panel);
+}
+
+.filters {
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border-muted);
+  animation: filters-in 180ms var(--ease-out);
+}
+
+@keyframes filters-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.searchWrap {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.searchIcon {
+  position: absolute;
+  left: 0.65rem;
+  color: var(--text-muted);
+  pointer-events: none;
+  flex-shrink: 0;
+}
+
+.searchInput {
+  width: 100%;
+  padding: 0.45rem 1.75rem 0.45rem 2rem;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--surface-canvas) 88%, var(--border-muted));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.35;
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    box-shadow var(--duration-fast) var(--ease-out);
+}
+
+.searchInput::placeholder {
+  color: var(--text-muted);
+}
+
+.searchInput:hover {
+  border-color: var(--border-hover);
+}
+
+.searchInput:focus {
+  outline: none;
+  border-color: var(--border-hover);
+  background: var(--surface-card, var(--surface-raised, var(--surface-panel)));
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--status-info) 18%, transparent);
+}
+
+.searchInput::-webkit-search-cancel-button {
+  display: none;
+}
+
+.searchClear {
+  position: absolute;
+  right: 0.35rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.35rem;
+  height: 1.35rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 1rem;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.searchClear:hover {
+  color: var(--text-primary);
+  background: var(--interactive-hover);
+}
+
+.riskFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.riskChip {
+  appearance: none;
+  border: 1px solid var(--border-muted);
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.62rem;
+  font-weight: var(--weight-medium);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  padding: 0.2rem 0.45rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.riskChip:hover {
+  color: var(--text-secondary);
+  border-color: var(--border-hover);
+  background: var(--interactive-hover);
+}
+
+.riskChip[data-active="true"] {
+  color: var(--text-primary);
+  background: var(--surface-card, var(--surface-raised, var(--surface-panel)));
+  border-color: var(--border-hover);
+  font-weight: var(--weight-semibold);
+}
+
+.riskChip[data-active="true"][data-risk="critical"] {
+  color: var(--status-critical);
+  border-color: color-mix(in srgb, var(--status-critical) 45%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-critical) 12%, transparent);
+}
+
+.riskChip[data-active="true"][data-risk="blocking"] {
+  color: var(--status-blocking);
+  border-color: color-mix(in srgb, var(--status-blocking) 45%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-blocking) 12%, transparent);
+}
+
+.riskChip[data-active="true"][data-risk="elevated"] {
+  color: var(--status-elevated);
+  border-color: color-mix(in srgb, var(--status-elevated) 45%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-elevated) 12%, transparent);
+}
+
+.filterMeta {
+  margin: 0;
+  font-size: 0.62rem;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  letter-spacing: 0.02em;
+}
+
+.filterClearLink {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  background: none;
+  color: var(--status-info);
+  font: inherit;
+  font-size: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.filterClearLink:hover {
+  color: var(--text-primary);
+}
+
+.filterClearBtn {
+  appearance: none;
+  margin-top: var(--space-1);
+  padding: 0.35rem 0.65rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-muted);
+  background: transparent;
+  color: var(--text-secondary);
+  font: inherit;
+  font-size: var(--text-xs);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    border-color var(--duration-fast) var(--ease-out);
+}
+
+.filterClearBtn:hover {
+  color: var(--text-primary);
+  background: var(--interactive-hover);
+  border-color: var(--border-hover);
+}
+
 .emptyState {
   flex: 1;
   min-height: 0;
@@ -449,7 +695,8 @@
   .orbitRing,
   .orbitCore,
   .orbitBlip,
-  .railCount {
+  .railCount,
+  .filters {
     animation: none;
   }
 
@@ -505,6 +752,21 @@
 
 .item[data-risk="blocking"] {
   border-left-color: color-mix(in srgb, var(--status-blocking) 70%, transparent);
+}
+
+.item[data-risk="critical"] {
+  border-left-width: 3px;
+  border-left-color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-panel));
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--status-critical) 18%, transparent);
+}
+
+.item[data-active="true"][data-risk="critical"] {
+  border-left-color: var(--status-critical);
+  background: color-mix(in srgb, var(--status-critical) 14%, var(--surface-card));
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--status-critical) 22%, transparent),
+    0 0 14px color-mix(in srgb, var(--status-critical) 20%, transparent);
 }
 
 .item[data-active="true"][data-risk="elevated"] {

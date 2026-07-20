@@ -13,9 +13,11 @@ import type { RiskLevel } from "@/shared/enums";
 import {
   fetchAssets,
   fetchNotifications,
+  fetchRecentTelemetry,
   fetchReviewAssessments,
   fetchReviewDetail,
   fetchReviews,
+  fetchThresholds,
   postCloseReview,
   postDecision,
   postManualAssessment,
@@ -31,9 +33,33 @@ import {
   showNotificationToast,
 } from "@/lib/notificationToast";
 import {
+  assetHasSensorCritical,
+  DEFAULT_THRESHOLDS,
+  type ThresholdsConfig,
+} from "@/lib/sensorThresholds";
+import {
   isAlertNotification,
   presentNotification,
 } from "@/lib/notificationPresentation";
+import type { SpatialLinkView } from "@/lib/spatialLinks";
+import { spatialLinksFromAssessment } from "@/lib/spatialLinks";
+
+export type { SpatialLinkView };
+export { spatialLinksFromAssessment };
+
+/** Matches DomainId in lib/domains — kept here to avoid a circular import. */
+export type AssetDomainFocus =
+  | "sensors"
+  | "permits"
+  | "people"
+  | "evidence"
+  | "spatial";
+
+export type DomainFocusRequest = {
+  assetId: string;
+  domain: AssetDomainFocus;
+  nonce: number;
+};
 
 const NOTIFICATION_CAP = 50;
 const AGENT_STEP_CAP = 100;
@@ -253,20 +279,11 @@ export interface AgentStepEvent {
   ts: string;
 }
 
-export interface SpatialLinkView {
-  from_asset_id: string;
-  to_asset_id: string;
-  from_label: string;
-  to_label: string;
-  relation: string;
-  distance_m: number;
-  floors_apart: number;
-  reason: string;
-}
-
 export interface LiveAssetView {
   asset: Asset;
   risk_level: RiskLevel;
+  /** Deep-red sensor incident threshold crossed (derived fact or live reading). */
+  sensor_critical: boolean;
   review: Review | null;
   assessment: AssessmentHistoryItem | null;
   detail: ReviewDetail | null;
@@ -289,6 +306,12 @@ interface LiveState {
   selectedAssetId: string | null;
   /** Right AssetPanel mode on the Digital Twin. */
   assetPanelMode: "summary" | "fullReview";
+  /** One-shot pin request for DomainRadar (map spatial links → pentagon). */
+  domainFocusRequest: DomainFocusRequest | null;
+  /** Effective sensor/rule thresholds from GET /api/config/thresholds. */
+  thresholdsConfig: ThresholdsConfig;
+  /** Sparse map — only assets with active sensor-critical readings/facts. */
+  sensorCriticalByAsset: Record<string, boolean>;
   bootstrapped: boolean;
   loading: boolean;
   error: string | null;
@@ -309,6 +332,9 @@ interface LiveState {
   setAssetPanelMode: (mode: "summary" | "fullReview") => void;
   /** Select an asset and open the in-panel full review (deep links). */
   openAssetFullReview: (assetId: string) => void;
+  /** Open asset summary panel with a domain pinned on the pentagon radar. */
+  openAssetDomain: (assetId: string, domain: AssetDomainFocus) => void;
+  clearDomainFocusRequest: () => void;
   loadNotifications: () => Promise<void>;
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
@@ -367,6 +393,16 @@ function deriveRisk(
     if (outcome === "blocked") return "blocking";
     // Approved / approved w/ conditions — soft amber until closed.
     return "elevated";
+  }
+
+  // Reassessment after escalation — prefer live derived facts over stale assessment.
+  if (review.state === "assessing" || review.state === "reopened") {
+    const active =
+      detail?.derived_facts?.filter(
+        (f) => f.value === true || f.value === "true",
+      ) ?? [];
+    if (active.length >= 3) return "blocking";
+    if (active.length > 0) return "elevated";
   }
 
   if (assessment?.status === "complete" && assessment.risk_level) {
@@ -432,45 +468,66 @@ function asAgentStep(payload: Record<string, unknown>): AgentStepEvent | null {
   };
 }
 
-export function spatialLinksFromAssessment(
-  assessment: AssessmentHistoryItem | null | undefined,
-): SpatialLinkView[] {
-  if (!assessment) return [];
-  const trace =
-    (assessment as AssessmentHistoryItem & { agent_trace?: unknown[] }).agent_trace ??
-    (assessment.metadata as { agent_trace?: unknown[] } | null)?.agent_trace ??
-    [];
-  if (!Array.isArray(trace)) return [];
-  const links: SpatialLinkView[] = [];
-  const seen = new Set<string>();
-  for (const raw of trace) {
-    if (!raw || typeof raw !== "object") continue;
-    const step = raw as Record<string, unknown>;
-    const detail =
-      step.detail && typeof step.detail === "object"
-        ? (step.detail as Record<string, unknown>)
-        : {};
-    const arr = detail.spatial_links;
-    if (!Array.isArray(arr)) continue;
-    for (const item of arr) {
-      if (!item || typeof item !== "object") continue;
-      const L = item as Record<string, unknown>;
-      const key = `${L.from_asset_id}-${L.to_asset_id}-${L.relation}`;
-      if (seen.has(key)) continue;
-      seen.add(key);
-      links.push({
-        from_asset_id: String(L.from_asset_id ?? ""),
-        to_asset_id: String(L.to_asset_id ?? ""),
-        from_label: String(L.from_label ?? L.from_asset_id ?? ""),
-        to_label: String(L.to_label ?? L.to_asset_id ?? ""),
-        relation: String(L.relation ?? "NEAR"),
-        distance_m: Number(L.distance_m ?? 0),
-        floors_apart: Number(L.floors_apart ?? 0),
-        reason: String(L.reason ?? ""),
-      });
+function derivedFactsForAsset(
+  assetId: string,
+  state: Pick<LiveState, "reviews" | "reviewDetails">,
+) {
+  const review = state.reviews.find((r) => r.asset_id === assetId);
+  if (!review) return undefined;
+  return state.reviewDetails[review.id]?.derived_facts;
+}
+
+type SensorCriticalState = Pick<
+  LiveState,
+  | "telemetrySeries"
+  | "telemetryLatest"
+  | "thresholdsConfig"
+  | "reviews"
+  | "reviewDetails"
+>;
+
+function computeSensorCritical(
+  assetId: string,
+  state: SensorCriticalState,
+): boolean {
+  return assetHasSensorCritical(
+    assetId,
+    derivedFactsForAsset(assetId, state),
+    state.telemetrySeries,
+    state.telemetryLatest,
+    state.thresholdsConfig,
+  );
+}
+
+/** Patch only assets whose critical flag changed — avoids new map refs on no-op flushes. */
+function patchSensorCriticalForAssets(
+  prev: Record<string, boolean>,
+  state: SensorCriticalState,
+  assetIds: Iterable<string>,
+): Record<string, boolean> {
+  let next: Record<string, boolean> | null = null;
+  for (const assetId of assetIds) {
+    const critical = computeSensorCritical(assetId, state);
+    const was = prev[assetId] ?? false;
+    if (critical === was) continue;
+    if (!next) next = { ...prev };
+    if (critical) next[assetId] = true;
+    else delete next[assetId];
+  }
+  return next ?? prev;
+}
+
+function buildSensorCriticalMap(
+  assets: Asset[],
+  state: SensorCriticalState,
+): Record<string, boolean> {
+  const map: Record<string, boolean> = {};
+  for (const asset of assets) {
+    if (computeSensorCritical(asset.id, state)) {
+      map[asset.id] = true;
     }
   }
-  return links;
+  return map;
 }
 
 export const useLiveStore = create<LiveState>((set, get) => {
@@ -482,7 +539,19 @@ export const useLiveStore = create<LiveState>((set, get) => {
     telemetryFlushTimer = null;
     if (pendingTelemetry.length === 0) return;
     const batch = pendingTelemetry.splice(0, pendingTelemetry.length);
-    set((state) => applyTelemetrySamples(state, batch));
+    const touched = new Set(batch.map((s) => s.asset_id));
+    set((state) => {
+      const hydrated = applyTelemetrySamples(state, batch);
+      const merged = { ...state, ...hydrated };
+      return {
+        ...hydrated,
+        sensorCriticalByAsset: patchSensorCriticalForAssets(
+          state.sensorCriticalByAsset,
+          merged,
+          touched,
+        ),
+      };
+    });
   };
 
   const enqueueTelemetry = (samples: TelemetrySample[]) => {
@@ -516,27 +585,69 @@ export const useLiveStore = create<LiveState>((set, get) => {
   telemetryStatus: [],
   selectedAssetId: null,
   assetPanelMode: "summary",
+  domainFocusRequest: null,
+  thresholdsConfig: DEFAULT_THRESHOLDS,
+  sensorCriticalByAsset: {},
   bootstrapped: false,
   loading: false,
   error: null,
 
   selectAsset: (id) =>
-    set({ selectedAssetId: id, assetPanelMode: "summary" }),
+    set({
+      selectedAssetId: id,
+      assetPanelMode: "summary",
+      domainFocusRequest: null,
+    }),
 
   setAssetPanelMode: (mode) => set({ assetPanelMode: mode }),
 
   openAssetFullReview: (assetId) =>
-    set({ selectedAssetId: assetId, assetPanelMode: "fullReview" }),
+    set({
+      selectedAssetId: assetId,
+      assetPanelMode: "fullReview",
+      domainFocusRequest: null,
+    }),
+
+  openAssetDomain: (assetId, domain) =>
+    set({
+      selectedAssetId: assetId,
+      assetPanelMode: "summary",
+      domainFocusRequest: { assetId, domain, nonce: Date.now() },
+    }),
+
+  clearDomainFocusRequest: () => set({ domainFocusRequest: null }),
 
   bootstrap: async () => {
     if (get().loading) return;
     set({ loading: true, error: null });
     try {
-      const [assets, reviews, notifications] = await Promise.all([
+      const [assets, reviews, notifications, telemetry, thresholdsConfig] =
+        await Promise.all([
         fetchAssets(),
         fetchReviews(),
         fetchNotifications(),
+        fetchRecentTelemetry({ per_asset: TELEMETRY_RING_CAP }).catch(
+          () => ({ samples: [], count: 0 }),
+        ),
+        fetchThresholds().catch(() => DEFAULT_THRESHOLDS),
       ]);
+      const hydrated = applyTelemetrySamples(
+        {
+          telemetrySeries: {},
+          telemetryLatest: {},
+          telemetryBySource: {},
+          telemetryStatus: [],
+        },
+        telemetry.samples.map((s) => ({
+          source: s.source,
+          asset_id: s.asset_id,
+          asset_name: s.asset_name ?? undefined,
+          category: s.category,
+          payload: s.payload,
+          ts: s.ts,
+          mode: s.mode,
+        })),
+      );
       set({
         assets,
         reviews,
@@ -547,6 +658,14 @@ export const useLiveStore = create<LiveState>((set, get) => {
         assessmentsByReview: {},
         selectedAssetId: null,
         assetPanelMode: "summary",
+        ...hydrated,
+        thresholdsConfig,
+        sensorCriticalByAsset: buildSensorCriticalMap(assets, {
+          ...hydrated,
+          thresholdsConfig,
+          reviews,
+          reviewDetails: {},
+        }),
         bootstrapped: true,
         loading: false,
         error: null,
@@ -637,6 +756,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       telemetryLatest: {},
       telemetryBySource: {},
       telemetryStatus: [],
+      sensorCriticalByAsset: {},
     });
   },
 
@@ -645,13 +765,23 @@ export const useLiveStore = create<LiveState>((set, get) => {
       fetchReviewDetail(id),
       fetchReviewAssessments(id),
     ]);
-    set((state) => ({
-      reviewDetails: { ...state.reviewDetails, [id]: detail },
-      assessmentsByReview: {
+    set((state) => {
+      const reviewDetails = { ...state.reviewDetails, [id]: detail };
+      const assessmentsByReview = {
         ...state.assessmentsByReview,
         [id]: assessments,
-      },
-    }));
+      };
+      const merged = { ...state, reviewDetails, assessmentsByReview };
+      return {
+        reviewDetails,
+        assessmentsByReview,
+        sensorCriticalByAsset: patchSensorCriticalForAssets(
+          state.sensorCriticalByAsset,
+          merged,
+          [detail.asset.id],
+        ),
+      };
+    });
   },
 
   submitDecision: async (id, body) => {
@@ -808,7 +938,11 @@ export function getAssetMetricSeries(
 export function getLiveAssetViews(
   state: Pick<
     LiveState,
-    "assets" | "reviews" | "reviewDetails" | "assessmentsByReview"
+    | "assets"
+    | "reviews"
+    | "reviewDetails"
+    | "assessmentsByReview"
+    | "sensorCriticalByAsset"
   >,
 ): LiveAssetView[] {
   const reviewsByAsset = new Map<string, Review>();
@@ -832,6 +966,7 @@ export function getLiveAssetViews(
       assessment,
       detail,
       risk_level: deriveRisk(review, assessment, detail),
+      sensor_critical: state.sensorCriticalByAsset[asset.id] ?? false,
     };
   });
 }
@@ -855,6 +990,7 @@ export function useLiveAssetViews(): LiveAssetView[] {
   const reviews = useLiveStore((s) => s.reviews);
   const reviewDetails = useLiveStore((s) => s.reviewDetails);
   const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
+  const sensorCriticalByAsset = useLiveStore((s) => s.sensorCriticalByAsset);
   return useMemo(
     () =>
       getLiveAssetViews({
@@ -862,8 +998,15 @@ export function useLiveAssetViews(): LiveAssetView[] {
         reviews,
         reviewDetails,
         assessmentsByReview,
+        sensorCriticalByAsset,
       }),
-    [assets, reviews, reviewDetails, assessmentsByReview],
+    [assets, reviews, reviewDetails, assessmentsByReview, sensorCriticalByAsset],
+  );
+}
+
+export function useSensorCritical(assetId: string | null | undefined): boolean {
+  return useLiveStore((s) =>
+    assetId ? (s.sensorCriticalByAsset[assetId] ?? false) : false,
   );
 }
 
@@ -877,7 +1020,11 @@ export function findViewByAssetId(
 export function findViewByReviewId(
   state: Pick<
     LiveState,
-    "assets" | "reviews" | "reviewDetails" | "assessmentsByReview"
+    | "assets"
+    | "reviews"
+    | "reviewDetails"
+    | "assessmentsByReview"
+    | "sensorCriticalByAsset"
   >,
   reviewId: string,
 ): LiveAssetView | undefined {
@@ -894,6 +1041,7 @@ export function findViewByReviewId(
     assessment,
     detail,
     risk_level: deriveRisk(review, assessment, detail),
+    sensor_critical: state.sensorCriticalByAsset[asset.id] ?? false,
   };
 }
 

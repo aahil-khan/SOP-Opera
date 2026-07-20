@@ -32,6 +32,9 @@
   --status-nominal: #89d185;
   --status-elevated: #cca700;
   --status-blocking: #f14c4c;
+  --status-critical: #ff5555;
+  --status-critical-foreground: #1a0a0a;
+  --status-critical-muted: color-mix(in srgb, var(--status-critical) 24%, transparent);
   --status-info: #3794ff;
   --status-nominal-muted: color-mix(in srgb, var(--status-nominal) 18%, transparent);
   --status-elevated-muted: color-mix(in srgb, var(--status-elevated) 18%, transparent);

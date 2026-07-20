@@ -18,6 +18,7 @@ import type {
 } from "@/shared/schemas";
 import type { DecisionOutcome, RiskLevel } from "@/shared/enums";
 import { API_BASE } from "@/lib/api";
+import type { ThresholdsConfig } from "@/lib/sensorThresholds";
 
 export interface ReviewDetail {
   review: Review;
@@ -64,12 +65,19 @@ export interface ReportSummary {
 }
 
 export interface AiOpsSummary {
+  data_source: "local_db";
+  persists_across_demo_reset: boolean;
   total_assessments: number;
   complete_count: number;
   failed_count: number;
   success_rate: number;
   validation_failure_count: number;
   provider_error_count: number;
+  degraded_count: number;
+  llm_fallback_count: number;
+  llm_attempt_count: number;
+  llm_fallback_rate: number;
+  degraded_rate: number;
   rag_hit_rate: number;
   rag_fallback_rate: number;
   mean_retrieval_relevance: number | null;
@@ -132,6 +140,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 
 export function fetchAssets(): Promise<Asset[]> {
   return request<Asset[]>("/assets");
+}
+
+export interface TelemetrySampleDto {
+  source: string;
+  asset_id: string;
+  asset_name?: string | null;
+  category: string;
+  payload: Record<string, unknown>;
+  ts: string;
+  mode?: string;
+}
+
+/** Soft ambient ring from DB — hydrates charts before live WS catches up. */
+export function fetchRecentTelemetry(params?: {
+  per_asset?: number;
+  asset_id?: string;
+}): Promise<{ samples: TelemetrySampleDto[]; count: number }> {
+  const qs = new URLSearchParams();
+  if (params?.per_asset != null) qs.set("per_asset", String(params.per_asset));
+  if (params?.asset_id) qs.set("asset_id", params.asset_id);
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return request(`/demo/telemetry/recent${suffix}`);
 }
 
 export function fetchReviews(params?: {
@@ -207,6 +237,10 @@ export function fetchNotifications(limit = 50): Promise<Notification[]> {
 
 export function fetchAssetOwner(assetId: string): Promise<AreaOwner | null> {
   return request<AreaOwner | null>(`/assets/${assetId}/owner`);
+}
+
+export function fetchThresholds(): Promise<ThresholdsConfig> {
+  return request<ThresholdsConfig>("/api/config/thresholds");
 }
 
 export function fetchAiOpsSummary(): Promise<AiOpsSummary> {

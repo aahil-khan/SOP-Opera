@@ -9,6 +9,7 @@ import { DomainRadar } from "./DomainRadar";
 import { WhyBrief } from "./WhyBrief";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
+import { AssessingBanner } from "@/components/assessment/AssessingBanner";
 import { nextActionForView, ownerNameForView } from "@/lib/openWork";
 import actionStyles from "@/components/decision/RecommendedAction.module.css";
 import styles from "./AssetPanel.module.css";
@@ -126,7 +127,7 @@ function QuickDecisionSection({
 }
 
 export function AssetPanel({ view, onClose }: AssetPanelProps) {
-  const { asset, risk_level, review, assessment, detail } = view;
+  const { asset, risk_level, sensor_critical, review, assessment, detail } = view;
   const decision = detail?.decision ?? null;
   const recommendations = assessment?.recommendations ?? [];
   const nextAction = nextActionForView(view);
@@ -189,6 +190,9 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
             <span className="badge" data-risk={risk_level}>
               {risk_level}
             </span>
+            {sensor_critical ? (
+              <span className={styles.criticalBadge}>sensor critical</span>
+            ) : null}
             {review && !isHappy && (
               <span className="badge">
                 {review.state.replaceAll("_", " ")}
@@ -273,22 +277,7 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
                 </h3>
                 {assessmentInProgress && review ? (
                   <>
-                    <div
-                      className={styles.assessingBanner}
-                      aria-live="polite"
-                      aria-busy="true"
-                    >
-                      <span className={styles.assessingSpinner} aria-hidden />
-                      <div className={styles.assessingCopy}>
-                        <p className={styles.assessingTitle}>
-                          Generating assessment
-                        </p>
-                        <p className={styles.assessingHint}>
-                          Domain agents are analyzing signals and drafting a
-                          recommendation. This usually takes a few moments.
-                        </p>
-                      </div>
-                    </div>
+                    <AssessingBanner />
                     <AgentBrainPanel reviewId={review.id} />
                   </>
                 ) : (
@@ -390,7 +379,10 @@ export function AssetPanel({ view, onClose }: AssetPanelProps) {
       </div>
 
       {review && !isHappy && (
-        <div className={styles.footer}>
+        <div
+          className={styles.footer}
+          data-single-action={assessmentInProgress ? "true" : undefined}
+        >
           {!assessmentInProgress && (
             <button
               type="button"

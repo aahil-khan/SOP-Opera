@@ -7,6 +7,7 @@ import {
 } from "@/lib/liveStore";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { AssessmentPanel } from "@/components/assessment/AssessmentPanel";
+import { AssessingBanner } from "@/components/assessment/AssessingBanner";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
 import { AgentTracePanel } from "@/components/trace/AgentTracePanel";
@@ -36,6 +37,7 @@ export function ReviewDetail({
   });
   const detail = useLiveStore((s) => s.reviewDetails[reviewId]);
   const assessments = useLiveStore((s) => s.assessmentsByReview[reviewId]);
+  const sensorCriticalByAsset = useLiveStore((s) => s.sensorCriticalByAsset);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [otherActionsOpen, setOtherActionsOpen] = useState(true);
 
@@ -59,20 +61,30 @@ export function ReviewDetail({
         assessmentsByReview: assessments
           ? { [reviewId]: assessments }
           : {},
+        sensorCriticalByAsset,
       },
       reviewId,
     );
-  }, [listReview, listAsset, detail, assessments, reviewId]);
+  }, [listReview, listAsset, detail, assessments, reviewId, sensorCriticalByAsset]);
 
   const assessmentList = assessments ?? [];
   const latest = useMemo(() => {
     if (!assessmentList.length) return null;
+    const inFlight = assessmentList.find(
+      (a) => a.status === "pending" || a.status === "generating",
+    );
+    if (inFlight) return inFlight;
     return (
       assessmentList.find((a) => a.status === "complete") ??
       assessmentList.find((a) => a.status === "failed") ??
       assessmentList[0]
     );
   }, [assessmentList]);
+
+  const assessmentInProgress =
+    (detail?.review.state ?? listReview?.state) === "assessing" ||
+    latest?.status === "pending" ||
+    latest?.status === "generating";
 
   if (loadError && !detail) {
     return (
@@ -132,18 +144,22 @@ export function ReviewDetail({
         </header>
       )}
 
+      {assessmentInProgress ? <AssessingBanner /> : null}
+
       <AgentTracePanel
         reviewId={review.id}
         assessment={latest as AssessmentHistoryItem | null}
+        inProgress={assessmentInProgress}
       />
 
       <AssessmentPanel
         reviewId={review.id}
         reviewState={review.state}
         assessment={latest as AssessmentHistoryItem | null}
+        inProgress={assessmentInProgress}
       />
 
-      {showRecommended && (
+      {showRecommended && !assessmentInProgress && (
         <section
           className={actionStyles.actionSection}
           aria-labelledby="review-do-heading"

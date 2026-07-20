@@ -14,6 +14,67 @@
   gap: var(--space-2);
 }
 
+.liveDot {
+  width: 0.45rem;
+  height: 0.45rem;
+  border-radius: 50%;
+  background: var(--accent-ai);
+  box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ai) 50%, transparent);
+  animation: trace-live 1.6s var(--ease-out) infinite;
+  flex-shrink: 0;
+}
+
+@keyframes trace-live {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ai) 45%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+.inProgressBadge {
+  font-size: 0.6rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 0.12rem 0.4rem;
+  border-radius: 999px;
+  color: var(--accent-ai);
+  background: color-mix(in srgb, var(--accent-ai) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-ai) 35%, var(--border-muted));
+}
+
+.root[data-in-progress="true"] {
+  border-color: color-mix(in srgb, var(--accent-ai) 42%, var(--border-muted));
+}
+
+.starting {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  color: var(--text-secondary);
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+}
+
+.starting p {
+  margin: 0;
+}
+
+.startingPulse {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--accent-ai);
+  flex-shrink: 0;
+  animation: trace-live 1.6s var(--ease-out) infinite;
+}
+
 .title {
   margin: 0;
   font-size: var(--text-xs);

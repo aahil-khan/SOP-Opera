@@ -84,6 +84,33 @@
   color: var(--status-elevated);
 }
 
+.gauge[data-risk="critical"] {
+  border-color: color-mix(in srgb, var(--status-critical) 60%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-critical) 14%, transparent);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--status-critical) 22%, transparent);
+}
+
+.gauge[data-risk="critical"] .gaugeValue strong {
+  color: var(--status-critical);
+  font-weight: var(--weight-bold);
+}
+
+.criticalFlag {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.3rem;
+  font-size: 0.55rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  border-radius: 2px;
+  color: var(--status-critical-foreground, #fff);
+  background: var(--status-critical);
+  vertical-align: middle;
+}
+
+.chartFrame[data-risk="critical"] {
+  color: var(--status-critical);
+}
+
 .unit {
   font-size: var(--text-xs);
   color: var(--text-muted);

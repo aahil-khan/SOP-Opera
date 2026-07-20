@@ -130,11 +130,19 @@ function groupTone(agent: string, steps: AgentStepEvent[]): "risk" | "clearance"
   return "neutral";
 }
 
-function StepRow({ step }: { step: AgentStepEvent }) {
+function StepRow({
+  step,
+  inProgress = false,
+}: {
+  step: AgentStepEvent;
+  inProgress?: boolean;
+}) {
   const isClearance = step.finding === "clearance";
   const kindLabel = isClearance
     ? "Clear"
-    : (KIND_LABELS[step.kind] ?? step.kind);
+    : step.kind === "verdict" && inProgress
+      ? "Draft verdict"
+      : (KIND_LABELS[step.kind] ?? step.kind);
 
   return (
     <li
@@ -160,12 +168,14 @@ function AgentGroup({
   focused,
   dimmed,
   groupRef,
+  inProgress = false,
 }: {
   agent: string;
   steps: AgentStepEvent[];
   focused: boolean;
   dimmed: boolean;
   groupRef: (el: HTMLElement | null) => void;
+  inProgress?: boolean;
 }) {
   const visible = contentSteps(steps);
   if (visible.length === 0) return null;
@@ -182,7 +192,7 @@ function AgentGroup({
   const list = (
     <ul className={styles.stepList}>
       {visible.map((s) => (
-        <StepRow key={s.id} step={s} />
+        <StepRow key={s.id} step={s} inProgress={inProgress} />
       ))}
     </ul>
   );
@@ -637,6 +647,8 @@ function RubberFlowGraph({
 interface AgentTracePanelProps {
   reviewId: string;
   assessment: AssessmentHistoryItem | null;
+  /** Investigation still running — defer "finished" affordances. */
+  inProgress?: boolean;
 }
 
 /**
@@ -646,6 +658,7 @@ interface AgentTracePanelProps {
 export function AgentTracePanel({
   reviewId,
   assessment,
+  inProgress = false,
 }: AgentTracePanelProps) {
   const liveSteps = useAgentStepsForReview(reviewId);
   const listRef = useRef<HTMLDivElement>(null);
@@ -677,13 +690,15 @@ export function AgentTracePanel({
     () =>
       groups.map(({ agent, steps: agentSteps }) => {
         const visible = contentSteps(agentSteps);
+        let tone = groupTone(agent, visible);
+        if (inProgress && tone === "verdict") tone = "neutral";
         return {
           agent,
           count: visible.length,
-          tone: groupTone(agent, visible),
+          tone,
         };
       }),
-    [groups],
+    [groups, inProgress],
   );
 
   const verdict = useMemo(
@@ -755,18 +770,36 @@ export function AgentTracePanel({
   }, []);
 
   return (
-    <section className={styles.root} aria-label="Agent investigation trace">
+    <section
+      className={styles.root}
+      data-in-progress={inProgress ? "true" : undefined}
+      aria-label="Agent investigation trace"
+      aria-busy={inProgress ? "true" : undefined}
+    >
       <header className={styles.header}>
+        {inProgress ? (
+          <span className={styles.liveDot} aria-hidden />
+        ) : null}
         <h3 className={styles.title}>Agent trace</h3>
+        {inProgress ? (
+          <span className={styles.inProgressBadge}>In progress</span>
+        ) : null}
         {stepCount > 0 && (
           <span className={styles.count}>{stepCount}</span>
         )}
       </header>
 
       {steps.length === 0 || groups.length === 0 ? (
-        <p className={styles.empty}>
-          No agent trace recorded for this review yet.
-        </p>
+        inProgress ? (
+          <div className={styles.starting}>
+            <span className={styles.startingPulse} aria-hidden />
+            <p>Agents are starting — steps will appear here as they run.</p>
+          </div>
+        ) : (
+          <p className={styles.empty}>
+            No agent trace recorded for this review yet.
+          </p>
+        )
       ) : (
         <div className={styles.layout}>
           <div className={styles.detailPane} ref={listRef}>
@@ -779,9 +812,10 @@ export function AgentTracePanel({
                   focused={focusedAgent === agent}
                   dimmed={focusedAgent != null && focusedAgent !== agent}
                   groupRef={(el) => setGroupRef(agent, el)}
+                  inProgress={inProgress}
                 />
               ))}
-              {verdict && (
+              {verdict && !inProgress && (
                 <aside className={styles.verdictBanner} aria-label="Compound verdict">
                   <span className={styles.verdictEyebrow}>Outcome</span>
                   <p className={styles.verdictText}>{verdict.message}</p>

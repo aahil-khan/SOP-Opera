@@ -15,7 +15,7 @@
     inset 0 1px 0 color-mix(in srgb, white 6%, transparent);
   display: flex;
   flex-direction: column;
-  z-index: 5;
+  z-index: 7;
   overflow: hidden;
   animation: slide-in var(--duration-normal) var(--ease-out);
   transition: width var(--duration-normal) var(--ease-out);
@@ -60,13 +60,25 @@
 }
 
 .subtitle {
-  margin: var(--space-2) 0 0;
-  color: var(--text-muted);
-  font-size: var(--text-sm);
   display: flex;
   flex-wrap: wrap;
   align-items: center;
   gap: var(--space-2);
+  margin: 0;
+}
+
+.criticalBadge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.12rem 0.45rem;
+  font-size: 0.62rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--status-critical-foreground, #fff);
+  background: var(--status-critical);
+  border-radius: var(--radius-sm);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--status-critical) 35%, transparent);
 }
 
 .trigger {
@@ -356,54 +368,6 @@
   color: var(--text-primary);
 }
 
-/* Assessment generation — primary loading cue in Why */
-.assessingBanner {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-3);
-  border-radius: var(--radius-md);
-  border: 1px solid var(--border-muted);
-}
-
-.assessingSpinner {
-  width: 1.1rem;
-  height: 1.1rem;
-  margin-top: 0.15rem;
-  border-radius: 50%;
-  border: 2px solid color-mix(in srgb, var(--accent-ai) 25%, transparent);
-  border-top-color: var(--accent-ai);
-  flex-shrink: 0;
-  animation: assessing-spin 0.75s linear infinite;
-}
-
-@keyframes assessing-spin {
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-.assessingCopy {
-  display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
-  min-width: 0;
-}
-
-.assessingTitle {
-  margin: 0;
-  font-size: var(--text-sm);
-  font-weight: var(--weight-semibold);
-  color: var(--text-primary);
-}
-
-.assessingHint {
-  margin: 0;
-  font-size: var(--text-xs);
-  line-height: var(--leading-relaxed);
-  color: var(--text-secondary);
-}
-
 .linkBtn {
   align-self: flex-start;
   background: transparent;
@@ -442,6 +406,10 @@
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-muted);
+}
+
+.footer[data-single-action="true"] {
+  grid-template-columns: 1fr;
 }
 
 .footerBtn {

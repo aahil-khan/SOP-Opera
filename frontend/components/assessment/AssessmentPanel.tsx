@@ -11,6 +11,7 @@ interface AssessmentPanelProps {
   reviewId: string;
   reviewState: string;
   assessment: AssessmentHistoryItem | null;
+  inProgress?: boolean;
 }
 
 function refLabel(r: RetrievedReference): string {
@@ -23,6 +24,7 @@ export function AssessmentPanel({
   reviewId,
   reviewState,
   assessment,
+  inProgress = false,
 }: AssessmentPanelProps) {
   const retryAssessment = useLiveStore((s) => s.retryAssessment);
   const submitManualAssessment = useLiveStore((s) => s.submitManualAssessment);
@@ -34,16 +36,23 @@ export function AssessmentPanel({
   const [recText, setRecText] = useState("");
   const [recRationale, setRecRationale] = useState("");
 
-  if (!assessment) {
+  if (!assessment || inProgress) {
     return (
-      <section className={styles.root} aria-label="Assessment">
+      <section className={styles.root} aria-label="Assessment" aria-busy={inProgress}>
         <header className={styles.header}>
           <div className={styles.headerLeft}>
             <h3 className={styles.title}>Assessment</h3>
+            {inProgress ? (
+              <span className={styles.chip} data-status="generating">
+                generating
+              </span>
+            ) : null}
           </div>
         </header>
         <p className={styles.empty}>
-          No assessment yet — waiting for the pipeline or a Manual Assessment.
+          {inProgress
+            ? "Assessment is being generated — results will appear here when ready."
+            : "No assessment yet — waiting for the pipeline or a Manual Assessment."}
         </p>
       </section>
     );

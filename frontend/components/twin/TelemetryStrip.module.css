@@ -118,6 +118,43 @@
   animation: tick 0.35s var(--ease-out);
 }
 
+.card[data-risk="critical"] {
+  border-color: color-mix(in srgb, var(--status-critical) 65%, transparent);
+  background: color-mix(in srgb, var(--status-critical) 18%, transparent);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--status-critical) 28%, transparent);
+}
+
+.card[data-risk="critical"] .cardValue {
+  color: var(--status-critical);
+  font-weight: var(--weight-bold);
+  animation: critical-pulse 1.2s ease-in-out infinite;
+}
+
+.card[data-risk="critical"] .cardLabel {
+  color: var(--status-critical);
+}
+
+.criticalFlag {
+  margin-left: 0.35rem;
+  padding: 0.05rem 0.25rem;
+  font-size: 0.55rem;
+  font-weight: var(--weight-bold);
+  letter-spacing: 0.06em;
+  border-radius: 2px;
+  color: var(--status-critical-foreground, #fff);
+  background: var(--status-critical);
+}
+
+@keyframes critical-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.72;
+  }
+}
+
 @keyframes tick {
   from {
     opacity: 0.4;

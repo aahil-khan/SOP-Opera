@@ -72,6 +72,12 @@
   animation: breathe-opacity 2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+.hitRegion[data-sensor-critical="true"] {
+  fill: color-mix(in srgb, var(--status-critical) 48%, transparent);
+  stroke: var(--status-critical);
+  animation: breathe-opacity-critical 1.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
 .hitRegion:hover {
   /* Hover feedback should read instantly, not mid-breath. */
   animation: none;
@@ -118,10 +124,20 @@
   }
 }
 
+@keyframes breathe-opacity-critical {
+  0%,
+  100% {
+    opacity: 0.5;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .hitRegion[data-risk="blocking"] {
+  .hitRegion[data-risk="blocking"],
+  .hitRegion[data-sensor-critical="true"] {
     animation: none;
-    opacity: 0.85;
   }
 }
 

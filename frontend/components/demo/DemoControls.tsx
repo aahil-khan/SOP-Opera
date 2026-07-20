@@ -69,7 +69,7 @@ export function DemoControls() {
 
   const [mode, setMode] = useState<DemoModeKind>("scripted");
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
-  const [scenario, setScenario] = useState("compound_risk");
+  const [scenario, setScenario] = useState("vsp_coke_oven");
   const [status, setStatus] = useState<DemoStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);

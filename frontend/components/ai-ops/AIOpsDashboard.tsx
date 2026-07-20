@@ -71,6 +71,15 @@ export function AIOpsDashboard() {
               Agent-path spend and pipeline health
               {summary ? ` · ${summary.total_assessments} assessments` : ""}
             </p>
+            <p className={styles.sourceNote}>
+              Source: local database
+              {summary?.persists_across_demo_reset
+                ? " · all-time history (not cleared on demo reset)"
+                : ""}
+              {tracingOn
+                ? " · optional LangSmith tracing for run-level traces"
+                : ""}
+            </p>
           </div>
           <div className={styles.headerControls}>
             <span
@@ -164,6 +173,14 @@ export function AIOpsDashboard() {
               value={summary ? String(summary.provider_error_count) : "—"}
             />
             <StatRow
+              label="LLM-degraded (completed)"
+              value={summary ? String(summary.degraded_count) : "—"}
+            />
+            <StatRow
+              label="LLM fallback rate"
+              value={summary ? pct(summary.llm_fallback_rate) : "—"}
+            />
+            <StatRow
               label="RAG hit rate"
               value={summary ? pct(summary.rag_hit_rate) : "—"}
             />
@@ -209,7 +226,12 @@ export function AIOpsDashboard() {
             />
             <p className={styles.note}>
               Tokens and cost come from LangGraph LLM calls (domain narration +
-              orchestrator). Ollama and mock record $0. Traces live in LangSmith
+              orchestrator). Ollama and mock record $0. KPIs above aggregate the
+              local <code>ai_ops_events</code> log — demo reset clears incident
+              state, not this history. &ldquo;LLM-degraded&rdquo; means the run
+              completed on template fallbacks while a live provider was selected.
+              Optional LangSmith traces (when configured) are for per-run
+              debugging only
               {summary?.langsmith_project
                 ? ` (“${summary.langsmith_project}”)`
                 : ""}

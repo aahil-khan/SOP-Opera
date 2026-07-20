@@ -48,6 +48,7 @@ export default function ReviewDetailPage({
             reviews: state.reviews,
             reviewDetails: state.reviewDetails,
             assessmentsByReview: state.assessmentsByReview,
+            sensorCriticalByAsset: state.sensorCriticalByAsset,
           },
           id,
         );

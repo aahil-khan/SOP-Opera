@@ -101,6 +101,15 @@ a:focus-visible {
   background: var(--status-blocking-muted);
 }
 
+.badge[data-risk="critical"] {
+  color: var(--status-critical-foreground, #ffffff);
+  border-color: var(--status-critical);
+  background: var(--status-critical);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--status-critical) 40%, transparent),
+    0 0 10px color-mix(in srgb, var(--status-critical) 35%, transparent);
+}
+
 .panel {
   background: var(--surface-panel);
   border: 1px solid var(--border-default);

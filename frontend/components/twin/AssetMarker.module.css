@@ -35,6 +35,15 @@
   animation: breathe-scale-strong 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+.disk[data-sensor-critical="true"] {
+  fill: var(--status-critical);
+  animation: breathe-scale-critical 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.disk[data-sensor-critical="true"][data-risk="blocking"] {
+  fill: var(--status-critical);
+}
+
 .marker.hovered .disk {
   /* Pause the idle breathing loop so the hover grow reads as a deliberate response. */
   animation: none;
@@ -60,6 +69,14 @@
 
 .pulse[data-risk="blocking"] {
   stroke: var(--status-blocking);
+}
+
+.pulse[data-sensor-critical="true"] {
+  stroke: var(--status-critical);
+}
+
+.pulse[data-active="true"][data-sensor-critical="true"] {
+  animation: pulse-ring-critical 1.4s var(--ease-out) infinite;
 }
 
 .selected .hit {
@@ -88,9 +105,32 @@
   }
 }
 
+@keyframes breathe-scale-critical {
+  0%,
+  100% {
+    transform: scale(0.92);
+  }
+  50% {
+    transform: scale(1.3);
+  }
+}
+
+@keyframes pulse-ring-critical {
+  0% {
+    r: 12;
+    opacity: 0.75;
+  }
+  100% {
+    r: 30;
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .disk[data-risk="blocking"],
-  .pulse[data-active="true"][data-risk="blocking"] {
+  .disk[data-sensor-critical="true"],
+  .pulse[data-active="true"][data-risk="blocking"],
+  .pulse[data-active="true"][data-sensor-critical="true"] {
     animation: none;
   }
 }

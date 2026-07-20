@@ -73,6 +73,19 @@
   font-size: var(--text-sm);
 }
 
+.sourceNote {
+  margin: var(--space-2) 0 0;
+  color: var(--text-muted);
+  font-size: var(--text-xs, 0.75rem);
+  line-height: var(--leading-normal, 1.45);
+  max-width: 42rem;
+}
+
+.sourceNote code {
+  font-size: 0.9em;
+  color: var(--text-secondary, var(--text-muted));
+}
+
 .traceChip {
   display: inline-flex;
   align-items: center;

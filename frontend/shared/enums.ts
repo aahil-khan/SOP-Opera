@@ -29,12 +29,14 @@ export type RecommendationDisposition = "proposed" | "accepted" | "rejected";
 
 export type FactType =
   | "elevated_gas"
+  | "critical_gas"
   | "permit_conflict"
   | "zone_occupied"
   | "incomplete_isolation"
   | "simultaneous_ops"
   | "certification_expiring"
   | "over_temperature"
+  | "critical_temperature"
   | "equipment_vibration_anomaly"
   | "effluent_quality_breach"
   | "tank_level_critical"

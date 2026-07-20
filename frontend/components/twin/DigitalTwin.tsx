@@ -4,6 +4,7 @@ import {
   useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
   startTransition,
@@ -14,6 +15,7 @@ import {
   useLiveStore,
 } from "@/lib/liveStore";
 import floorPlanMap from "@/lib/floor_plan_map.json";
+import { buildFloorSpatialLinks } from "@/lib/riskHeatmap";
 import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
@@ -103,40 +105,58 @@ export function DigitalTwin() {
     [selectAsset],
   );
 
-  const riskByAsset: Record<string, RiskLevel> = {};
-  for (const v of views) {
-    riskByAsset[v.asset.id] = v.risk_level;
-  }
+  const {
+    riskByAsset,
+    criticalByAsset,
+    affectedCount,
+    activityByFloor,
+  } = useMemo(() => {
+    const risk: Record<string, RiskLevel> = {};
+    const critical: Record<string, boolean> = {};
+    let affected = 0;
+    const activity: Record<PlantFloor, number> = {
+      ground: 0,
+      first: 0,
+      second: 0,
+    };
+    for (const v of views) {
+      risk[v.asset.id] = v.risk_level;
+      if (v.sensor_critical) critical[v.asset.id] = true;
+      if (
+        v.review != null ||
+        (v.risk_level !== "nominal" && v.detail?.derived_facts?.length)
+      ) {
+        affected += 1;
+      }
+      const isActive =
+        v.review != null &&
+        v.review.state !== "closed" &&
+        v.review.state !== "decided";
+      const elevated = v.risk_level !== "nominal";
+      if (!isActive && !elevated) continue;
+      const floor = floorOfAsset(v.asset.id, v.asset.floor);
+      activity[floor] += 1;
+    }
+    return {
+      riskByAsset: risk,
+      criticalByAsset: critical,
+      affectedCount: affected,
+      activityByFloor: activity,
+    };
+  }, [views]);
 
   const selected = selectedAssetId
     ? findViewByAssetId(views, selectedAssetId)
     : null;
 
-  const affectedCount = views.filter(
-    (v) =>
-      v.review != null ||
-      (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
-  ).length;
-
-  const activityByFloor: Record<PlantFloor, number> = {
-    ground: 0,
-    first: 0,
-    second: 0,
-  };
-  for (const v of views) {
-    const active =
-      v.review != null &&
-      v.review.state !== "closed" &&
-      v.review.state !== "decided";
-    const elevated = v.risk_level !== "nominal";
-    if (!active && !elevated) continue;
-    const floor = floorOfAsset(v.asset.id, v.asset.floor);
-    activityByFloor[floor] += 1;
-  }
-
   const idx = floorIndex(activeFloor);
   const prevFloor = idx > 0 ? FLOOR_ORDER[idx - 1] : null;
   const nextFloor = idx < FLOOR_ORDER.length - 1 ? FLOOR_ORDER[idx + 1] : null;
+
+  const floorSpatialLinks = useMemo(
+    () => buildFloorSpatialLinks(activeFloor, views, MAP),
+    [activeFloor, views],
+  );
 
   const enterFloor = useCallback(
     (floor: PlantFloor, dir: SlideDir = "in") => {
@@ -385,8 +405,10 @@ export function DigitalTwin() {
                 <FloorPlan
                   floor={activeFloor}
                   riskByAsset={riskByAsset}
+                  criticalByAsset={criticalByAsset}
                   selectedAssetId={selectedAssetId}
                   onSelectAsset={selectAsset}
+                  spatialLinks={floorSpatialLinks}
                 />
               </div>
             </MapViewport>

@@ -79,6 +79,10 @@
   border-left: 3px solid var(--status-blocking) !important;
 }
 
+.toastCritical:global(.Toastify__toast--error) {
+  border-left: 3px solid var(--status-critical) !important;
+}
+
 .toast:global(.Toastify__toast--warning) {
   border-left: 3px solid var(--status-elevated) !important;
 }

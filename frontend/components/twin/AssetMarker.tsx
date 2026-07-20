@@ -1,5 +1,6 @@
 "use client";
 
+import { memo } from "react";
 import type { RiskLevel } from "@/shared/enums";
 import styles from "./AssetMarker.module.css";
 
@@ -9,22 +10,24 @@ interface AssetMarkerProps {
   x: number;
   y: number;
   risk: RiskLevel;
+  sensorCritical?: boolean;
   selected: boolean;
   hovered?: boolean;
   onSelect: (id: string) => void;
 }
 
-export function AssetMarker({
+export const AssetMarker = memo(function AssetMarker({
   id,
   label,
   x,
   y,
   risk,
+  sensorCritical = false,
   selected,
   hovered = false,
   onSelect,
 }: AssetMarkerProps) {
-  const pulse = risk !== "nominal";
+  const pulse = risk !== "nominal" || sensorCritical;
 
   return (
     <g
@@ -43,16 +46,22 @@ export function AssetMarker({
       role="button"
       tabIndex={-1}
       data-map-marker=""
-      aria-label={`${label}, risk ${risk}`}
+      aria-label={`${label}, risk ${risk}${sensorCritical ? ", sensor critical" : ""}`}
     >
       <circle className={styles.hit} r={22} />
       <circle
         className={styles.pulse}
         data-active={pulse}
         data-risk={risk}
+        data-sensor-critical={sensorCritical ? "true" : undefined}
         r={12}
       />
-      <circle className={styles.disk} data-risk={risk} r={10} />
+      <circle
+        className={styles.disk}
+        data-risk={risk}
+        data-sensor-critical={sensorCritical ? "true" : undefined}
+        r={10}
+      />
     </g>
   );
-}
+});

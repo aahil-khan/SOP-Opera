@@ -82,6 +82,9 @@ export function showNotificationToast(
 
   const toastId = notificationToastId(n);
   const type = toastType(presentation.severity);
+  const isCritical =
+    n.event_type === "assessment.completed" &&
+    /\bcritical\b/i.test(n.summary);
 
   toast(
     <ToastBody
@@ -103,6 +106,7 @@ export function showNotificationToast(
       type,
       autoClose: autoCloseMs(n, presentation.severity),
       closeOnClick: false,
+      className: isCritical ? styles.toastCritical : styles.toast,
     },
   );
 }
