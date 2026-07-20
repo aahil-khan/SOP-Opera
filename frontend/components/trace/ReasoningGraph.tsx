@@ -256,7 +256,7 @@ export function ReasoningGraph({
           for (const b of bandRanges) {
             const yTop = TOP_PAD + b.fromRow * ROW_HEIGHT - ROW_HEIGHT / 2 + 12;
             ctx.fillStyle = mutedText;
-            ctx.font = "700 10px system-ui, sans-serif";
+            ctx.font = "700 11px system-ui, sans-serif";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
             ctx.fillText(BAND_LABEL[b.band].toUpperCase(), 0, yTop + 13);
@@ -292,7 +292,7 @@ export function ReasoningGraph({
             ctx.setLineDash([]);
           }
 
-          const fontSize = Math.max(9, 10.5 / Math.sqrt(globalScale));
+          const fontSize = Math.max(11, 12 / Math.sqrt(globalScale));
           const label =
             n.label.length > 26 ? `${n.label.slice(0, 24)}…` : n.label;
           ctx.font = `600 ${fontSize}px system-ui, sans-serif`;

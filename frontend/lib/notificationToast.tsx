@@ -122,3 +122,33 @@ export function dismissNotificationToast(n: Notification | string): void {
 export function dismissAllNotificationToasts(): void {
   toast.dismiss();
 }
+
+/** In-panel case worsened / new signals while a settled assessment existed. */
+export function showReassessmentToast(options: {
+  reviewId: string;
+  previousState: string;
+  onOpen?: () => void;
+}): void {
+  const toastId = `reassess-${options.reviewId}`;
+  const fromDecision =
+    options.previousState === "pending_decision" ||
+    options.previousState === "escalated";
+  if (!fromDecision && options.previousState !== "reopened") return;
+
+  toast(
+    <ToastBody
+      title="Situation updated — reassessment started"
+      detail="New signals arrived while this case was open. Hold any decision until the updated recommendation is ready."
+      reviewId={options.reviewId}
+      onOpen={options.onOpen}
+      onDismiss={() => toast.dismiss(toastId)}
+    />,
+    {
+      toastId,
+      type: "warning",
+      autoClose: 7000,
+      closeOnClick: false,
+      className: styles.toast,
+    },
+  );
+}

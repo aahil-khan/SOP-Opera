@@ -48,7 +48,7 @@
 
 .badge {
   flex-shrink: 0;
-  font-size: 0.6rem;
+  font-size: var(--text-2xs);
   font-family: var(--font-mono);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.04em;

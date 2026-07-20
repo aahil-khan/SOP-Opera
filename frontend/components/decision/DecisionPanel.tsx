@@ -51,6 +51,10 @@ function DecisionForm({
   assessment: AssessmentHistoryItem;
 }) {
   const submitDecision = useLiveStore((s) => s.submitDecision);
+  const blockingAssessment = assessment.risk_level === "blocking";
+  const allowedOutcomes = blockingAssessment
+    ? OUTCOMES.filter((o) => o.value === "blocked")
+    : OUTCOMES;
   const [outcome, setOutcome] = useState<DecisionOutcome | null>(null);
   const [conditions, setConditions] = useState("");
   const [busy, setBusy] = useState(false);
@@ -65,8 +69,14 @@ function DecisionForm({
   const canSubmit =
     outcome !== null && (!needsConditions || conditions.trim().length > 0);
 
+  useEffect(() => {
+    if (!blockingAssessment) return;
+    setOutcome("blocked");
+  }, [blockingAssessment]);
+
   async function onSubmit() {
     if (!outcome) return;
+    if (blockingAssessment && outcome !== "blocked") return;
     setBusy(true);
     setError(null);
     try {
@@ -150,8 +160,13 @@ function DecisionForm({
         <p className={styles.sectionHint}>
           Choose the final outcome for this review.
         </p>
+        {blockingAssessment ? (
+          <p className={styles.error}>
+            Blocking assessment: decision is restricted to blocked.
+          </p>
+        ) : null}
         <div className={styles.outcomeList} role="radiogroup" aria-label="Decision outcome">
-          {OUTCOMES.map((o) => {
+          {allowedOutcomes.map((o) => {
             const selected = outcome === o.value;
             const isConditions = o.value === "approved_with_conditions";
             return (
@@ -223,7 +238,13 @@ function DecisionForm({
   );
 }
 
-function ClosedReportLink({ reviewId }: { reviewId: string }) {
+function ClosedReportLink({
+  reviewId,
+  outcome,
+}: {
+  reviewId: string;
+  outcome: DecisionOutcome | null | undefined;
+}) {
   const [report, setReport] = useState<Report | null>(null);
 
   useEffect(() => {
@@ -240,7 +261,9 @@ function ClosedReportLink({ reviewId }: { reviewId: string }) {
 
   return (
     <div className={styles.panel}>
-      <p className={styles.done}>Review closed</p>
+      <p className={styles.done}>
+        {outcome === "blocked" ? "Incident closed · work halted" : "All clear"}
+      </p>
       {report ? (
         <p className={styles.hint}>
           Closure report ready —{" "}
@@ -276,10 +299,21 @@ export function DecisionPanel({
     existing!.assessment_id !== assessment!.id;
 
   if (reviewState === "closed") {
-    return <ClosedReportLink reviewId={reviewId} />;
+    return (
+      <ClosedReportLink reviewId={reviewId} outcome={existing?.outcome} />
+    );
   }
 
   if (existing && reviewState === "decided") {
+    const recommendationItems =
+      assessment?.recommendations.map((rec) => {
+        const disposition = existing.recommendation_dispositions[rec.id];
+        return {
+          id: rec.id,
+          text: rec.text,
+          disposition: disposition ?? "accepted",
+        };
+      }) ?? [];
     return (
       <div className={styles.panel}>
         <p className={styles.done}>
@@ -289,6 +323,41 @@ export function DecisionPanel({
         <p className={styles.hint}>
           Evidence frozen at {new Date(existing.submitted_at).toLocaleString()}.
         </p>
+        {recommendationItems.length > 0 ? (
+          <section className={styles.section} aria-labelledby="execution-heading">
+            <p id="execution-heading" className={styles.label}>
+              Execution snapshot
+            </p>
+            <div className={styles.recList}>
+              {recommendationItems.map((item, idx) => (
+                <article
+                  key={item.id}
+                  className={styles.recCard}
+                  data-rejected={item.disposition === "rejected"}
+                >
+                  <div className={styles.recCardHeader}>
+                    <span className={styles.recIndex} aria-hidden>
+                      {idx + 1}
+                    </span>
+                    <div className={styles.recBody}>
+                      <p className={styles.recText}>{item.text}</p>
+                      <p className={styles.recRationale}>
+                        {item.disposition === "accepted"
+                          ? "Accepted for execution"
+                          : "Rejected by decision"}
+                      </p>
+                    </div>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+        ) : null}
+        {existing.outcome === "blocked" ? (
+          <p className={styles.hint}>
+            Machine is inactive in simulator until the lock window ends and the review is closed.
+          </p>
+        ) : null}
         <button
           type="button"
           className={`btn btn-primary ${styles.submit}`}

@@ -110,6 +110,13 @@ a:focus-visible {
     0 0 10px color-mix(in srgb, var(--status-critical) 35%, transparent);
 }
 
+.badge[data-risk="halted"] {
+  color: var(--text-secondary);
+  border-color: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  background: color-mix(in srgb, var(--text-muted) 14%, var(--surface-panel));
+  border-style: dashed;
+}
+
 .panel {
   background: var(--surface-panel);
   border: 1px solid var(--border-default);

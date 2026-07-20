@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   startTransition,
+  type CSSProperties,
 } from "react";
 import {
   findViewByAssetId,
@@ -41,6 +42,13 @@ type SlideDir = "left" | "right" | "in" | "out";
 /** Camera pull-back / dive-in duration for overview ↔ detail. */
 const VIEW_ZOOM_MS = 420;
 
+/** Docked panel widths — current defaults are mins; user can widen only. */
+export const SIDEBAR_WIDTH_MIN = 280;
+export const SIDEBAR_WIDTH_MAX = 480;
+export const DRAWER_WIDTH_MIN = 380;
+export const DRAWER_WIDTH_EXPANDED_MIN = 720;
+export const DRAWER_WIDTH_MAX = 960;
+
 const MAP = floorPlanMap as Record<string, FloorEntry>;
 
 function floorOfAsset(assetId: string, assetFloor?: string): PlantFloor {
@@ -68,6 +76,10 @@ export function DigitalTwin() {
     {},
   );
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_MIN);
+  const [sidebarResizing, setSidebarResizing] = useState(false);
+  const [drawerWidth, setDrawerWidth] = useState(DRAWER_WIDTH_MIN);
+  const [drawerResizing, setDrawerResizing] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [activeFloor, setActiveFloor] = useState<PlantFloor>("ground");
   const [slideDir, setSlideDir] = useState<SlideDir>("in");
@@ -78,6 +90,17 @@ export function DigitalTwin() {
   const lastFocusedRef = useRef<string | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
   const viewTransitionTimerRef = useRef<number | null>(null);
+
+  const drawerMin =
+    assetPanelMode === "fullReview" ? DRAWER_WIDTH_EXPANDED_MIN : DRAWER_WIDTH_MIN;
+  const effectiveDrawerWidth = Math.min(
+    DRAWER_WIDTH_MAX,
+    Math.max(drawerMin, drawerWidth),
+  );
+
+  useEffect(() => {
+    if (drawerWidth < drawerMin) setDrawerWidth(drawerMin);
+  }, [drawerMin, drawerWidth]);
 
   const activeFloorTab: "all" | PlantFloor =
     viewMode === "overview" || slideDir === "out" ? "all" : activeFloor;
@@ -108,11 +131,13 @@ export function DigitalTwin() {
   const {
     riskByAsset,
     criticalByAsset,
+    resolvedByAsset,
     affectedCount,
     activityByFloor,
   } = useMemo(() => {
     const risk: Record<string, RiskLevel> = {};
     const critical: Record<string, boolean> = {};
+    const resolved: Record<string, boolean> = {};
     let affected = 0;
     const activity: Record<PlantFloor, number> = {
       ground: 0,
@@ -122,6 +147,13 @@ export function DigitalTwin() {
     for (const v of views) {
       risk[v.asset.id] = v.risk_level;
       if (v.sensor_critical) critical[v.asset.id] = true;
+      if (
+        v.review != null &&
+        v.review.state === "closed" &&
+        v.detail?.decision?.outcome === "blocked"
+      ) {
+        resolved[v.asset.id] = true;
+      }
       if (
         v.review != null ||
         (v.risk_level !== "nominal" && v.detail?.derived_facts?.length)
@@ -140,6 +172,7 @@ export function DigitalTwin() {
     return {
       riskByAsset: risk,
       criticalByAsset: critical,
+      resolvedByAsset: resolved,
       affectedCount: affected,
       activityByFloor: activity,
     };
@@ -374,15 +407,20 @@ export function DigitalTwin() {
   const showMapControls = viewMode === "detail" && slideDir !== "out";
 
   return (
-    <div className={styles.wrap}>
+    <div
+      className={styles.wrap}
+      data-panel-resizing={sidebarResizing || drawerResizing ? "true" : undefined}
+      style={
+        {
+          "--affected-panel-width": `${sidebarWidth}px`,
+          "--drawer-width": `${effectiveDrawerWidth}px`,
+        } as CSSProperties
+      }
+    >
       <div
         className={styles.stage}
         data-affected-inset={sidebarOpen ? "true" : undefined}
-        data-drawer={
-          selected && viewMode === "detail" && assetPanelMode === "fullReview"
-            ? "expanded"
-            : undefined
-        }
+        data-resizing={sidebarResizing ? "true" : undefined}
       >
         {viewMode === "overview" ? (
           <FloorOverview
@@ -406,6 +444,7 @@ export function DigitalTwin() {
                   floor={activeFloor}
                   riskByAsset={riskByAsset}
                   criticalByAsset={criticalByAsset}
+                  resolvedByAsset={resolvedByAsset}
                   selectedAssetId={selectedAssetId}
                   onSelectAsset={selectAsset}
                   spatialLinks={floorSpatialLinks}
@@ -439,7 +478,15 @@ export function DigitalTwin() {
         ) : null}
 
         {selected && viewMode === "detail" && slideDir !== "out" ? (
-          <AssetPanel view={selected} onClose={() => selectAsset(null)} />
+          <AssetPanel
+            view={selected}
+            onClose={() => selectAsset(null)}
+            width={effectiveDrawerWidth}
+            minWidth={drawerMin}
+            maxWidth={DRAWER_WIDTH_MAX}
+            onWidthChange={setDrawerWidth}
+            onResizingChange={setDrawerResizing}
+          />
         ) : null}
       </div>
 
@@ -519,6 +566,11 @@ export function DigitalTwin() {
         open={sidebarOpen}
         onOpenChange={setSidebarOpen}
         affectedCount={affectedCount}
+        width={sidebarWidth}
+        minWidth={SIDEBAR_WIDTH_MIN}
+        maxWidth={SIDEBAR_WIDTH_MAX}
+        onWidthChange={setSidebarWidth}
+        onResizingChange={setSidebarResizing}
       />
 
       {shiftGateOpen ? <ShiftGate onStartShift={handleStartShift} /> : null}

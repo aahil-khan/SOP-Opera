@@ -31,6 +31,7 @@ import {
   dismissAllNotificationToasts,
   dismissNotificationToast,
   showNotificationToast,
+  showReassessmentToast,
 } from "@/lib/notificationToast";
 import {
   assetHasSensorCritical,
@@ -380,9 +381,11 @@ function deriveRisk(
   assessment: AssessmentHistoryItem | null,
   detail: ReviewDetail | null,
 ): RiskLevel {
-  // Closed reviews clear the twin hotspot — evidence stays on the record,
-  // but live risk returns to nominal.
-  if (!review || review.state === "closed") {
+  if (!review) {
+    return "nominal";
+  }
+  // Closed reviews are no longer active risk — resolved/halted styling is separate.
+  if (review.state === "closed") {
     return "nominal";
   }
 
@@ -890,6 +893,20 @@ export const useLiveStore = create<LiveState>((set, get) => {
         type === "report.generated")
     ) {
       void get().loadReviewDetail(reviewId).catch(() => {});
+    }
+    if (
+      type === "review.status_changed" &&
+      reviewId &&
+      payload.state === "assessing" &&
+      typeof payload.previous_state === "string"
+    ) {
+      showReassessmentToast({
+        reviewId,
+        previousState: payload.previous_state,
+        onOpen: () => {
+          void focusReviewAssetOnTwin(reviewId);
+        },
+      });
     }
     if (type === "notification.created") {
       const n = asNotification(payload);

@@ -3,7 +3,6 @@
 import { useState } from "react";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
-import type { RetrievedReference } from "@/shared/schemas";
 import type { RiskLevel } from "@/shared/enums";
 import styles from "./AssessmentPanel.module.css";
 
@@ -12,12 +11,8 @@ interface AssessmentPanelProps {
   reviewState: string;
   assessment: AssessmentHistoryItem | null;
   inProgress?: boolean;
-}
-
-function refLabel(r: RetrievedReference): string {
-  if (r.code && r.title) return `${r.code}: ${r.title}`;
-  if (r.title) return r.title;
-  return r.source.replaceAll("_", " ");
+  /** True when a prior settled assessment exists and a new one is in flight. */
+  reassessing?: boolean;
 }
 
 export function AssessmentPanel({
@@ -25,6 +20,7 @@ export function AssessmentPanel({
   reviewState,
   assessment,
   inProgress = false,
+  reassessing = false,
 }: AssessmentPanelProps) {
   const retryAssessment = useLiveStore((s) => s.retryAssessment);
   const submitManualAssessment = useLiveStore((s) => s.submitManualAssessment);
@@ -44,14 +40,16 @@ export function AssessmentPanel({
             <h3 className={styles.title}>Assessment</h3>
             {inProgress ? (
               <span className={styles.chip} data-status="generating">
-                generating
+                {reassessing ? "reassessing" : "generating"}
               </span>
             ) : null}
           </div>
         </header>
         <p className={styles.empty}>
           {inProgress
-            ? "Assessment is being generated — results will appear here when ready."
+            ? reassessing
+              ? "Prior assessment is being replaced from live signals — updated results will appear here when ready."
+              : "Assessment is being generated — results will appear here when ready."
             : "No assessment yet — waiting for the pipeline or a Manual Assessment."}
         </p>
       </section>
@@ -99,7 +97,6 @@ export function AssessmentPanel({
     }
   }
 
-  const hasRefs = assessment.retrieved_references.length > 0;
   const meta = assessment.metadata;
   const statusLabel = assessment.status.replaceAll("_", " ");
   const typeLabel = assessment.assessment_type.replaceAll("_", " ");
@@ -152,27 +149,6 @@ export function AssessmentPanel({
             confidence {((meta.confidence ?? 0) * 100).toFixed(0)}%
           </span>
         </p>
-      )}
-
-      {hasRefs && (
-        <div className={styles.refs}>
-          <h4 className={styles.refsTitle}>Cited resources</h4>
-          <ul className={styles.refList}>
-            {assessment.retrieved_references.map((r) => (
-              <li key={`${r.source}-${r.id}`} className={styles.refItem}>
-                <span className={styles.refSource}>
-                  {r.source.replaceAll("_", " ")}
-                </span>
-                <div className={styles.refBody}>
-                  <p className={styles.refTitle}>{refLabel(r)}</p>
-                  {r.snippet && (
-                    <p className={styles.refSnippet}>{r.snippet}</p>
-                  )}
-                </div>
-              </li>
-            ))}
-          </ul>
-        </div>
       )}
 
       {canRecover && (

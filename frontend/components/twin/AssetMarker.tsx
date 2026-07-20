@@ -11,6 +11,7 @@ interface AssetMarkerProps {
   y: number;
   risk: RiskLevel;
   sensorCritical?: boolean;
+  resolved?: boolean;
   selected: boolean;
   hovered?: boolean;
   onSelect: (id: string) => void;
@@ -23,11 +24,12 @@ export const AssetMarker = memo(function AssetMarker({
   y,
   risk,
   sensorCritical = false,
+  resolved = false,
   selected,
   hovered = false,
   onSelect,
 }: AssetMarkerProps) {
-  const pulse = risk !== "nominal" || sensorCritical;
+  const pulse = !resolved && (risk !== "nominal" || sensorCritical);
 
   return (
     <g
@@ -46,7 +48,7 @@ export const AssetMarker = memo(function AssetMarker({
       role="button"
       tabIndex={-1}
       data-map-marker=""
-      aria-label={`${label}, risk ${risk}${sensorCritical ? ", sensor critical" : ""}`}
+      aria-label={`${label}, ${resolved ? "work halted" : `risk ${risk}`}${sensorCritical ? ", sensor critical" : ""}`}
     >
       <circle className={styles.hit} r={22} />
       <circle
@@ -54,12 +56,14 @@ export const AssetMarker = memo(function AssetMarker({
         data-active={pulse}
         data-risk={risk}
         data-sensor-critical={sensorCritical ? "true" : undefined}
+        data-resolved={resolved ? "true" : undefined}
         r={12}
       />
       <circle
         className={styles.disk}
         data-risk={risk}
         data-sensor-critical={sensorCritical ? "true" : undefined}
+        data-resolved={resolved ? "true" : undefined}
         r={10}
       />
     </g>

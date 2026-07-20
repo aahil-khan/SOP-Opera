@@ -68,7 +68,7 @@
   height: 1.5rem;
   flex-shrink: 0;
   border-radius: 999px;
-  font-size: 0.7rem;
+  font-size: var(--text-sm);
   font-weight: var(--weight-bold);
   font-variant-numeric: tabular-nums;
   color: var(--text-primary);
@@ -137,7 +137,7 @@
 }
 
 .recToggleIcon {
-  font-size: 0.75rem;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 
@@ -235,7 +235,7 @@
   height: 1.75rem;
   flex-shrink: 0;
   border-radius: var(--radius-sm);
-  font-size: 0.9rem;
+  font-size: var(--text-md);
   line-height: 1;
   color: var(--outcome-accent, var(--text-muted));
   background: color-mix(in srgb, var(--outcome-accent, var(--text-muted)) 12%, transparent);

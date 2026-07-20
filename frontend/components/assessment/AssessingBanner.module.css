@@ -5,6 +5,17 @@
   padding: var(--space-3);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--accent-ai) 6%, var(--surface-overlay));
+}
+
+.banner[data-tone="reassess"] {
+  border-color: color-mix(in srgb, var(--status-elevated) 45%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-elevated) 10%, var(--surface-overlay));
+}
+
+.banner[data-tone="escalate"] {
+  border-color: color-mix(in srgb, var(--status-blocking) 50%, var(--border-muted));
+  background: color-mix(in srgb, var(--status-blocking) 12%, var(--surface-overlay));
 }
 
 .spinner {
@@ -16,6 +27,16 @@
   border-top-color: var(--accent-ai);
   flex-shrink: 0;
   animation: assessing-spin 0.75s linear infinite;
+}
+
+.banner[data-tone="reassess"] .spinner {
+  border-color: color-mix(in srgb, var(--status-elevated) 30%, transparent);
+  border-top-color: var(--status-elevated);
+}
+
+.banner[data-tone="escalate"] .spinner {
+  border-color: color-mix(in srgb, var(--status-blocking) 30%, transparent);
+  border-top-color: var(--status-blocking);
 }
 
 @keyframes assessing-spin {
@@ -38,9 +59,62 @@
   color: var(--text-primary);
 }
 
+.banner[data-tone="escalate"] .title {
+  color: var(--status-blocking);
+}
+
+.banner[data-tone="reassess"] .title {
+  color: var(--status-elevated);
+}
+
 .hint {
   margin: 0;
   font-size: var(--text-xs);
   line-height: var(--leading-relaxed);
   color: var(--text-secondary);
+}
+
+.riskRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
+}
+
+.riskArrow {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.riskChip {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  padding: 0.15rem 0.45rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--text-muted) 10%, transparent);
+  color: var(--text-secondary);
+}
+
+.riskChip[data-risk="elevated"] {
+  color: var(--status-elevated);
+  background: var(--status-elevated-muted);
+  border-color: color-mix(in srgb, var(--status-elevated) 35%, transparent);
+}
+
+.riskChip[data-risk="blocking"],
+.riskChip[data-risk="critical"],
+.riskChip[data-risk="halted"] {
+  color: var(--status-blocking);
+  background: var(--status-blocking-muted);
+  border-color: color-mix(in srgb, var(--status-blocking) 35%, transparent);
+}
+
+.riskChip[data-risk="nominal"] {
+  color: var(--status-nominal);
+  background: var(--status-nominal-muted);
+  border-color: color-mix(in srgb, var(--status-nominal) 35%, transparent);
 }

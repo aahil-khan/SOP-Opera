@@ -1,5 +1,6 @@
 import type { ReviewState } from "@/shared/enums";
 import type { LiveAssetView } from "@/lib/liveStore";
+import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 
 export type OpenWorkColumnId =
   | "investigating"
@@ -52,11 +53,121 @@ export function fallbackNextAction(
   return "None";
 }
 
+export type WorkBadgeRisk =
+  | "nominal"
+  | "elevated"
+  | "blocking"
+  | "critical"
+  | "halted";
+
+export type WorkStatusKind =
+  | "investigating"
+  | "awaiting_decision"
+  | "decided"
+  | "halted"
+  | "conditional"
+  | "closed";
+
+export function workStatusForView(view: LiveAssetView): {
+  kind: WorkStatusKind;
+  label: string;
+  badgeRisk: WorkBadgeRisk;
+  nextAction: string;
+  resolved: boolean;
+} {
+  const review = view.review;
+  const state = review?.state;
+  const outcome = view.detail?.decision?.outcome;
+
+  if (state === "closed") {
+    if (outcome === "blocked") {
+      return {
+        kind: "halted",
+        label: view.sensor_critical ? "Halted · sensor critical" : "Work halted",
+        badgeRisk: "halted",
+        nextAction: view.sensor_critical
+          ? "Sensors still above incident threshold — keep offline"
+          : "Incident closed — no further action",
+        resolved: true,
+      };
+    }
+    if (outcome === "approved_with_conditions") {
+      return {
+        kind: "conditional",
+        label: "Closed · conditions",
+        badgeRisk: "elevated",
+        nextAction:
+          view.detail?.decision?.conditions?.trim() ||
+          "Verify stated conditions before restart",
+        resolved: true,
+      };
+    }
+    if (view.sensor_critical) {
+      return {
+        kind: "closed",
+        label: "Closed · sensor critical",
+        badgeRisk: "critical",
+        nextAction: "Live sensors still critical — verify before restart",
+        resolved: true,
+      };
+    }
+    return {
+      kind: "closed",
+      label: "Closed",
+      badgeRisk: "nominal",
+      nextAction: "None",
+      resolved: true,
+    };
+  }
+
+  if (state === "decided") {
+    const badgeRisk: WorkBadgeRisk =
+      outcome === "blocked"
+        ? "blocking"
+        : outcome === "approved_with_conditions"
+          ? "elevated"
+          : "nominal";
+    return {
+      kind: "decided",
+      label:
+        outcome === "blocked"
+          ? "Decided · blocked"
+          : `Decided · ${(outcome ?? "unknown").replaceAll("_", " ")}`,
+      badgeRisk,
+      nextAction: "Close review",
+      resolved: false,
+    };
+  }
+
+  const column = columnForReviewState(state);
+  const displayRisk = openWorkDisplayRisk(
+    view.risk_level,
+    view.sensor_critical,
+  ) as WorkBadgeRisk;
+
+  if (column === "awaiting_decision") {
+    return {
+      kind: "awaiting_decision",
+      label: displayRisk,
+      badgeRisk: displayRisk,
+      nextAction:
+        view.assessment?.recommendations?.[0]?.text?.trim() ??
+        fallbackNextAction(column, state),
+      resolved: false,
+    };
+  }
+
+  return {
+    kind: "investigating",
+    label: displayRisk,
+    badgeRisk: displayRisk,
+    nextAction: fallbackNextAction(column, state),
+    resolved: false,
+  };
+}
+
 export function nextActionForView(view: LiveAssetView): string {
-  const rec = view.assessment?.recommendations?.[0]?.text?.trim();
-  if (rec) return rec;
-  const column = columnForReviewState(view.review?.state);
-  return fallbackNextAction(column, view.review?.state);
+  return workStatusForView(view).nextAction;
 }
 
 export function ownerNameForView(view: LiveAssetView): string | null {

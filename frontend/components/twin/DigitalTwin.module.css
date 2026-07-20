@@ -13,8 +13,8 @@
   transition: left var(--duration-normal) var(--ease-out);
 }
 
-.stage[data-drawer="expanded"] {
-  --drawer-width: var(--drawer-width-expanded);
+.stage[data-resizing="true"] {
+  transition: none;
 }
 
 .stage[data-affected-inset="true"] {
@@ -194,7 +194,7 @@
   background: var(--status-elevated);
   color: #111;
   font-family: var(--font-mono);
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   line-height: 1;
 }
 

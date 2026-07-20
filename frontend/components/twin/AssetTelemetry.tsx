@@ -48,6 +48,12 @@ function formatSampleTime(t: number): string {
   }
 }
 
+function formatEtaSeconds(seconds: number): string {
+  if (seconds < 60) return `~${Math.round(seconds)}s`;
+  const mins = Math.round(seconds / 60);
+  return mins === 1 ? "~1 min" : `~${mins} min`;
+}
+
 function MiniChart({
   points,
   warnAt,
@@ -56,6 +62,7 @@ function MiniChart({
   critical,
   metricKey,
   unit,
+  criticalAt,
 }: {
   points: TelemetryPoint[];
   warnAt: number;
@@ -64,6 +71,7 @@ function MiniChart({
   critical: boolean;
   metricKey: TelemetryMetricKey;
   unit: string;
+  criticalAt?: number;
 }) {
   const gradId = useId().replace(/:/g, "");
   const svgRef = useRef<SVGSVGElement>(null);
@@ -92,6 +100,37 @@ function MiniChart({
 
     return { yMin, yMax, plotW, plotH, xy, span };
   }, [points, warnAt, maxScale]);
+
+  const projection = useMemo(() => {
+    if (!layout || points.length < 3) return null;
+    if (criticalAt == null || !Number.isFinite(criticalAt)) return null;
+    const p0 = points[points.length - 3];
+    const p1 = points[points.length - 1];
+    const dt = (p1.t - p0.t) / 1000;
+    const dv = p1.v - p0.v;
+    if (dt <= 0 || dv <= 0) return null;
+    const slopePerSec = dv / dt;
+    if (slopePerSec <= 0) return null;
+    const eta = (criticalAt - p1.v) / slopePerSec;
+    if (!Number.isFinite(eta) || eta <= 0) return null;
+    const horizon = 15 * 60;
+    if (eta > horizon) return null;
+
+    const now = points[points.length - 1];
+    const targetValue = Math.min(criticalAt, p1.v + slopePerSec * eta);
+    const y =
+      PAD.top +
+      layout.plotH -
+      ((targetValue - layout.yMin) / layout.span) * layout.plotH;
+    return {
+      etaSeconds: eta,
+      targetX: PAD.left + layout.plotW,
+      targetY: y,
+      fromX: layout.xy[layout.xy.length - 1].x,
+      fromY: layout.xy[layout.xy.length - 1].y,
+      slopePerMin: slopePerSec * 60,
+    };
+  }, [layout, points, criticalAt]);
 
   const pickIndex = useCallback(
     (clientX: number) => {
@@ -232,6 +271,16 @@ function MiniChart({
             </>
           )}
 
+          {projection && (
+            <line
+              x1={projection.fromX}
+              y1={projection.fromY}
+              x2={projection.targetX}
+              y2={projection.targetY}
+              className={styles.chartProjection}
+            />
+          )}
+
           {hover && (
             <g className={styles.chartScrub} pointerEvents="none">
               <line
@@ -285,7 +334,11 @@ function MiniChart({
       </div>
       <div className={styles.chartAxis}>
         <span>{yMax.toFixed(yMax >= 100 ? 0 : 1)}</span>
-        <span className={styles.chartAxisMid}>trend</span>
+        <span className={styles.chartAxisMid}>
+          {projection
+            ? `+${projection.slopePerMin.toFixed(1)}/min → critical ${formatEtaSeconds(projection.etaSeconds)}`
+            : "trend"}
+        </span>
         <span>{yMin.toFixed(yMin >= 100 ? 0 : 1)}</span>
       </div>
     </div>
@@ -417,6 +470,7 @@ export function AssetTelemetry({
                 critical={critical}
                 metricKey={g.key}
                 unit={g.unit}
+                criticalAt={g.criticalAt ?? undefined}
               />
             </article>
           );

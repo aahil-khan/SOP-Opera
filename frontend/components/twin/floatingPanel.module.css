@@ -52,7 +52,7 @@
   border: 1px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 45%, transparent);
   background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 14%, transparent);
   color: var(--accent-ok, #2f9e6a);
-  font-size: 0.7rem;
+  font-size: var(--text-sm);
   font-family: inherit;
   width: 1.4rem;
   height: 1.4rem;

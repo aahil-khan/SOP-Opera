@@ -35,9 +35,27 @@
   animation: breathe-scale-strong 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+.disk[data-resolved="true"] {
+  animation: none;
+  fill: color-mix(in srgb, var(--text-muted) 38%, var(--surface-panel));
+  stroke: color-mix(in srgb, var(--status-blocking) 55%, var(--text-muted));
+  stroke-width: 1.5;
+  stroke-dasharray: 3 2;
+}
+
+.disk[data-resolved="true"][data-sensor-critical="true"] {
+  fill: color-mix(in srgb, var(--status-critical) 35%, var(--surface-panel));
+  stroke: var(--status-critical);
+  stroke-dasharray: 3 2;
+}
+
 .disk[data-sensor-critical="true"] {
   fill: var(--status-critical);
   animation: breathe-scale-critical 1.1s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.disk[data-resolved="true"][data-sensor-critical="true"] {
+  animation: none;
 }
 
 .disk[data-sensor-critical="true"][data-risk="blocking"] {
@@ -61,6 +79,13 @@
 /* Pulse ring only for blocking (or selected blocking via data-active). */
 .pulse[data-active="true"][data-risk="blocking"] {
   animation: pulse-ring 2.2s var(--ease-out) infinite;
+}
+
+.pulse[data-resolved="true"] {
+  animation: none;
+  stroke: color-mix(in srgb, var(--text-muted) 50%, var(--status-blocking));
+  stroke-dasharray: 4 3;
+  opacity: 0.45;
 }
 
 .pulse[data-risk="elevated"] {

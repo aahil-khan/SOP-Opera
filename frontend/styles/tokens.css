@@ -29,14 +29,15 @@
   --font-display: var(--font-display-loaded), Satoshi, var(--font-sans);
   --font-label: var(--font-label-loaded), "Plus Jakarta Sans", var(--font-sans);
   --font-mono: var(--font-geist-mono), ui-monospace, monospace;
-  --text-xs: 0.6875rem; /* 11px */
-  --text-sm: 0.8125rem; /* 13px */
-  --text-md: 0.875rem; /* 14px */
-  --text-lg: 1rem; /* 16px */
-  --text-xl: 1.125rem; /* 18px */
-  --text-2xl: 1.5rem; /* 24px */
-  --text-3xl: 2rem; /* 32px */
-  --text-4xl: 2.75rem; /* 44px */
+  --text-2xs: 0.6875rem; /* 11px — compact metadata */
+  --text-xs: 0.75rem; /* 12px */
+  --text-sm: 0.875rem; /* 14px */
+  --text-md: 0.9375rem; /* 15px — body */
+  --text-lg: 1.0625rem; /* 17px */
+  --text-xl: 1.1875rem; /* 19px */
+  --text-2xl: 1.6875rem; /* 27px */
+  --text-3xl: 2.1875rem; /* 35px */
+  --text-4xl: 2.9375rem; /* 47px */
   --leading-tight: 1.25;
   --leading-normal: 1.45;
   --leading-relaxed: 1.55;

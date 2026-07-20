@@ -130,6 +130,7 @@ export function DemoControls() {
     setError(null);
     try {
       clearAgentSteps();
+      clearTelemetry();
       if (mode === "scripted") {
         const st = await demoRequest<DemoStatus>(
           `/demo/scenarios/${scenario}/start`,
@@ -154,6 +155,7 @@ export function DemoControls() {
         setStatus(st);
       }
       void refreshOverview();
+      await bootstrap();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

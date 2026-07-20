@@ -53,7 +53,7 @@
   border: 1px solid var(--border-muted);
   background: transparent;
   color: var(--text-muted);
-  font-size: 0.7rem;
+  font-size: var(--text-sm);
   font-family: inherit;
   width: 1.5rem;
   height: 1.5rem;
@@ -75,7 +75,7 @@
 }
 
 .backBtn {
-  font-size: 0.85rem;
+  font-size: var(--text-sm);
   flex-shrink: 0;
 }
 
@@ -155,7 +155,7 @@
 }
 
 .kpiLabel {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -365,7 +365,7 @@
 }
 
 .categoryMark {
-  font-size: 0.65rem;
+  font-size: var(--text-xs);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.05em;
   text-transform: uppercase;
@@ -432,7 +432,7 @@
 }
 
 .previewWhen {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -456,7 +456,7 @@
 }
 
 .tileWhen {
-  font-size: 0.58rem;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
 }
@@ -734,12 +734,12 @@
 }
 
 .tileZone {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
 }
 
 .tileMuted {
-  font-size: 0.62rem;
+  font-size: var(--text-xs);
   color: var(--text-muted);
   font-style: italic;
 }
@@ -776,7 +776,7 @@
 }
 
 .tileMetricLabel {
-  font-size: 0.55rem;
+  font-size: var(--text-2xs);
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
@@ -796,7 +796,7 @@
 
 .unit {
   margin-left: 0.15rem;
-  font-size: 0.58rem;
+  font-size: var(--text-2xs);
   font-weight: var(--weight-medium);
   color: var(--text-muted);
 }

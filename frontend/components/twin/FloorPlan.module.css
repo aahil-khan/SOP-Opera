@@ -72,6 +72,12 @@
   animation: breathe-opacity 2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+.hitRegion[data-risk="halted"] {
+  fill: color-mix(in srgb, var(--text-muted) 18%, transparent);
+  stroke: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  stroke-dasharray: 4 3;
+}
+
 .hitRegion[data-sensor-critical="true"] {
   fill: color-mix(in srgb, var(--status-critical) 48%, transparent);
   stroke: var(--status-critical);
@@ -199,8 +205,17 @@
   box-shadow: 0 0 6px color-mix(in srgb, var(--status-blocking) 60%, transparent);
 }
 
+.tooltip[data-risk="halted"] {
+  border-color: color-mix(in srgb, var(--text-muted) 45%, var(--border-default));
+}
+
+.tooltip[data-risk="halted"] .tooltipDot {
+  background: color-mix(in srgb, var(--text-muted) 55%, var(--surface-panel));
+  border: 1px dashed color-mix(in srgb, var(--status-blocking) 50%, var(--text-muted));
+}
+
 .tooltipName {
-  font-size: 13px;
+  font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
   line-height: 1.2;
@@ -210,7 +225,7 @@
 
 .tooltipRisk {
   flex-shrink: 0;
-  font-size: 10px;
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -233,6 +248,11 @@
 .tooltip[data-risk="blocking"] .tooltipRisk {
   color: var(--status-blocking);
   background: color-mix(in srgb, var(--status-blocking) 16%, transparent);
+}
+
+.tooltip[data-risk="halted"] .tooltipRisk {
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--text-muted) 16%, transparent);
 }
 
 @keyframes tooltip-in {

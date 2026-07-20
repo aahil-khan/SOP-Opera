@@ -33,6 +33,7 @@ type HoverTip = {
   assetId: string;
   label: string;
   risk: RiskLevel;
+  riskLabel: string;
   x: number;
   y: number;
   place: "above" | "below";
@@ -42,6 +43,7 @@ interface FloorPlanProps {
   floor: PlantFloor;
   riskByAsset: Record<string, RiskLevel>;
   criticalByAsset?: Record<string, boolean>;
+  resolvedByAsset?: Record<string, boolean>;
   selectedAssetId: string | null;
   onSelectAsset: (id: string | null) => void;
   spatialLinks?: SpatialLinkLine[];
@@ -53,14 +55,17 @@ function tipFromTarget(
   assetId: string,
   entry: FloorEntry,
   risk: RiskLevel,
+  resolved: boolean,
   target: SVGGraphicsElement,
 ): HoverTip {
   const rect = target.getBoundingClientRect();
   const place = rect.top < 56 ? "below" : "above";
+  const riskLabel = resolved ? "halted" : risk;
   return {
     assetId,
     label: entry.label,
     risk,
+    riskLabel,
     x: rect.left + rect.width / 2,
     y: place === "above" ? rect.top : rect.bottom,
     place,
@@ -71,6 +76,7 @@ export function FloorPlan({
   floor,
   riskByAsset,
   criticalByAsset = {},
+  resolvedByAsset = {},
   selectedAssetId,
   onSelectAsset,
   spatialLinks = [],
@@ -108,11 +114,12 @@ export function FloorPlan({
     assetId: string,
     entry: FloorEntry,
     risk: RiskLevel,
+    resolved: boolean,
     target: EventTarget | null,
   ) => {
     if (!(target instanceof SVGGraphicsElement)) return;
     setHoveredAssetId(assetId);
-    setHoverTip(tipFromTarget(assetId, entry, risk, target));
+    setHoverTip(tipFromTarget(assetId, entry, risk, resolved, target));
   };
 
   const clearTip = (assetId: string) => {
@@ -178,6 +185,7 @@ export function FloorPlan({
           if (!entry.hit) return null;
           const risk = riskByAsset[assetId] ?? "nominal";
           const sensorCritical = criticalByAsset[assetId] ?? false;
+          const resolved = resolvedByAsset[assetId] ?? false;
           const selected = selectedAssetId === assetId;
           const { x, y, w, h, angle } = entry.hit;
           const cx = x + w / 2;
@@ -185,7 +193,7 @@ export function FloorPlan({
           const hitRect = (
             <rect
               className={styles.hitRegion}
-              data-risk={risk}
+              data-risk={resolved ? "halted" : risk}
               data-sensor-critical={sensorCritical ? "true" : undefined}
               data-selected={selected ? "true" : undefined}
               data-map-marker=""
@@ -195,12 +203,12 @@ export function FloorPlan({
               width={w}
               height={h}
               role="button"
-              aria-label={`${entry.label}, risk ${risk}`}
+              aria-label={`${entry.label}, ${resolved ? "work halted" : `risk ${risk}`}`}
               onMouseDown={(e) => {
                 e.preventDefault();
               }}
               onMouseEnter={(e) =>
-                showTipOnEnter(assetId, entry, risk, e.currentTarget)
+                showTipOnEnter(assetId, entry, risk, resolved, e.currentTarget)
               }
               onMouseLeave={() => clearTip(assetId)}
               onClick={(e) => {
@@ -219,7 +227,8 @@ export function FloorPlan({
         {floorEntries.map(([assetId, entry]) => {
           const risk = riskByAsset[assetId] ?? "nominal";
           const sensorCritical = criticalByAsset[assetId] ?? false;
-          if (risk === "nominal" && !sensorCritical && entry.hit) return null;
+          const resolved = resolvedByAsset[assetId] ?? false;
+          if (risk === "nominal" && !sensorCritical && !resolved && entry.hit) return null;
           return (
             <AssetMarker
               key={assetId}
@@ -229,6 +238,7 @@ export function FloorPlan({
               y={entry.y}
               risk={risk}
               sensorCritical={sensorCritical}
+              resolved={resolved}
               selected={selectedAssetId === assetId}
               hovered={hoveredAssetId === assetId}
               onSelect={onSelectAsset}
@@ -244,7 +254,7 @@ export function FloorPlan({
         createPortal(
           <div
             className={styles.tooltip}
-            data-risk={hoverTip.risk}
+            data-risk={hoverTip.riskLabel}
             data-place={hoverTip.place}
             style={{
               left: Math.min(
@@ -257,7 +267,7 @@ export function FloorPlan({
           >
             <span className={styles.tooltipDot} aria-hidden />
             <span className={styles.tooltipName}>{hoverTip.label}</span>
-            <span className={styles.tooltipRisk}>{hoverTip.risk}</span>
+            <span className={styles.tooltipRisk}>{hoverTip.riskLabel}</span>
           </div>,
           document.body,
         )}
