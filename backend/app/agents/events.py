@@ -15,6 +15,7 @@ AgentName = Literal[
     "permit",
     "maintenance",
     "workforce",
+    "predictive_trend",
     "spatial",
     "orchestrator",
     "incident_pattern",

@@ -37,6 +37,19 @@ FACT_NARRATION: dict[str, str] = {
 }
 
 
+def _fact_observation_line(ft: str, state: AgentState) -> str:
+    """Prefer quantitative reading-vs-limit copy for metric facts."""
+    from app.assessment.reasoning import METRIC_FACT_TYPES, format_fact_detail
+
+    if ft in METRIC_FACT_TYPES:
+        return format_fact_detail(
+            ft,
+            list(state.get("context_entries") or []),
+            asset_name=str(state.get("asset_name") or "asset"),
+        )
+    return FACT_NARRATION.get(ft, ft.replace("_", " "))
+
+
 def _local_risk(fact_types: list[str]) -> str:
     if any(ft in ("critical_gas", "critical_temperature") for ft in fact_types):
         return "blocking"
@@ -54,9 +67,10 @@ def _toolkit(state: AgentState) -> RuleToolkit:
     )
 
 
-def _template_observation(title: str, active: list[str]) -> str:
-    bits = [FACT_NARRATION.get(ft, ft) for ft in active]
-    return f"{title}: " + "; ".join(bits) + "."
+def _template_observation(title: str, active: list[str], state: AgentState) -> str:
+    del title  # Agent identity lives in the step metadata, not the prose.
+    bits = [_fact_observation_line(ft, state) for ft in active]
+    return "; ".join(bits) + "."
 
 
 def _context_slice_for_agent(
@@ -84,9 +98,10 @@ def _build_narration_prompt(
     title: str,
     asset: str,
     active: list[str],
+    state: AgentState,
     context_slice: list[dict[str, Any]],
 ) -> str:
-    anchors = [f"- {ft}: {FACT_NARRATION.get(ft, ft)}" for ft in active]
+    anchors = [f"- {ft}: {_fact_observation_line(ft, state)}" for ft in active]
     return (
         f"You are the {title} for an industrial plant digital twin.\n"
         f"Write 1-2 sentences observing hazards on asset '{asset}'. "
@@ -108,7 +123,7 @@ async def _narrate_observation(
     Returns (observation_text, usage_record_or_none, llm_outcome_or_none).
     Mock mode skips LLM entirely (outcome None).
     """
-    template = _template_observation(title, active)
+    template = _template_observation(title, active, state)
     provider_name = state.get("provider_name")
     model = get_chat_model(provider_name)
     if model is None:
@@ -117,6 +132,7 @@ async def _narrate_observation(
         title=title,
         asset=str(state.get("asset_name") or "asset"),
         active=active,
+        state=state,
         context_slice=_context_slice_for_agent(agent, state),
     )
     try:
@@ -203,7 +219,7 @@ async def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, An
         finding = "risk"
     else:
         # Clearance: no LLM — keep cheap template
-        observation = f"{title}: no active hazards in this domain."
+        observation = "No active hazards in this domain."
         finding = "clearance"
 
     risk = _local_risk(active)

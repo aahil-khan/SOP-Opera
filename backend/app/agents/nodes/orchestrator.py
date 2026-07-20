@@ -42,23 +42,48 @@ def _fuse_risk(grounded: list[str], observations: list[dict[str, Any]]) -> str:
         if spatial_hit and not rule_facts:
             return "elevated"
         return "blocking"
+    trend_hit = any(
+        o.get("agent") == "predictive_trend"
+        and o.get("local_risk") == "elevated"
+        and "predicted_trend_risk" in (o.get("fact_types") or [])
+        for o in observations
+    )
     if rule_facts or any(o.get("local_risk") == "elevated" for o in observations):
+        return "elevated"
+    if trend_hit:
         return "elevated"
     return "nominal"
 
 
 def _recommendations(
-    grounded: list[str], observations: list[dict[str, Any]]
+    grounded: list[str],
+    observations: list[dict[str, Any]],
+    *,
+    context_entries: list[dict[str, Any]] | None = None,
+    asset_name: str = "this asset",
 ) -> list[RecommendationIn]:
+    from app.assessment.reasoning import METRIC_FACT_TYPES, format_fact_detail
+
     recs: list[RecommendationIn] = []
-    for ft in sorted(f for f in grounded if f != "spatial_cooccurrence"):
+    rec_facts = sorted(f for f in grounded if f != "spatial_cooccurrence")
+    if any(
+        "predicted_trend_risk" in (o.get("fact_types") or [])
+        for o in observations
+    ) and "predicted_trend_risk" not in rec_facts:
+        rec_facts.append("predicted_trend_risk")
+    entries = list(context_entries or [])
+    for ft in rec_facts:
         text, rationale = FACT_RECOMMENDATIONS.get(
             ft,
             (
-                f"Review and mitigate derived fact '{ft}'.",
-                f"Fact '{ft}' is active and requires supervisor action.",
+                f"Review and mitigate '{ft.replace('_', ' ')}'.",
+                f"{ft.replace('_', ' ').title()} requires supervisor action.",
             ),
         )
+        if ft in METRIC_FACT_TYPES and entries:
+            rationale = format_fact_detail(
+                ft, entries, asset_name=asset_name
+            )
         recs.append(RecommendationIn(text=text, rationale=rationale))
     spatial = next((o for o in observations if o.get("agent") == "spatial"), None)
     links = (spatial or {}).get("detail", {}).get("spatial_links") or []
@@ -78,7 +103,7 @@ def _recommendations(
         recs.append(
             RecommendationIn(
                 text="Continue routine monitoring; no elevated facts detected.",
-                rationale="No active derived facts at assessment time.",
+                rationale="No elevated conditions at assessment time.",
             )
         )
     return recs
@@ -177,6 +202,45 @@ def _build_summary_prompt(
     )
 
 
+def _clean_observation(text: str) -> str:
+    """Strip agent-title prefixes so the fused summary stays operator-readable."""
+    prefixes = (
+        "SCADA / Sensor Agent:",
+        "Permit / PTW Agent:",
+        "Maintenance Agent:",
+        "Workforce / Zone Agent:",
+        "Spatial Agent:",
+        "Incident Agent:",
+        "Handover Agent:",
+        "Forecast Agent:",
+    )
+    cleaned = text.strip()
+    for prefix in prefixes:
+        if cleaned.lower().startswith(prefix.lower()):
+            cleaned = cleaned[len(prefix) :].strip()
+            break
+    return cleaned
+
+
+def _is_clearance_observation(o: dict[str, Any]) -> bool:
+    """True when the agent found nothing relevant — omit from issue summary."""
+    detail = o.get("detail") or {}
+    if isinstance(detail, dict) and detail.get("finding") == "clearance":
+        return True
+    fact_types = o.get("fact_types") or []
+    if o.get("local_risk") == "nominal" and not fact_types:
+        return True
+    obs = str(o.get("observation") or "").lower()
+    clearance_phrases = (
+        "no active hazards",
+        "no hot-work",
+        "no co-occurrence",
+        "no imminent threshold",
+        "nothing to report",
+    )
+    return any(p in obs for p in clearance_phrases)
+
+
 def _mock_summary(
     state: AgentState,
     grounded: list[str],
@@ -203,24 +267,31 @@ def _mock_summary(
         agent = str(o.get("agent") or "")
         if agent in ("", "orchestrator"):
             continue
-        obs = str(o.get("observation") or "").strip()
+        if _is_clearance_observation(o):
+            continue
+        obs = _clean_observation(str(o.get("observation") or ""))
         if not obs:
             continue
         # Keep each agent note short for the panel.
         if len(obs) > 140:
             obs = obs[:137].rstrip() + "…"
         label = {
-            "scada": "SCADA",
-            "permit": "Permit",
+            "scada": "Sensors",
+            "permit": "Permits",
             "maintenance": "Maintenance",
-            "workforce": "Workforce",
-            "spatial": "Spatial",
-            "incident_pattern": "Incident",
-            "shift_handover": "Handover",
+            "workforce": "Crew",
+            "spatial": "Nearby area",
+            "incident_pattern": "Past incidents",
+            "shift_handover": "Shift notes",
+            "predictive_trend": "Forecast",
         }.get(agent, agent.replace("_", " ").title())
         highlights.append(f"{label}: {obs}")
 
-    body = lead if not highlights else lead + " " + " ".join(highlights[:4])
+    if highlights:
+        bullets = "\n".join(f"• {h}" for h in highlights[:4])
+        body = f"{lead}\n\n{bullets}"
+    else:
+        body = lead
 
     citations = _pick_citation_refs(list(state.get("retrieved_references") or []))
     incident = next(
@@ -332,7 +403,12 @@ async def orchestrator_agent(
                 ).model_dump()
             )
 
-    recs = _recommendations(grounded, observations)
+    recs = _recommendations(
+        grounded,
+        observations,
+        context_entries=list(state.get("context_entries") or []),
+        asset_name=str(state.get("asset_name") or "this asset"),
+    )
     result = AssessmentResult(
         summary=summary,
         risk_level=risk,  # type: ignore[arg-type]
@@ -350,6 +426,7 @@ async def orchestrator_agent(
         grounded,
         risk,
     )
+    trend_forecasts = list(state.get("trend_forecasts") or [])
 
     verdict_step = make_step(
         "orchestrator",
@@ -363,6 +440,7 @@ async def orchestrator_agent(
             "proposed_risk": proposed,
             "spatial_links": spatial_links,
             "lead_time_seconds": lead_time_seconds,
+            "trend_forecasts": trend_forecasts,
             "provider": provider_label(pname),
             "model": model_label(pname),
         },

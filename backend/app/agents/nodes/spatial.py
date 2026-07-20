@@ -100,7 +100,7 @@ async def spatial_agent(state: AgentState) -> dict[str, Any]:
 
     if links:
         observation = (
-            "Spatial Agent: compound spatial risk — "
+            "Compound spatial risk — "
             + "; ".join(L.reason for L in links[:3])
         )
         risk = "blocking" if any(L.distance_m <= settings.agent_spatial_radius_m for L in links) else "elevated"
@@ -111,7 +111,7 @@ async def spatial_agent(state: AgentState) -> dict[str, Any]:
             pass
     else:
         observation = (
-            "Spatial Agent: no hot-work / gas co-occurrence within spatial radius."
+            "No hot-work / gas co-occurrence within spatial radius."
         )
         risk = "nominal"
         fact_types = []

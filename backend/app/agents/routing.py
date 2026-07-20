@@ -98,6 +98,24 @@ def should_run_spatial(state: dict[str, Any]) -> bool:
     )
 
 
+def should_run_predictive_trend(state: dict[str, Any]) -> bool:
+    """Run trend projection when sensor telemetry exists for the focus asset."""
+    asset_id = str(state.get("asset_id") or "")
+    entries = list(state.get("context_entries") or [])
+    for e in entries:
+        if e.get("category") != "sensor":
+            continue
+        if asset_id and str(e.get("asset_id") or "") != asset_id:
+            continue
+        payload = e.get("payload") or {}
+        if any(
+            isinstance(payload.get(k), (int, float))
+            for k in ("gas_reading", "temp_reading", "vibration_mm_s")
+        ):
+            return True
+    return False
+
+
 def should_run_enrichment(state: dict[str, Any]) -> bool:
     """Run incident/handover only when the orchestrator verdict is elevated or blocking."""
     verdict = state.get("verdict") or {}
@@ -125,5 +143,6 @@ __all__ = [
     "select_source_agents",
     "should_load_plant_neighborhood",
     "should_run_enrichment",
+    "should_run_predictive_trend",
     "should_run_spatial",
 ]

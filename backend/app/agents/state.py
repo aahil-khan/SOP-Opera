@@ -33,6 +33,8 @@ class AgentState(TypedDict):
     agent_trace: Annotated[list[dict[str, Any]], operator.add]
     # Spatial Agent findings
     spatial_links: list[dict[str, Any]]
+    # Predictive Trend Agent projections
+    trend_forecasts: list[dict[str, Any]]
     # Incident Pattern Agent echoes
     incident_echoes: list[dict[str, Any]]
     # Shift handover note from in-graph agent

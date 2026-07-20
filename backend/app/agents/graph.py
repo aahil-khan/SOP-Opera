@@ -5,7 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from typing import Any, Literal
+from typing import Any
 from uuid import UUID
 
 from langgraph.graph import END, START, StateGraph
@@ -17,6 +17,7 @@ from app.agents.llm import model_label, provider_label, sum_usage
 from app.agents.llm_outcomes import summarize_llm_outcomes
 from app.agents.nodes.incident_pattern import incident_pattern_agent
 from app.agents.nodes.orchestrator import orchestrator_agent
+from app.agents.nodes.predictive_trend import predictive_trend_agent
 from app.agents.nodes.shift_handover import shift_handover_agent
 from app.agents.nodes.source import (
     maintenance_agent,
@@ -29,6 +30,7 @@ from app.agents.routing import (
     SOURCE_AGENTS,
     select_source_agents,
     should_run_enrichment,
+    should_run_predictive_trend,
     should_run_spatial,
 )
 from app.agents.state import AgentState
@@ -46,6 +48,11 @@ def _join_sources(state: AgentState) -> dict[str, Any]:
     return {}
 
 
+def _join_analysis(state: AgentState) -> dict[str, Any]:
+    """No-op barrier after spatial / trend fan-out."""
+    return {}
+
+
 def _fan_out_sources(state: AgentState) -> list[Send]:
     selected = select_source_agents(state)
     if not selected:
@@ -53,12 +60,15 @@ def _fan_out_sources(state: AgentState) -> list[Send]:
     return [Send(name, state) for name in selected]
 
 
-def _route_spatial(
-    state: AgentState,
-) -> Literal["spatial", "orchestrator"]:
+def _fan_out_analysis(state: AgentState) -> list[Send]:
+    sends: list[Send] = []
     if should_run_spatial(state):
-        return "spatial"
-    return "orchestrator"
+        sends.append(Send("spatial", state))
+    if should_run_predictive_trend(state):
+        sends.append(Send("predictive_trend", state))
+    if not sends:
+        sends.append(Send("join_analysis", state))
+    return sends
 
 
 def _fan_out_enrichment(state: AgentState) -> list[Send] | Any:
@@ -77,6 +87,8 @@ def build_graph():
     builder.add_node("maintenance", maintenance_agent)
     builder.add_node("workforce", workforce_agent)
     builder.add_node("join_sources", _join_sources)
+    builder.add_node("join_analysis", _join_analysis)
+    builder.add_node("predictive_trend", predictive_trend_agent)
     builder.add_node("spatial", spatial_agent)
 
     async def orch(state: AgentState) -> dict[str, Any]:
@@ -90,9 +102,13 @@ def build_graph():
     for name in SOURCE_AGENTS:
         builder.add_edge(name, "join_sources")
     builder.add_conditional_edges(
-        "join_sources", _route_spatial, ["spatial", "orchestrator"]
+        "join_sources",
+        _fan_out_analysis,
+        ["spatial", "predictive_trend", "join_analysis"],
     )
-    builder.add_edge("spatial", "orchestrator")
+    builder.add_edge("spatial", "join_analysis")
+    builder.add_edge("predictive_trend", "join_analysis")
+    builder.add_edge("join_analysis", "orchestrator")
     builder.add_conditional_edges(
         "orchestrator",
         _fan_out_enrichment,
@@ -189,6 +205,7 @@ async def run_agent_assessment(
         "observations": [],
         "agent_trace": [],
         "spatial_links": [],
+        "trend_forecasts": [],
         "incident_echoes": [],
         "shift_handover_note": None,
         "verdict": None,

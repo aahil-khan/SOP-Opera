@@ -8,6 +8,7 @@ from app.agents.routing import (
     select_source_agents,
     should_load_plant_neighborhood,
     should_run_enrichment,
+    should_run_predictive_trend,
     should_run_spatial,
 )
 
@@ -81,6 +82,22 @@ def test_should_run_spatial_on_hot_work_permit():
 
 def test_should_not_run_spatial_when_nominal():
     assert not should_run_spatial(_state())
+
+
+def test_should_run_predictive_trend_on_sensor_samples():
+    assert should_run_predictive_trend(
+        _state(
+            asset_id="a1",
+            context_entries=[
+                {
+                    "asset_id": "a1",
+                    "category": "sensor",
+                    "payload": {"gas_reading": 18.2},
+                }
+            ],
+        )
+    )
+    assert not should_run_predictive_trend(_state(asset_id="a1"))
 
 
 def test_should_run_enrichment_on_elevated_verdict():
