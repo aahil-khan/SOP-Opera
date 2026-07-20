@@ -6,6 +6,7 @@ from typing import Any
 
 from app.agents.events import AgentName, make_step
 from app.agents.llm import get_chat_model, usage_record
+from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.routing import AGENT_CONTEXT_CATEGORIES
 from app.agents.state import AgentObservation, AgentState
 from app.agents.tools.rules import RuleToolkit
@@ -19,7 +20,9 @@ AGENT_TITLES: dict[str, str] = {
 
 FACT_NARRATION: dict[str, str] = {
     "elevated_gas": "Gas reading exceeds action threshold",
+    "critical_gas": "CRITICAL — gas crossed incident threshold",
     "over_temperature": "Process temperature above safe band",
+    "critical_temperature": "CRITICAL — temperature crossed incident threshold",
     "equipment_vibration_anomaly": "Vibration severity outside ISO band",
     "effluent_quality_breach": "Effluent quality outside discharge limits",
     "tank_level_critical": "Tank level at critical setpoint",
@@ -35,6 +38,8 @@ FACT_NARRATION: dict[str, str] = {
 
 
 def _local_risk(fact_types: list[str]) -> str:
+    if any(ft in ("critical_gas", "critical_temperature") for ft in fact_types):
+        return "blocking"
     if len(fact_types) >= 2:
         return "elevated"
     if fact_types:
@@ -97,16 +102,17 @@ async def _narrate_observation(
     title: str,
     state: AgentState,
     active: list[str],
-) -> tuple[str, dict[str, Any] | None]:
+) -> tuple[str, dict[str, Any] | None, dict[str, Any] | None]:
     """LLM narration when available; template fallback otherwise.
 
-    Returns (observation_text, usage_record_or_none).
+    Returns (observation_text, usage_record_or_none, llm_outcome_or_none).
+    Mock mode skips LLM entirely (outcome None).
     """
     template = _template_observation(title, active)
     provider_name = state.get("provider_name")
     model = get_chat_model(provider_name)
     if model is None:
-        return template, None
+        return template, None, None
     prompt = _build_narration_prompt(
         title=title,
         asset=str(state.get("asset_name") or "asset"),
@@ -123,11 +129,19 @@ async def _narrate_observation(
             text = content.strip()
             # Keep agent identity prefix for the Brain panel when the model omits it
             if title.split()[0].lower() not in text.lower()[:40]:
-                return f"{title}: {text}", usage
-            return text, usage
-        return template, usage
-    except Exception:  # noqa: BLE001
-        return template, None
+                text = f"{title}: {text}"
+            return text, usage, make_outcome(agent, "ok")
+        return (
+            template,
+            usage,
+            make_outcome(agent, "fallback", reason="empty_response"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return (
+            template,
+            None,
+            make_outcome(agent, "fallback", reason=short_error(exc)),
+        )
 
 
 async def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, Any]:
@@ -159,10 +173,33 @@ async def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, An
         )
 
     usage_entries: list[dict[str, Any]] = []
+    llm_outcomes: list[dict[str, Any]] = []
+    fallback_steps: list[dict[str, Any]] = []
     if active:
-        observation, usage = await _narrate_observation(agent, title, state, active)
+        observation, usage, outcome = await _narrate_observation(
+            agent, title, state, active
+        )
         if usage is not None:
             usage_entries.append(usage)
+        if outcome is not None:
+            llm_outcomes.append(outcome)
+            if outcome.get("status") == "fallback":
+                fallback_steps.append(
+                    make_step(
+                        agent,
+                        "error",
+                        (
+                            "LLM narration unavailable — using template "
+                            f"({outcome.get('reason', 'unknown')})"
+                        ),
+                        review_id=review_id,
+                        assessment_id=assessment_id,
+                        detail={
+                            **outcome,
+                            "narration_mode": "template_fallback",
+                        },
+                    ).model_dump()
+                )
         finding = "risk"
     else:
         # Clearance: no LLM — keep cheap template
@@ -208,6 +245,7 @@ async def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, An
         "agent_trace": [
             started.model_dump(),
             *tool_steps,
+            *fallback_steps,
             obs_step.model_dump(),
             risk_step.model_dump(),
             done.model_dump(),
@@ -215,6 +253,8 @@ async def _run_source_agent(agent: AgentName, state: AgentState) -> dict[str, An
     }
     if usage_entries:
         out["llm_usage"] = usage_entries
+    if llm_outcomes:
+        out["llm_outcomes"] = llm_outcomes
     return out
 
 

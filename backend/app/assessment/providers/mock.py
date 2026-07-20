@@ -9,11 +9,16 @@ from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedRefere
 from app.assessment.schemas import AssessmentResult, ProviderGeneration
 
 COMPOUND_TRIO = frozenset({"elevated_gas", "permit_conflict", "zone_occupied"})
+CRITICAL_SENSOR_FACTS = frozenset({"critical_gas", "critical_temperature"})
 
 FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
     "elevated_gas": (
         "Evacuate non-essential personnel and initiate gas detection confirmation sweep.",
         "Elevated gas readings exceed the safe working threshold for this zone.",
+    ),
+    "critical_gas": (
+        "IMMEDIATE STOP WORK — gas has crossed the incident threshold. Evacuate, isolate ignition sources, and do not re-enter until atmosphere is verified safe.",
+        "Gas reading is at or above the single-sensor critical/incident limit.",
     ),
     "permit_conflict": (
         "Suspend conflicting permits and reconcile work windows before restart.",
@@ -38,6 +43,10 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
     "over_temperature": (
         "Reduce firing rate and verify temperature instrumentation before continuing.",
         "Process temperature exceeds the safe operating band for this asset.",
+    ),
+    "critical_temperature": (
+        "IMMEDIATE STOP WORK — process temperature crossed the incident threshold. Hold production and verify metal limits before restart.",
+        "Temperature is at or above the single-sensor critical/incident limit.",
     ),
     "equipment_vibration_anomaly": (
         "Inspect rotating equipment and schedule vibration diagnosis immediately.",
@@ -67,6 +76,8 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
 
 
 def _risk_level(fact_types: set[str]) -> str:
+    if fact_types & CRITICAL_SENSOR_FACTS:
+        return "blocking"
     if COMPOUND_TRIO.issubset(fact_types) or len(fact_types) >= 3:
         return "blocking"
     if len(fact_types) >= 1:

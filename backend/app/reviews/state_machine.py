@@ -22,6 +22,7 @@ class ReviewEvent(str, Enum):
     SUBMIT_DECISION = "submit_decision"
     CLOSE = "close"
     REOPEN = "reopen"
+    RISK_ESCALATED = "risk_escalated"
 
 
 class IllegalTransitionError(Exception):
@@ -41,6 +42,7 @@ TRANSITIONS: dict[tuple[ReviewState, ReviewEvent], ReviewState] = {
     ("escalated", ReviewEvent.RESOLVE_ESCALATION): "pending_decision",
     ("escalated", ReviewEvent.SUBMIT_DECISION): "decided",
     ("decided", ReviewEvent.CLOSE): "closed",
+    ("decided", ReviewEvent.RISK_ESCALATED): "reopened",
     ("closed", ReviewEvent.REOPEN): "reopened",
     ("reopened", ReviewEvent.TRIGGER_ASSESSMENT): "assessing",
 }

@@ -14,12 +14,14 @@ from shared.python.schemas import (
 
 FACT_HEADLINES: dict[str, str] = {
     "elevated_gas": "Elevated gas",
+    "critical_gas": "Critical gas (incident threshold)",
     "permit_conflict": "Permit conflict",
     "zone_occupied": "Zone occupied",
     "incomplete_isolation": "Incomplete isolation",
     "simultaneous_ops": "Simultaneous operations",
     "certification_expiring": "Certification expiring",
     "over_temperature": "Over temperature",
+    "critical_temperature": "Critical temperature (incident threshold)",
     "equipment_vibration_anomaly": "Equipment vibration anomaly",
     "effluent_quality_breach": "Effluent quality breach",
     "tank_level_critical": "Tank level critical",
@@ -42,21 +44,72 @@ def _refs_for_fact(
     return [r for r in refs if r.source in sources]
 
 
+def _sensor_reading(
+    entries: list[dict[str, Any]], entry_id: str
+) -> tuple[float, str] | None:
+    for e in entries:
+        if str(e.get("id")) != entry_id or e.get("category") != "sensor":
+            continue
+        payload = e.get("payload") or {}
+        reading = payload.get("gas_reading")
+        if isinstance(reading, (int, float)):
+            unit = str(payload.get("unit") or "ppm")
+            return float(reading), unit
+    return None
+
+
 def _gas_detail(
-    entries: list[dict[str, Any]], asset_name: str, threshold: float
+    entries: list[dict[str, Any]],
+    asset_name: str,
+    threshold: float,
+    *,
+    label: str = "action",
+    source_ids: list | None = None,
+    above: float | None = None,
+    at_least: float | None = None,
 ) -> str:
+    def qualifies(reading: float) -> bool:
+        if at_least is not None and reading < at_least:
+            return False
+        if above is not None and reading <= above:
+            return False
+        return True
+
+    id_set = {str(i) for i in (source_ids or [])}
+    if id_set:
+        for eid in id_set:
+            hit = _sensor_reading(entries, eid)
+            if hit is None:
+                continue
+            reading, unit = hit
+            if not qualifies(reading):
+                continue
+            return (
+                f"Gas reading {reading:g} {unit} exceeds the {threshold:g} {unit} "
+                f"{label} threshold on {asset_name}."
+            )
+
+    best: tuple[float, str] | None = None
     for e in entries:
         if e.get("category") != "sensor":
             continue
         payload = e.get("payload") or {}
         reading = payload.get("gas_reading")
-        if isinstance(reading, (int, float)):
-            unit = payload.get("unit") or "ppm"
-            return (
-                f"Gas reading {reading} {unit} exceeds the {threshold:g} {unit} "
-                f"action threshold on {asset_name}."
-            )
-    return f"Elevated gas readings exceed the safe working threshold on {asset_name}."
+        if not isinstance(reading, (int, float)):
+            continue
+        val = float(reading)
+        if not qualifies(val):
+            continue
+        unit = str(payload.get("unit") or "ppm")
+        if best is None or val > best[0]:
+            best = (val, unit)
+    if best is not None:
+        reading, unit = best
+        return (
+            f"Gas reading {reading:g} {unit} exceeds the {threshold:g} {unit} "
+            f"{label} threshold on {asset_name}."
+        )
+    return f"Gas readings exceed the {label} threshold on {asset_name}."
 
 
 def _worker_detail(entries: list[dict[str, Any]], asset_name: str) -> str:
@@ -136,13 +189,35 @@ def build_reasoning_factors(
     """Build structured Why factors from facts + live context + enriched refs."""
     settings = get_settings()
     threshold = settings.gas_elevated_threshold
+    active_types = {f.fact_type for f in facts}
     factors: list[ReasoningFactor] = []
 
     for fact in sorted(facts, key=lambda f: f.fact_type):
         ft = fact.fact_type
+        # Critical sensor line supersedes the softer elevated band in Why text.
+        if ft == "elevated_gas" and "critical_gas" in active_types:
+            continue
+        if ft == "over_temperature" and "critical_temperature" in active_types:
+            continue
+
         headline = FACT_HEADLINES.get(ft, ft.replace("_", " ").title())
         if ft == "elevated_gas":
-            detail = _gas_detail(context_entries, asset_name, threshold)
+            detail = _gas_detail(
+                context_entries,
+                asset_name,
+                threshold,
+                source_ids=list(fact.source_context_ids),
+                above=threshold,
+            )
+        elif ft == "critical_gas":
+            detail = _gas_detail(
+                context_entries,
+                asset_name,
+                settings.gas_critical_threshold,
+                label="critical",
+                source_ids=list(fact.source_context_ids),
+                at_least=settings.gas_critical_threshold,
+            )
         elif ft == "zone_occupied":
             detail = _worker_detail(context_entries, asset_name)
             if area_owner:

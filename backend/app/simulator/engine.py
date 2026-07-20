@@ -33,6 +33,7 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 # FK-safe wipe order for runtime (demo) tables. Master/seed data is left intact.
+# ai_ops_events is intentionally excluded — append-only pipeline analytics.
 _RESET_DELETE_ORDER = (
     "evidence",
     "decisions",
@@ -44,6 +45,7 @@ _RESET_DELETE_ORDER = (
     "reviews",
     "derived_facts",
     "context_entries",
+    "telemetry_samples",
     "audit_entries",
 )
 

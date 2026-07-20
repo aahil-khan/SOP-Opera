@@ -14,6 +14,7 @@ from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedRefere
 
 from app.agents.events import AgentStep, broadcast_agent_step
 from app.agents.llm import model_label, provider_label, sum_usage
+from app.agents.llm_outcomes import summarize_llm_outcomes
 from app.agents.nodes.incident_pattern import incident_pattern_agent
 from app.agents.nodes.orchestrator import orchestrator_agent
 from app.agents.nodes.shift_handover import shift_handover_agent
@@ -153,7 +154,12 @@ async def run_agent_assessment(
     retrieved_references: list[RetrievedReference],
     provider_name: str | None = None,
     plant_context_entries: list[dict[str, Any]] | None = None,
-) -> tuple[ProviderGeneration, list[dict[str, Any]], list[dict[str, Any]]]:
+) -> tuple[
+    ProviderGeneration,
+    list[dict[str, Any]],
+    list[dict[str, Any]],
+    dict[str, Any],
+]:
     """
     Run the LangGraph multi-agent assessment.
     Returns (ProviderGeneration, agent_trace, spatial_links).
@@ -189,6 +195,7 @@ async def run_agent_assessment(
         "grounded_fact_types": [],
         "provider_name": _provider_override,
         "llm_usage": [],
+        "llm_outcomes": [],
     }
 
     graph = get_compiled_graph()
@@ -208,6 +215,7 @@ async def run_agent_assessment(
                             "observations",
                             "agent_trace",
                             "llm_usage",
+                            "llm_outcomes",
                         ) and isinstance(value, list):
                             existing = list(final_state.get(key) or [])
                             existing.extend(value)
@@ -256,12 +264,17 @@ async def run_agent_assessment(
     )
     trace = list(final_state.get("agent_trace") or [])
     spatial_links = list(final_state.get("spatial_links") or [])
+    llm_stats = summarize_llm_outcomes(
+        list(final_state.get("llm_outcomes") or []),
+        provider=provider_name or _provider_override,
+    )
     logger.info(
-        "langgraph assessment complete review=%s risk=%s steps=%d spatial=%d latency=%dms",
+        "langgraph assessment complete review=%s risk=%s steps=%d spatial=%d latency=%dms degraded=%s",
         review_id,
         result.risk_level,
         len(trace),
         len(spatial_links),
         latency_ms,
+        llm_stats.get("degraded"),
     )
-    return generation, trace, spatial_links
+    return generation, trace, spatial_links, llm_stats

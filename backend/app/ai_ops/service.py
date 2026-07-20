@@ -1,4 +1,4 @@
-"""Read-only AI Ops aggregates over assessment_metadata."""
+"""Read-only AI Ops aggregates over the append-only ai_ops_events log."""
 
 from __future__ import annotations
 
@@ -24,70 +24,49 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
         text(
             """
             SELECT
-                COUNT(*) FILTER (WHERE a.assessment_type = 'ai') AS total_assessments,
+                COUNT(*) AS total_assessments,
+                COUNT(*) FILTER (WHERE status = 'complete') AS complete_count,
+                COUNT(*) FILTER (WHERE status = 'failed') AS failed_count,
                 COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai' AND a.status = 'complete'
-                ) AS complete_count,
-                COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai' AND a.status = 'failed'
-                ) AS failed_count,
-                COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND a.status = 'failed'
-                      AND m.failure_reason = 'validation'
+                    WHERE status = 'failed' AND failure_reason = 'validation'
                 ) AS validation_failure_count,
                 COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND a.status = 'failed'
-                      AND m.failure_reason = 'provider_error'
+                    WHERE status = 'failed' AND failure_reason = 'provider_error'
                 ) AS provider_error_count,
                 COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND m.retrieval_mode = 'rag'
-                ) AS rag_count,
+                    WHERE status = 'complete' AND degraded = TRUE
+                ) AS degraded_count,
+                COALESCE(SUM(llm_fallback_count), 0) AS llm_fallback_count,
+                COALESCE(SUM(llm_attempt_count), 0) AS llm_attempt_count,
+                COUNT(*) FILTER (WHERE retrieval_mode = 'rag') AS rag_count,
                 COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND m.retrieval_mode = 'deterministic'
+                    WHERE retrieval_mode = 'deterministic'
                 ) AS deterministic_count,
                 COUNT(*) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND m.retrieval_mode IN ('rag', 'deterministic')
+                    WHERE retrieval_mode IN ('rag', 'deterministic')
                 ) AS retrieval_ran_count,
-                AVG(m.retrieval_score) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND m.retrieval_mode = 'rag'
-                      AND m.retrieval_score IS NOT NULL
+                AVG(retrieval_score) FILTER (
+                    WHERE retrieval_mode = 'rag' AND retrieval_score IS NOT NULL
                 ) AS mean_retrieval_relevance,
-                AVG(m.latency_ms) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND a.status = 'complete'
-                      AND m.latency_ms IS NOT NULL
+                AVG(latency_ms) FILTER (
+                    WHERE status = 'complete' AND latency_ms IS NOT NULL
                 ) AS mean_latency_ms,
                 COALESCE(
-                    SUM(m.tokens_in) FILTER (
-                        WHERE a.assessment_type = 'ai' AND a.status = 'complete'
-                    ),
+                    SUM(tokens_in) FILTER (WHERE status = 'complete'),
                     0
                 ) AS total_input_tokens,
                 COALESCE(
-                    SUM(m.tokens_out) FILTER (
-                        WHERE a.assessment_type = 'ai' AND a.status = 'complete'
-                    ),
+                    SUM(tokens_out) FILTER (WHERE status = 'complete'),
                     0
                 ) AS total_output_tokens,
                 COALESCE(
-                    SUM(m.cost_usd) FILTER (
-                        WHERE a.assessment_type = 'ai' AND a.status = 'complete'
-                    ),
+                    SUM(cost_usd) FILTER (WHERE status = 'complete'),
                     0
                 ) AS total_cost_usd,
-                AVG(m.cost_usd) FILTER (
-                    WHERE a.assessment_type = 'ai'
-                      AND a.status = 'complete'
-                      AND m.cost_usd IS NOT NULL
+                AVG(cost_usd) FILTER (
+                    WHERE status = 'complete' AND cost_usd IS NOT NULL
                 ) AS mean_cost_usd
-            FROM assessments a
-            LEFT JOIN assessment_metadata m ON m.assessment_id = a.id
+            FROM ai_ops_events
             """
         )
     )
@@ -104,6 +83,13 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
     rag_fallback_rate = (
         (deterministic / retrieval_ran) if retrieval_ran > 0 else 0.0
     )
+    llm_attempt_total = int(row["llm_attempt_count"] or 0)
+    llm_fallback_total = int(row["llm_fallback_count"] or 0)
+    llm_fallback_rate = (
+        (llm_fallback_total / llm_attempt_total) if llm_attempt_total > 0 else 0.0
+    )
+    degraded_count = int(row["degraded_count"] or 0)
+    degraded_rate = (degraded_count / complete) if complete > 0 else 0.0
     mean_rel = row["mean_retrieval_relevance"]
     mean_retrieval_relevance = float(mean_rel) if mean_rel is not None else None
     mean_lat = row["mean_latency_ms"]
@@ -114,12 +100,19 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
     langsmith_enabled, langsmith_project, langsmith_url = _langsmith_fields()
 
     return AiOpsSummary(
+        data_source="local_db",
+        persists_across_demo_reset=True,
         total_assessments=total,
         complete_count=complete,
         failed_count=failed,
         success_rate=round(success_rate, 4),
         validation_failure_count=int(row["validation_failure_count"] or 0),
         provider_error_count=int(row["provider_error_count"] or 0),
+        degraded_count=degraded_count,
+        llm_fallback_count=llm_fallback_total,
+        llm_attempt_count=llm_attempt_total,
+        llm_fallback_rate=round(llm_fallback_rate, 4),
+        degraded_rate=round(degraded_rate, 4),
         rag_hit_rate=round(rag_hit_rate, 4),
         rag_fallback_rate=round(rag_fallback_rate, 4),
         mean_retrieval_relevance=(

@@ -8,11 +8,13 @@ from shared.python.schemas import RecommendationIn
 
 from app.agents.events import make_step
 from app.agents.llm import get_chat_model, model_label, provider_label, usage_record
+from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
-from app.assessment.providers.mock import COMPOUND_TRIO, FACT_RECOMMENDATIONS
+from app.assessment.providers.mock import COMPOUND_TRIO, CRITICAL_SENSOR_FACTS, FACT_RECOMMENDATIONS
 from app.assessment.schemas import AssessmentResult
 from app.core.config import get_settings
+from app.context.lead_time import compute_lead_time_for_verdict
 
 
 def _fuse_risk(grounded: list[str], observations: list[dict[str, Any]]) -> str:
@@ -23,6 +25,8 @@ def _fuse_risk(grounded: list[str], observations: list[dict[str, Any]]) -> str:
         o.get("agent") == "spatial" and o.get("local_risk") in ("elevated", "blocking")
         for o in observations
     )
+    if rule_facts & CRITICAL_SENSOR_FACTS:
+        return "blocking"
     if COMPOUND_TRIO.issubset(rule_facts) or len(rule_facts) >= 3:
         return "blocking"
     # Spatial hot-work near gas + at least one grounded process/people fact → block
@@ -80,6 +84,19 @@ def _recommendations(
     return recs
 
 
+def _indian_reg_priority(r: dict[str, Any]) -> int:
+    code = str(r.get("code") or r.get("title") or "")
+    if (
+        code.startswith("OISD")
+        or code.startswith("DGMS")
+        or code.startswith("Factory Act")
+        or code.startswith("SOP-OISD")
+        or code.startswith("SOP-Factory Act")
+    ):
+        return 0
+    return 1
+
+
 def _pick_citation_refs(
     refs: list[dict[str, Any]], *, limit: int = 2
 ) -> list[dict[str, Any]]:
@@ -91,12 +108,15 @@ def _pick_citation_refs(
         if r.get("source") in ("historical_incidents", "incidents")
         and (r.get("title") or r.get("snippet") or r.get("code"))
     ]
-    standards = [
-        r
-        for r in refs
-        if r.get("source") in ("regulations", "sops")
-        and (r.get("title") or r.get("snippet") or r.get("code"))
-    ]
+    standards = sorted(
+        [
+            r
+            for r in refs
+            if r.get("source") in ("regulations", "sops")
+            and (r.get("title") or r.get("snippet") or r.get("code"))
+        ],
+        key=_indian_reg_priority,
+    )
     if incidents:
         picked.append(incidents[0])
     if standards and len(picked) < limit:
@@ -222,10 +242,10 @@ async def _llm_summary(
     risk: str,
     observations: list[dict[str, Any]],
     provider_name: str | None,
-) -> tuple[str | None, dict[str, Any] | None]:
+) -> tuple[str | None, dict[str, Any] | None, dict[str, Any] | None]:
     model = get_chat_model(provider_name)
     if model is None:
-        return None, None
+        return None, None, None
     try:
         prompt = _build_summary_prompt(state, grounded, risk, observations)
         result = await model.ainvoke(prompt)
@@ -234,10 +254,18 @@ async def _llm_summary(
         )
         content = getattr(result, "content", None)
         if isinstance(content, str) and content.strip():
-            return content.strip(), usage
-        return None, usage
-    except Exception:  # noqa: BLE001
-        return None, None
+            return content.strip(), usage, make_outcome("orchestrator", "ok")
+        return (
+            None,
+            usage,
+            make_outcome("orchestrator", "fallback", reason="empty_response"),
+        )
+    except Exception as exc:  # noqa: BLE001
+        return (
+            None,
+            None,
+            make_outcome("orchestrator", "fallback", reason=short_error(exc)),
+        )
 
 
 async def orchestrator_agent(
@@ -277,11 +305,32 @@ async def orchestrator_agent(
 
     settings = get_settings()
     pname = provider_name or state.get("provider_name") or settings.ai_provider
-    summary, orch_usage = await _llm_summary(
+    summary, orch_usage, orch_outcome = await _llm_summary(
         state, grounded, risk, observations, pname
     )
+    fallback_steps: list[dict[str, Any]] = []
+    llm_outcomes: list[dict[str, Any]] = []
+    if orch_outcome is not None:
+        llm_outcomes.append(orch_outcome)
     if summary is None:
         summary = _mock_summary(state, grounded, risk, observations)
+        if orch_outcome is not None and orch_outcome.get("status") == "fallback":
+            fallback_steps.append(
+                make_step(
+                    "orchestrator",
+                    "error",
+                    (
+                        "LLM summary unavailable — using deterministic template "
+                        f"({orch_outcome.get('reason', 'unknown')})"
+                    ),
+                    review_id=review_id,
+                    assessment_id=assessment_id,
+                    detail={
+                        **orch_outcome,
+                        "narration_mode": "template_fallback",
+                    },
+                ).model_dump()
+            )
 
     recs = _recommendations(grounded, observations)
     result = AssessmentResult(
@@ -296,6 +345,12 @@ async def orchestrator_agent(
         if o.get("agent") == "spatial":
             spatial_links = list(o.get("detail", {}).get("spatial_links") or spatial_links)
 
+    lead_time_seconds = compute_lead_time_for_verdict(
+        list(state.get("context_entries") or []),
+        grounded,
+        risk,
+    )
+
     verdict_step = make_step(
         "orchestrator",
         "verdict",
@@ -307,6 +362,7 @@ async def orchestrator_agent(
             "grounded_fact_types": grounded,
             "proposed_risk": proposed,
             "spatial_links": spatial_links,
+            "lead_time_seconds": lead_time_seconds,
             "provider": provider_label(pname),
             "model": model_label(pname),
         },
@@ -367,6 +423,7 @@ async def orchestrator_agent(
         "spatial_links": spatial_links,
         "agent_trace": [
             started.model_dump(),
+            *fallback_steps,
             verdict_step.model_dump(),
             *not_causal_steps,
             done.model_dump(),
@@ -374,4 +431,6 @@ async def orchestrator_agent(
     }
     if orch_usage is not None:
         out["llm_usage"] = [orch_usage]
+    if llm_outcomes:
+        out["llm_outcomes"] = llm_outcomes
     return out

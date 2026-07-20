@@ -79,14 +79,16 @@ async def notify_assessment_completed(
     review_id: UUID,
     owner_id: UUID,
     risk_level: str,
+    sensor_critical: bool = False,
 ) -> None:
-    if risk_level not in ("elevated", "blocking"):
+    if sensor_critical:
+        summary = "Critical sensor threshold — immediate attention required"
+    elif risk_level == "blocking":
+        summary = "Blocking risk — needs a decision"
+    elif risk_level == "elevated":
+        summary = "Elevated risk assessment ready"
+    else:
         return
-    summary = (
-        "Blocking risk — needs a decision"
-        if risk_level == "blocking"
-        else "Elevated risk assessment ready"
-    )
     await create_notification(
         session,
         review_id=review_id,

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import run_agent_assessment
 from app.agents.routing import should_load_plant_neighborhood
+from app.ai_ops.events import record_ai_ops_event
 from app.assessment.orchestrator import PROMPT_VERSION
 from app.assessment.reasoning import build_reasoning_factors, serialize_factor
 from app.assessment.retrieval import build_retrieval_query, retrieve
@@ -120,6 +121,8 @@ async def _persist_metadata(
     session: AsyncSession,
     assessment_id: UUID,
     *,
+    review_id: UUID,
+    status: str,
     provider: str,
     model: str,
     tokens_in: int,
@@ -137,6 +140,9 @@ async def _persist_metadata(
     failure_reason: str | None = None,
     reasoning_factors: list | None = None,
     agent_trace: list | None = None,
+    llm_attempt_count: int = 0,
+    llm_fallback_count: int = 0,
+    degraded: bool = False,
 ) -> None:
     await session.execute(
         text(
@@ -197,6 +203,24 @@ async def _persist_metadata(
             "factors": json.dumps(_serialize_factors(reasoning_factors or [])),
             "agent_trace": json.dumps(agent_trace or []),
         },
+    )
+    await record_ai_ops_event(
+        session,
+        assessment_id=assessment_id,
+        review_id=review_id,
+        status=status,
+        provider=provider,
+        model=model,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cost_usd=cost_usd,
+        latency_ms=latency_ms,
+        retrieval_mode=retrieval_mode,
+        retrieval_score=retrieval_score,
+        failure_reason=failure_reason,
+        llm_attempt_count=llm_attempt_count,
+        llm_fallback_count=llm_fallback_count,
+        degraded=degraded,
     )
 
 
@@ -319,11 +343,16 @@ async def run_assessment_job(
         generation = None
         agent_trace: list = []
         spatial_links: list = []
+        llm_stats: dict = {
+            "llm_attempt_count": 0,
+            "llm_fallback_count": 0,
+            "degraded": False,
+        }
         last_error: Exception | None = None
         max_retries = settings.assessment_max_retries
         for attempt in range(max_retries + 1):
             try:
-                generation, agent_trace, spatial_links = await run_agent_assessment(
+                generation, agent_trace, spatial_links, llm_stats = await run_agent_assessment(
                     review_id=review_id,
                     assessment_id=assessment_id,
                     asset_id=review.asset_id,
@@ -364,6 +393,8 @@ async def run_assessment_job(
             await _persist_metadata(
                 session,
                 assessment_id,
+                review_id=review_id,
+                status="failed",
                 provider=provider_name or settings.ai_provider,
                 model="unknown",
                 tokens_in=0,
@@ -381,6 +412,9 @@ async def run_assessment_job(
                 failure_reason=failure_reason,
                 reasoning_factors=reasoning_factors,
                 agent_trace=agent_trace,
+                llm_attempt_count=int(llm_stats.get("llm_attempt_count") or 0),
+                llm_fallback_count=int(llm_stats.get("llm_fallback_count") or 0),
+                degraded=bool(llm_stats.get("degraded")),
             )
             from app.notifications.service import notify_assessment_failed
 
@@ -454,6 +488,8 @@ async def run_assessment_job(
         await _persist_metadata(
             session,
             assessment_id,
+            review_id=review_id,
+            status="complete",
             provider=generation.provider,
             model=generation.model,
             tokens_in=generation.input_tokens,
@@ -471,14 +507,21 @@ async def run_assessment_job(
             failure_reason=None,
             reasoning_factors=reasoning_factors,
             agent_trace=agent_trace,
+            llm_attempt_count=int(llm_stats.get("llm_attempt_count") or 0),
+            llm_fallback_count=int(llm_stats.get("llm_fallback_count") or 0),
+            degraded=bool(llm_stats.get("degraded")),
         )
         from app.notifications.service import notify_assessment_completed
 
+        sensor_critical = bool(
+            set(fact_types) & {"critical_gas", "critical_temperature"}
+        )
         await notify_assessment_completed(
             session,
             review_id=review_id,
             owner_id=review.owner_id,
             risk_level=result.risk_level,
+            sensor_critical=sensor_critical,
         )
         await session.commit()
 

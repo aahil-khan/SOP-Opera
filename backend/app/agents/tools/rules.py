@@ -21,7 +21,9 @@ AGENT_FACT_TYPES: dict[str, frozenset[str]] = {
     "scada": frozenset(
         {
             "elevated_gas",
+            "critical_gas",
             "over_temperature",
+            "critical_temperature",
             "equipment_vibration_anomaly",
             "effluent_quality_breach",
             "tank_level_critical",

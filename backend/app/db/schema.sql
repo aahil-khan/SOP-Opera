@@ -116,6 +116,19 @@ CREATE TABLE IF NOT EXISTS context_entries (
     confidence REAL NOT NULL DEFAULT 1.0
 );
 
+-- Soft ambient telemetry ring (WS samples). Not context_entries — does not
+-- trigger derived facts or reviews. Kept for chart hydration on app open.
+CREATE TABLE IF NOT EXISTS telemetry_samples (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    asset_id UUID NOT NULL REFERENCES assets(id),
+    asset_name TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL,
+    category TEXT NOT NULL,
+    payload JSONB NOT NULL,
+    ts TIMESTAMPTZ NOT NULL DEFAULT now(),
+    mode TEXT NOT NULL DEFAULT 'ambient'
+);
+
 CREATE TABLE IF NOT EXISTS derived_facts (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     asset_id UUID NOT NULL REFERENCES assets(id),
@@ -213,11 +226,51 @@ CREATE TABLE IF NOT EXISTS audit_entries (
     recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
+-- Append-only AI pipeline metrics — survives demo reset (no FK to reviews/assessments).
+CREATE TABLE IF NOT EXISTS ai_ops_events (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    assessment_id UUID NOT NULL UNIQUE,
+    review_id UUID,
+    status TEXT NOT NULL, -- complete | failed
+    provider TEXT NOT NULL,
+    model TEXT,
+    tokens_in INT,
+    tokens_out INT,
+    cost_usd REAL,
+    latency_ms INT,
+    retrieval_mode TEXT,
+    retrieval_score REAL,
+    failure_reason TEXT,
+    llm_attempt_count INT NOT NULL DEFAULT 0,
+    llm_fallback_count INT NOT NULL DEFAULT 0,
+    degraded BOOLEAN NOT NULL DEFAULT FALSE,
+    recorded_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
 CREATE INDEX IF NOT EXISTS idx_context_entries_asset ON context_entries(asset_id);
+CREATE INDEX IF NOT EXISTS idx_telemetry_samples_asset_ts ON telemetry_samples(asset_id, ts DESC);
 CREATE INDEX IF NOT EXISTS idx_derived_facts_asset ON derived_facts(asset_id);
 CREATE INDEX IF NOT EXISTS idx_reviews_state ON reviews(state);
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_review ON assessments(review_id);
+CREATE INDEX IF NOT EXISTS idx_ai_ops_events_recorded ON ai_ops_events(recorded_at DESC);
+
+-- Backfill historical AI runs into the append-only log (idempotent).
+INSERT INTO ai_ops_events (
+    assessment_id, review_id, status, provider, model,
+    tokens_in, tokens_out, cost_usd, latency_ms,
+    retrieval_mode, retrieval_score, failure_reason, recorded_at
+)
+SELECT
+    a.id, a.review_id, a.status, m.provider, m.model,
+    m.tokens_in, m.tokens_out, m.cost_usd, m.latency_ms,
+    m.retrieval_mode, m.retrieval_score, m.failure_reason,
+    COALESCE(a.created_at, now())
+FROM assessments a
+JOIN assessment_metadata m ON m.assessment_id = a.id
+WHERE a.assessment_type = 'ai'
+  AND a.status IN ('complete', 'failed')
+ON CONFLICT (assessment_id) DO NOTHING;
 
 -- Soft migrations for DBs created before Phase 3/4/7 column additions
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS floor TEXT NOT NULL DEFAULT 'ground';
@@ -228,3 +281,6 @@ ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS retrieved_references JS
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS failure_reason TEXT;
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS reasoning_factors JSONB NOT NULL DEFAULT '[]'::jsonb;
 ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS agent_trace JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE ai_ops_events ADD COLUMN IF NOT EXISTS llm_attempt_count INT NOT NULL DEFAULT 0;
+ALTER TABLE ai_ops_events ADD COLUMN IF NOT EXISTS llm_fallback_count INT NOT NULL DEFAULT 0;
+ALTER TABLE ai_ops_events ADD COLUMN IF NOT EXISTS degraded BOOLEAN NOT NULL DEFAULT FALSE;

@@ -13,6 +13,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.config import get_settings
+from app.assessment.providers.mock import COMPOUND_TRIO, CRITICAL_SENSOR_FACTS
 
 
 REASSESSABLE_STATES = frozenset({"opened", "pending_decision", "reopened"})
@@ -28,6 +29,45 @@ ACTIVE_REVIEW_STATES = frozenset(
 )
 
 
+def _active_rule_facts(current_true_facts: list[DerivedFact]) -> set[str]:
+    return {
+        f.fact_type
+        for f in current_true_facts
+        if f.value is True or f.value == "true"
+    } - {"spatial_cooccurrence"}
+
+
+def _is_blocking_compound(current_true_facts: list[DerivedFact]) -> bool:
+    """Mirror orchestrator blocking gate — compound trio, 3+ facts, or critical sensor."""
+    rule_facts = _active_rule_facts(current_true_facts)
+    if rule_facts & CRITICAL_SENSOR_FACTS:
+        return True
+    if COMPOUND_TRIO.issubset(rule_facts):
+        return True
+    return len(rule_facts) >= 3
+
+
+def _newly_true_facts(
+    changed_fact_types: list[str],
+    current_true_facts: list[DerivedFact],
+) -> set[str]:
+    true_types = _active_rule_facts(current_true_facts)
+    return true_types & set(changed_fact_types)
+
+
+def should_reopen_after_decision(
+    changed_fact_types: list[str],
+    current_true_facts: list[DerivedFact],
+) -> bool:
+    """Re-open a decided review when live context materially worsens."""
+    newly_true = _newly_true_facts(changed_fact_types, current_true_facts)
+    if not newly_true:
+        return False
+    if newly_true & CRITICAL_SENSOR_FACTS:
+        return True
+    return _is_blocking_compound(current_true_facts)
+
+
 def should_reassess(
     review: Review | None,
     changed_fact_types: list[str],
@@ -41,6 +81,8 @@ def should_reassess(
             f.fact_type for f in current_true_facts
         } & set(changed_fact_types)
         return bool(newly_true)
+    if review.state == "decided":
+        return should_reopen_after_decision(changed_fact_types, current_true_facts)
     return review.state in REASSESSABLE_STATES
 
 
@@ -85,6 +127,15 @@ async def handle_context_change(
     review = await find_active_review_for_asset(session, asset_id)
     if not should_reassess(review, changed_fact_types, current_true_facts):
         return review
+
+    if review is not None and review.state == "decided":
+        review = await transition_review(
+            session,
+            review.id,
+            ReviewEvent.RISK_ESCALATED,
+            actor,
+            extra_payload={"changed_fact_types": changed_fact_types},
+        )
 
     if review is None:
         triggered = ",".join(sorted(changed_fact_types))

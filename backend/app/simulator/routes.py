@@ -55,6 +55,31 @@ async def get_ambient_status() -> dict:
     return ambient_loop.status()
 
 
+@router.get("/telemetry/recent")
+async def get_recent_telemetry(
+    per_asset: int = 30,
+    asset_id: str | None = None,
+) -> dict:
+    """Soft ambient samples for chart hydration (oldest→newest per asset)."""
+    from uuid import UUID
+
+    from app.db.session import SessionLocal
+    from app.simulator.telemetry_store import list_recent_samples
+
+    aid: UUID | None = None
+    if asset_id:
+        try:
+            aid = UUID(asset_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=422, detail="invalid asset_id") from exc
+
+    async with SessionLocal() as session:
+        samples = await list_recent_samples(
+            session, per_asset=per_asset, asset_id=aid
+        )
+    return {"samples": samples, "count": len(samples)}
+
+
 @router.post("/ambient/start", status_code=202)
 async def start_ambient() -> dict:
     from app.simulator.ambient import ambient_loop

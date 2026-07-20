@@ -343,6 +343,18 @@ class AmbientPlantLoop:
                     )
 
         await broadcast_telemetry_batch(samples)
+        # Quiet ring persist — UI hydrate on open; never goes through context ingest.
+        try:
+            async with SessionLocal() as session:
+                from app.simulator.telemetry_store import persist_samples
+
+                await persist_samples(
+                    session,
+                    samples,
+                    keep_per_asset=int(settings.ambient_telemetry_keep),
+                )
+        except Exception:  # noqa: BLE001
+            logger.debug("ambient soft persist failed", exc_info=True)
 
     async def _coincidence(self, locked: set[str], settings: Any) -> None:
         if self._rng.random() >= settings.ambient_coincidence_probability:

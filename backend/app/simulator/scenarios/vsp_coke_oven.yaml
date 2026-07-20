@@ -1,0 +1,66 @@
+name: vsp_coke_oven
+label: VSP Coke Oven (Hero)
+description: >
+  Visakhapatnam-pattern compound risk. Gas rises past the elevated (early-warning)
+  line but stays below the single-sensor critical/incident threshold while hot work
+  proceeds without verified isolation and a worker enters the hazardous zone.
+  The compound engine blocks before any single sensor would trip critical —
+  the signal that existed but was never fused.
+
+steps:
+  # t≈0 — Gas elevated but sub-critical. Single-sensor critical baseline stays silent.
+  - asset: Vessel A
+    category: sensor
+    payload:
+      gas_reading: 25.0
+      unit: ppm
+    confidence: 0.98
+    delay_seconds: 0
+    valid_for_hours: 4
+
+  # t≈4s — Hot work permit without isolation confirmation → incomplete_isolation
+  # (maintenance activity co-occurring with elevated gas).
+  - asset: Vessel A
+    category: permit
+    payload:
+      permit_id: p-vsp-hot-1
+      status: active
+      work_type: hot_work
+    confidence: 1.0
+    delay_seconds: 4
+    valid_for_hours: 4
+
+  # t≈8s — Worker enters hazardous zone → zone_occupied.
+  # Three grounded facts (elevated_gas + incomplete_isolation + zone_occupied)
+  # → compound BLOCK while gas is still below critical.
+  - asset: Vessel A
+    category: worker_location
+    payload:
+      worker_id: "55555555-5555-5555-5555-555555555551"
+      zone: hazardous
+    confidence: 0.95
+    delay_seconds: 4
+    valid_for_hours: 4
+
+  # t≈16s — Gas still climbing, still sub-critical. Compound already blocked;
+  # single-sensor critical baseline remains silent.
+  - asset: Vessel A
+    category: sensor
+    payload:
+      gas_reading: 42.0
+      unit: ppm
+    confidence: 0.98
+    delay_seconds: 8
+    valid_for_hours: 4
+
+  # t≈26s — Gas finally crosses the critical/incident threshold.
+  # This is when a single-sensor baseline would first alarm — the lead-time
+  # gap relative to the compound block at step 3.
+  - asset: Vessel A
+    category: sensor
+    payload:
+      gas_reading: 55.0
+      unit: ppm
+    confidence: 0.99
+    delay_seconds: 10
+    valid_for_hours: 4

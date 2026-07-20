@@ -81,6 +81,7 @@ from app.notifications.routes import router as notifications_router  # noqa: E40
 from app.ai_ops.routes import router as ai_ops_router  # noqa: E402
 from app.graph.routes import router as graph_router  # noqa: E402
 from app.agents.routes import router as agents_router  # noqa: E402
+from app.config.routes import router as config_router  # noqa: E402
 
 app.include_router(context_router)
 app.include_router(reviews_router)
@@ -91,6 +92,7 @@ app.include_router(notifications_router)
 app.include_router(ai_ops_router)
 app.include_router(graph_router)
 app.include_router(agents_router)
+app.include_router(config_router)
 
 
 @app.get("/health")

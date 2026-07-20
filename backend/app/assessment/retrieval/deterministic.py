@@ -12,14 +12,33 @@ from shared.python.schemas import RetrievedReference
 
 SourceType = Literal["regulations", "historical_incidents", "sops"]
 
+# Indian regulatory codes surfaced first for challenge compliance coverage.
+_INDIAN_REG_ORDER = """
+    CASE
+        WHEN code LIKE 'OISD%' OR code LIKE 'DGMS%' OR code LIKE 'Factory Act%' THEN 0
+        ELSE 1
+    END,
+    code
+"""
+
+_INDIAN_SOP_ORDER = """
+    CASE
+        WHEN title LIKE 'SOP-OISD%' OR title LIKE 'SOP-Factory Act%' THEN 0
+        ELSE 1
+    END,
+    title
+"""
+
 RETRIEVAL_RULES: dict[str, list[SourceType]] = {
     "elevated_gas": ["regulations", "historical_incidents"],
+    "critical_gas": ["regulations", "historical_incidents"],
     "permit_conflict": ["sops", "regulations"],
-    "zone_occupied": ["historical_incidents"],
+    "zone_occupied": ["historical_incidents", "regulations", "sops"],
     "incomplete_isolation": ["sops", "regulations"],
     "simultaneous_ops": ["sops", "historical_incidents"],
     "certification_expiring": ["regulations", "sops"],
     "over_temperature": ["regulations", "sops"],
+    "critical_temperature": ["regulations", "sops"],
     "equipment_vibration_anomaly": ["sops", "historical_incidents"],
     "effluent_quality_breach": ["regulations"],
     "tank_level_critical": ["sops", "regulations"],
@@ -77,11 +96,11 @@ class DeterministicRetriever:
         if source == "regulations":
             result = await session.execute(
                 text(
-                    """
+                    f"""
                     SELECT id FROM regulations
                     WHERE applies_to_category = :cat
                        OR applies_to_category IS NULL
-                    ORDER BY code
+                    ORDER BY {_INDIAN_REG_ORDER}
                     LIMIT 5
                     """
                 ),
@@ -90,11 +109,11 @@ class DeterministicRetriever:
         elif source == "sops":
             result = await session.execute(
                 text(
-                    """
+                    f"""
                     SELECT id FROM sops
                     WHERE applies_to_category = :cat
                        OR applies_to_category IS NULL
-                    ORDER BY title
+                    ORDER BY {_INDIAN_SOP_ORDER}
                     LIMIT 5
                     """
                 ),

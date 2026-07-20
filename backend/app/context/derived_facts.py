@@ -60,7 +60,33 @@ def rule_elevated_gas(
     ]
     if not hits:
         return None
-    return _fact(hits[0].asset_id, "elevated_gas", True, [h.id for h in hits], now)
+    peak = max(hits, key=lambda e: float(e.payload["gas_reading"]))
+    return _fact(peak.asset_id, "elevated_gas", True, [peak.id], now)
+
+
+def rule_critical_gas(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    threshold: float | None = None,
+) -> DerivedFact | None:
+    """Single-sensor incident line — gas at or above critical threshold."""
+    threshold = (
+        threshold
+        if threshold is not None
+        else get_settings().gas_critical_threshold
+    )
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and isinstance(e.payload.get("gas_reading"), (int, float))
+        and float(e.payload["gas_reading"]) >= threshold
+    ]
+    if not hits:
+        return None
+    peak = max(hits, key=lambda e: float(e.payload["gas_reading"]))
+    return _fact(peak.asset_id, "critical_gas", True, [peak.id], now)
 
 
 def rule_permit_conflict(
@@ -226,6 +252,32 @@ def rule_over_temperature(
         return None
     return _fact(
         hits[0].asset_id, "over_temperature", True, [h.id for h in hits], now
+    )
+
+
+def rule_critical_temperature(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    threshold: float | None = None,
+) -> DerivedFact | None:
+    """Single-sensor incident line — temperature at or above critical threshold."""
+    threshold = (
+        threshold
+        if threshold is not None
+        else get_settings().temp_critical_threshold
+    )
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and isinstance(e.payload.get("temp_reading"), (int, float))
+        and float(e.payload["temp_reading"]) >= threshold
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id, "critical_temperature", True, [h.id for h in hits], now
     )
 
 
@@ -436,12 +488,14 @@ RuleFn = Callable[..., DerivedFact | None]
 
 DERIVED_FACT_RULES: list[tuple[str, RuleFn]] = [
     ("elevated_gas", rule_elevated_gas),
+    ("critical_gas", rule_critical_gas),
     ("permit_conflict", rule_permit_conflict),
     ("zone_occupied", rule_zone_occupied),
     ("incomplete_isolation", rule_incomplete_isolation),
     ("simultaneous_ops", rule_simultaneous_ops),
     ("certification_expiring", rule_certification_expiring),
     ("over_temperature", rule_over_temperature),
+    ("critical_temperature", rule_critical_temperature),
     ("equipment_vibration_anomaly", rule_equipment_vibration_anomaly),
     ("effluent_quality_breach", rule_effluent_quality_breach),
     ("tank_level_critical", rule_tank_level_critical),

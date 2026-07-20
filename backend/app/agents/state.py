@@ -44,3 +44,5 @@ class AgentState(TypedDict):
     provider_name: str | None
     # Per-ainvoke usage records (source narration + orch summary)
     llm_usage: Annotated[list[dict[str, Any]], operator.add]
+    # Per-call LLM outcome (ok | fallback) for trace + AI Ops
+    llm_outcomes: Annotated[list[dict[str, Any]], operator.add]

@@ -28,8 +28,13 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
 
     assessment_max_retries: int = 1
+    # Elevated = compound-engine early warning (sub-critical co-occurrence).
+    # Critical = single-sensor "incident threshold" — baseline alarm line for
+    # false-negative / lead-time eval. Critical must stay above elevated.
     gas_elevated_threshold: float = 20.0
+    gas_critical_threshold: float = 50.0
     temp_elevated_threshold: float = 80.0
+    temp_critical_threshold: float = 120.0
     vibration_anomaly_threshold: float = 7.1
     effluent_ph_min: float = 6.0
     effluent_ph_max: float = 9.0
@@ -71,6 +76,8 @@ class Settings(BaseSettings):
     ambient_heartbeat_seconds: float = 120.0
     ambient_batch_size: int = 2
     ambient_status_every_n_ticks: int = 4
+    # Soft telemetry ring size per asset (hydrates UI charts on open)
+    ambient_telemetry_keep: int = 40
 
     @property
     def cors_origin_list(self) -> list[str]:

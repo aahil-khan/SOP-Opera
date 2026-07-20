@@ -98,6 +98,49 @@ REGULATIONS = [
         "Hot work and outdoor lifting suspend when wind or lightning exceeds site weather-hold criteria.",
         "weather_hold",
     ),
+    # Indian regulatory pack — hero VSP compound-risk story (OISD / Factory Act / DGMS)
+    (
+        "a1111111-1111-1111-1111-111111111113",
+        "OISD-GDN-116",
+        "Fire Safety in Petroleum Refineries — Atmospheric Monitoring",
+        "Continuous gas monitoring is mandatory in hazardous areas; work must stop when "
+        "combustible or toxic gas exceeds action levels and personnel must evacuate until "
+        "atmosphere is verified safe.",
+        "elevated_gas",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111114",
+        "OISD-GDN-106",
+        "Fire Protection Facilities — Hot Work Controls",
+        "Hot work permits require verified isolation of energy sources and fire-watch "
+        "arrangements; overlapping or unverified permits must be suspended before work proceeds.",
+        "incomplete_isolation",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111115",
+        "Factory Act 1948 §41",
+        "Hazardous Process — Occupier Safety Duties",
+        "Occupiers must ensure no worker remains in a hazardous zone during abnormal process "
+        "conditions; entry during elevated gas or unverified isolation is prohibited.",
+        "zone_occupied",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111116",
+        "DGMS Circular 2017",
+        "Gas Monitoring in Confined and Hazardous Areas",
+        "Mines and heavy-industry analogues require multi-point gas detection with immediate "
+        "work stoppage when readings trend toward explosive or toxic limits; isolation must "
+        "be confirmed before maintenance resumes.",
+        "incomplete_isolation",
+    ),
+    (
+        "a1111111-1111-1111-1111-111111111117",
+        "OISD-STD-117",
+        "Permit to Work — Simultaneous Operations",
+        "Permits for hot work, confined space, and adjacent process activities must be "
+        "reconciled; simultaneous incompatible operations on connected equipment are prohibited.",
+        "permit_conflict",
+    ),
 ]
 
 SOPS = [
@@ -166,6 +209,21 @@ SOPS = [
         "SOP-Weather Hold",
         "When weather hold triggers, pause hot work and outdoor lifts; resume only after all-clear from shift lead.",
         "weather_hold",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222212",
+        "SOP-OISD Coke Oven Gas Response",
+        "On elevated gas in coke oven battery areas: stop hot work, confirm isolation tags, "
+        "evacuate non-essential personnel, and do not re-enter until atmosphere is verified "
+        "below action level — per OISD-GDN-116 and DGMS gas-monitoring guidance.",
+        "elevated_gas",
+    ),
+    (
+        "b2222222-2222-2222-2222-222222222213",
+        "SOP-Factory Act Zone Clearance",
+        "When gas alarms are active or isolation is unverified, clear all personnel from the "
+        "hazardous zone and account for workers before authorizing any permit restart.",
+        "zone_occupied",
     ),
 ]
 
