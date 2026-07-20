@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     cert_expiry_warning_days: int = 14
     default_owner_user_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     simulator_default_step_delay_seconds: int = 5
+    blocked_inactive_min_seconds: float = 15.0
+    blocked_inactive_max_seconds: float = 60.0
     random_max_concurrent_issues: int = 8
     random_spawn_interval_min_seconds: float = 4.0
     random_spawn_interval_max_seconds: float = 12.0
@@ -68,6 +70,10 @@ class Settings(BaseSettings):
     agent_scale_m_per_px: float = 0.04
     agent_timeout_seconds: float = 45.0
     agent_llm_timeout_seconds: float = 20.0
+    # Minimum points for OLS; 2 enables live-demo trajectories before the 3rd sample.
+    predictive_trend_horizon_minutes: float = 15.0
+    predictive_trend_min_r2: float = 0.55
+    predictive_trend_min_samples: int = 2
 
     # Always-on ambient plant telemetry (tuned for low WS/UI load)
     ambient_enabled: bool = True
