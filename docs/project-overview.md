@@ -107,7 +107,8 @@ Judges will ask: *"Couldn't rules or SQL do this?"*
 2. **Spatial Agent** queries a plant knowledge graph for hot-work within Xm of a gas spike (incl. vertical adjacency)
 3. **Incident Pattern Agent** RAG-echoes prior near-misses (path + score visible)
 4. **Orchestrator** fuses signals into a compound verdict + assessment
-5. **Shift Handover Agent** drafts briefs for the incoming supervisor
+5. **Predictive Trend Agent** projects near-term threshold crossings from telemetry trajectories
+6. **Shift Handover Agent** drafts briefs for the incoming supervisor
 6. **LangSmith** (optional) traces every agent/LLM call for AI Ops
 
 **The product value is not "AI detected gas."** The product value is **"independent plant systems don't talk — our agents do, live, and leave an audit trail."**

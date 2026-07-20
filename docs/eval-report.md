@@ -8,13 +8,14 @@ ground-truth dangerous cases (blocking intervention warranted).
 | Detector | Accuracy | Recall | FN rate | Precision |
 | --- | ---: | ---: | ---: | ---: |
 | Single-sensor baseline | 76.5% | 33.3% | 66.7% | 100.0% |
+| Predictive forecast (ML trend) | 82.4% | 83.3% | 16.7% | 71.4% |
 | Compound engine | 94.1% | 100.0% | 0.0% | 85.7% |
 
 **FN reduction (compound vs single-sensor):** 100.0%
 
 ## Prediction lead time (hero scenario)
 
-VSP coke-oven timeline: compound alarm at **8s**, single-sensor critical at **26s** → **18s lead time** before incident threshold.
+VSP coke-oven timeline: forecast alarm at **4s**, compound alarm at **8s**, single-sensor critical at **26s** → **18s lead time** before incident threshold.
 
 ## Hero checkpoint
 

@@ -8,6 +8,10 @@ reasoning failed route
 
 cctv feeds?
 
+- - AUDIO CHIME ON NEW REVIEW
+
+- closed menu should show what happende
+
 - ai ops is resetting
 
 - what should clicking on closed stuff do
