@@ -18,14 +18,14 @@ SOP_ID = UUID("b2222222-2222-2222-2222-222222222201")
 INC_ID = UUID("c3333333-3333-3333-3333-333333333301")
 
 
-def _fact(fact_type: str) -> DerivedFact:
+def _fact(fact_type: str, source_id: UUID | None = None) -> DerivedFact:
     return DerivedFact(
         id=uuid4(),
         asset_id=ASSET,
         fact_type=fact_type,
         value=True,
         computed_at=datetime.now(timezone.utc),
-        source_context_ids=[uuid4()],
+        source_context_ids=[source_id or uuid4()],
     )
 
 
@@ -65,6 +65,7 @@ def test_build_reasoning_factors_gas_and_occupancy():
             },
         },
     ]
+    sensor_id = UUID(context[0]["id"])
     owner = AreaOwner(
         worker_id=UUID("55555555-5555-5555-5555-555555555551"),
         name="Asha Rao",
@@ -72,7 +73,7 @@ def test_build_reasoning_factors_gas_and_occupancy():
         zone="coke-oven-battery",
     )
     factors = build_reasoning_factors(
-        [_fact("elevated_gas"), _fact("zone_occupied")],
+        [_fact("elevated_gas", sensor_id), _fact("zone_occupied")],
         context,
         refs,
         asset_name="Vessel A",
@@ -128,6 +129,40 @@ def test_build_reasoning_factors_permit_conflict():
     assert "p-1" in factors[0].detail
     assert "p-2" in factors[0].detail
     assert factors[0].evidence[0].title == "SOP-PTW-Conflict Resolution"
+
+
+def test_critical_gas_suppresses_elevated_and_uses_peak_reading():
+    low_id = uuid4()
+    high_id = uuid4()
+    context = [
+        {
+            "id": str(low_id),
+            "category": "sensor",
+            "payload": {"gas_reading": 25.0, "unit": "ppm"},
+        },
+        {
+            "id": str(high_id),
+            "category": "sensor",
+            "payload": {"gas_reading": 55.0, "unit": "ppm"},
+        },
+    ]
+    factors = build_reasoning_factors(
+        [
+            _fact("elevated_gas", low_id),
+            _fact("critical_gas", high_id),
+            _fact("incomplete_isolation"),
+        ],
+        context,
+        [],
+        asset_name="Vessel A",
+    )
+    types = {f.fact_type for f in factors}
+    assert "critical_gas" in types
+    assert "elevated_gas" not in types
+    assert "incomplete_isolation" in types
+    critical = next(f for f in factors if f.fact_type == "critical_gas")
+    assert "55" in critical.detail
+    assert "25" not in critical.detail
 
 
 def test_empty_facts_yields_empty_factors():

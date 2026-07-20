@@ -42,16 +42,16 @@ async def session():
     await engine.dispose()
 
 
-def test_retrieval_rules_cover_six_facts():
-    expected = {
-        "elevated_gas",
+def test_retrieval_rules_cover_hero_and_core_facts():
+    hero = {"elevated_gas", "incomplete_isolation", "zone_occupied"}
+    core = {
         "permit_conflict",
-        "zone_occupied",
-        "incomplete_isolation",
         "simultaneous_ops",
         "certification_expiring",
     }
-    assert set(RETRIEVAL_RULES.keys()) == expected
+    assert hero.issubset(RETRIEVAL_RULES.keys())
+    assert core.issubset(RETRIEVAL_RULES.keys())
+    assert "regulations" in RETRIEVAL_RULES["zone_occupied"]
 
 
 def test_source_types_union():

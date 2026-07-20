@@ -49,7 +49,7 @@ async def test_langgraph_compound_risk_blocking():
         )
         for ft in ("elevated_gas", "permit_conflict", "zone_occupied")
     ]
-    generation, trace, _links = await run_agent_assessment(
+    generation, trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,
@@ -84,7 +84,7 @@ async def test_langgraph_compound_risk_blocking():
 @pytest.mark.asyncio
 async def test_langgraph_nominal_when_no_facts():
     asset_id = UUID("11111111-1111-1111-1111-111111111111")
-    generation, trace, _links = await run_agent_assessment(
+    generation, trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,

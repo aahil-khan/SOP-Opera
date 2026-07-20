@@ -15,13 +15,24 @@ from app.simulator.dsl import (
 )
 
 
-def test_list_scenario_names_has_three():
-    names = list_scenario_names()
-    assert set(names) == {"gas_leak", "permit_conflict", "compound_risk"}
+KNOWN_SCENARIOS = frozenset(
+    {
+        "gas_leak",
+        "permit_conflict",
+        "compound_risk",
+        "spatial_proximity",
+        "vsp_coke_oven",
+    }
+)
+
+
+def test_list_scenario_names_includes_known():
+    names = set(list_scenario_names())
+    assert KNOWN_SCENARIOS.issubset(names)
 
 
 def test_load_all_scenarios():
-    for name in ("gas_leak", "permit_conflict", "compound_risk"):
+    for name in sorted(KNOWN_SCENARIOS):
         scenario = load_scenario(name)
         assert scenario.name == name
         assert scenario.label
@@ -29,6 +40,29 @@ def test_load_all_scenarios():
         for step in scenario.steps:
             assert step.category
             assert isinstance(step.payload, dict)
+
+
+def test_vsp_coke_oven_stays_subcritical_until_final_step():
+    """Hero story: compound facts assemble while gas is still below critical."""
+    from app.core.config import get_settings
+
+    settings = get_settings()
+    assert settings.gas_critical_threshold > settings.gas_elevated_threshold
+
+    scenario = load_scenario("vsp_coke_oven")
+    gas_steps = [
+        s for s in scenario.steps if s.category == "sensor" and "gas_reading" in s.payload
+    ]
+    assert len(gas_steps) >= 2
+    # All but the last gas sample stay below the single-sensor incident line.
+    for step in gas_steps[:-1]:
+        assert float(step.payload["gas_reading"]) < settings.gas_critical_threshold
+        assert float(step.payload["gas_reading"]) > settings.gas_elevated_threshold
+    assert float(gas_steps[-1].payload["gas_reading"]) >= settings.gas_critical_threshold
+
+    categories = {s.category for s in scenario.steps}
+    assert "permit" in categories
+    assert "worker_location" in categories
 
 
 def test_unknown_scenario_raises():

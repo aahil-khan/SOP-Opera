@@ -44,6 +44,7 @@ def _base_state(**overrides) -> AgentState:
         "grounded_fact_types": [],
         "provider_name": "mock",
         "llm_usage": [],
+        "llm_outcomes": [],
     }
     state.update(overrides)
     return state
@@ -133,7 +134,7 @@ async def test_full_graph_includes_incident_and_handover():
             source_context_ids=[],
         )
     ]
-    generation, trace, _links = await run_agent_assessment(
+    generation, trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=VESSEL_A,
@@ -172,7 +173,7 @@ async def test_full_graph_includes_incident_and_handover():
 
 @pytest.mark.asyncio
 async def test_full_graph_skips_enrichment_when_nominal():
-    generation, trace, _links = await run_agent_assessment(
+    generation, trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=VESSEL_A,

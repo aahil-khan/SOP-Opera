@@ -49,6 +49,7 @@ def _base_state(**overrides) -> AgentState:
         "grounded_fact_types": [],
         "provider_name": "mock",
         "llm_usage": [],
+        "llm_outcomes": [],
     }
     state.update(overrides)
     return state
@@ -190,7 +191,7 @@ async def test_graph_incident_keeps_serialized_title():
         snippet="Echoed from enrich.",
         triggered_by_fact="elevated_gas",
     )
-    _gen, trace, _links = await run_agent_assessment(
+    _gen, trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,

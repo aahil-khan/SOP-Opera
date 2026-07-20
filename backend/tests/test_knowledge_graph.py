@@ -97,7 +97,7 @@ async def test_langgraph_spatial_blocks_on_gas_plus_hot_work():
             "provider": "test",
         },
     ]
-    generation, trace, spatial_links = await run_agent_assessment(
+    generation, trace, spatial_links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,
@@ -131,7 +131,7 @@ async def test_langgraph_compound_still_blocking():
         )
         for ft in ("elevated_gas", "permit_conflict", "zone_occupied")
     ]
-    generation, trace, _links = await run_agent_assessment(
+    generation, trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,

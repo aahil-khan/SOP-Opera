@@ -41,6 +41,12 @@ async def client():
     await seed_minimal()
     await _cleanup_vessel()
 
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        await session.execute(text("DELETE FROM ai_ops_events"))
+        await session.commit()
+
     from app.main import app
 
     transport = ASGITransport(app=app)
@@ -54,7 +60,6 @@ async def _seed_mixed_assessments() -> None:
     from app.db.session import SessionLocal
 
     async with SessionLocal() as session:
-        # Create a review shell
         rev = await session.execute(
             text(
                 """
@@ -70,7 +75,7 @@ async def _seed_mixed_assessments() -> None:
         )
         review_id = rev.scalar_one()
 
-        async def insert_assessment(
+        async def insert_event(
             *,
             status: str,
             retrieval_mode: str | None,
@@ -85,34 +90,22 @@ async def _seed_mixed_assessments() -> None:
             await session.execute(
                 text(
                     """
-                    INSERT INTO assessments (
-                        id, review_id, assessment_type, status, risk_level, summary, version
-                    )
-                    VALUES (
-                        CAST(:id AS uuid), CAST(:review_id AS uuid),
-                        'ai', :status, 'elevated', 'seed', 1
-                    )
-                    """
-                ),
-                {"id": str(aid), "review_id": str(review_id), "status": status},
-            )
-            await session.execute(
-                text(
-                    """
-                    INSERT INTO assessment_metadata (
-                        assessment_id, provider, retrieval_mode, retrieval_score,
-                        failure_reason, retrieved_references,
+                    INSERT INTO ai_ops_events (
+                        assessment_id, review_id, status, provider,
+                        retrieval_mode, retrieval_score, failure_reason,
                         tokens_in, tokens_out, cost_usd, latency_ms
                     )
                     VALUES (
-                        CAST(:id AS uuid), 'mock', :mode, :score,
-                        :failure_reason, '[]'::jsonb,
+                        CAST(:id AS uuid), CAST(:review_id AS uuid),
+                        :status, 'mock', :mode, :score, :failure_reason,
                         :tokens_in, :tokens_out, :cost_usd, :latency_ms
                     )
                     """
                 ),
                 {
                     "id": str(aid),
+                    "review_id": str(review_id),
+                    "status": status,
                     "mode": retrieval_mode,
                     "score": retrieval_score,
                     "failure_reason": failure_reason,
@@ -123,8 +116,7 @@ async def _seed_mixed_assessments() -> None:
                 },
             )
 
-        # 2 complete (1 rag, 1 deterministic), 1 validation fail, 1 provider fail
-        await insert_assessment(
+        await insert_event(
             status="complete",
             retrieval_mode="rag",
             retrieval_score=0.9,
@@ -134,7 +126,7 @@ async def _seed_mixed_assessments() -> None:
             cost_usd=0.001,
             latency_ms=200,
         )
-        await insert_assessment(
+        await insert_event(
             status="complete",
             retrieval_mode="deterministic",
             retrieval_score=None,
@@ -144,13 +136,13 @@ async def _seed_mixed_assessments() -> None:
             cost_usd=0.0,
             latency_ms=100,
         )
-        await insert_assessment(
+        await insert_event(
             status="failed",
             retrieval_mode="rag",
             retrieval_score=0.2,
             failure_reason="validation",
         )
-        await insert_assessment(
+        await insert_event(
             status="failed",
             retrieval_mode="deterministic",
             retrieval_score=None,
@@ -170,6 +162,8 @@ async def test_ai_ops_summary_math(client: AsyncClient):
     assert body["complete_count"] == 2
     assert body["failed_count"] == 2
     assert body["success_rate"] == 0.5
+    assert body["data_source"] == "local_db"
+    assert body["persists_across_demo_reset"] is True
     assert body["validation_failure_count"] == 1
     assert body["provider_error_count"] == 1
     assert body["retrieval_ran_count"] == 4
@@ -186,3 +180,21 @@ async def test_ai_ops_summary_math(client: AsyncClient):
     assert "langsmith_enabled" in body
     assert "langsmith_project" in body
     assert body["langsmith_project"] == "sop-opera"
+
+
+@pytest.mark.asyncio
+async def test_ai_ops_events_survive_demo_reset(client: AsyncClient):
+    await _seed_mixed_assessments()
+    before = await client.get("/ai-ops/summary")
+    assert before.status_code == 200
+    assert before.json()["total_assessments"] == 4
+
+    reset = await client.post("/demo/reset")
+    assert reset.status_code == 200
+
+    after = await client.get("/ai-ops/summary")
+    assert after.status_code == 200
+    body = after.json()
+    assert body["total_assessments"] == 4
+    assert body["complete_count"] == 2
+    assert body["failed_count"] == 2

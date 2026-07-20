@@ -120,7 +120,7 @@ async def test_graph_accumulates_usage_from_llm(monkeypatch):
             source_context_ids=[],
         )
     ]
-    generation, _trace, _links = await run_agent_assessment(
+    generation, _trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,
@@ -148,7 +148,7 @@ async def test_graph_accumulates_usage_from_llm(monkeypatch):
 @pytest.mark.asyncio
 async def test_graph_mock_has_zero_tokens():
     asset_id = UUID("11111111-1111-1111-1111-111111111111")
-    generation, _trace, _links = await run_agent_assessment(
+    generation, _trace, _links, _stats = await run_agent_assessment(
         review_id=uuid4(),
         assessment_id=uuid4(),
         asset_id=asset_id,

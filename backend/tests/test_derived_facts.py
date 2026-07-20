@@ -8,6 +8,8 @@ from app.context.derived_facts import (
     DERIVED_FACT_RULES,
     evaluate_rules,
     rule_certification_expiring,
+    rule_critical_gas,
+    rule_critical_temperature,
     rule_effluent_quality_breach,
     rule_elevated_gas,
     rule_equipment_vibration_anomaly,
@@ -49,6 +51,20 @@ def test_elevated_gas_true_and_false():
     under = [_entry("sensor", {"gas_reading": 10.0, "unit": "ppm"})]
     assert rule_elevated_gas(over, now=NOW, threshold=20.0) is not None
     assert rule_elevated_gas(under, now=NOW, threshold=20.0) is None
+
+
+def test_critical_gas_true_and_false():
+    critical = [_entry("sensor", {"gas_reading": 55.0, "unit": "ppm"})]
+    elevated_only = [_entry("sensor", {"gas_reading": 25.0, "unit": "ppm"})]
+    assert rule_critical_gas(critical, now=NOW, threshold=50.0) is not None
+    assert rule_critical_gas(elevated_only, now=NOW, threshold=50.0) is None
+
+
+def test_critical_temperature_true_and_false():
+    critical = [_entry("sensor", {"temp_reading": 125.0, "unit": "C"})]
+    elevated_only = [_entry("sensor", {"temp_reading": 90.0, "unit": "C"})]
+    assert rule_critical_temperature(critical, now=NOW, threshold=120.0) is not None
+    assert rule_critical_temperature(elevated_only, now=NOW, threshold=120.0) is None
 
 
 def test_permit_conflict_true_and_false():
@@ -123,7 +139,7 @@ def test_certification_expiring_true_and_false():
     )
 
 
-def test_evaluate_rules_runs_all_thirteen():
+def test_evaluate_rules_runs_all_fifteen():
     entries = [
         _entry("sensor", {"gas_reading": 30.0}),
         _entry("worker_location", {"worker_id": "w-1", "zone": "hazardous"}),
@@ -135,7 +151,7 @@ def test_evaluate_rules_runs_all_thirteen():
     ]
     result = evaluate_rules(entries, now=NOW)
     assert set(result.keys()) == {name for name, _ in DERIVED_FACT_RULES}
-    assert len(result) == 13
+    assert len(result) == 15
     assert result["elevated_gas"] is not None
     assert result["zone_occupied"] is not None
     assert result["permit_conflict"] is not None

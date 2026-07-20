@@ -69,6 +69,36 @@ async def test_notifications_on_assessment_failed(client: AsyncClient, monkeypat
 
 
 @pytest.mark.asyncio
+async def test_critical_assessment_notification_uses_critical_summary(monkeypatch):
+    captured: dict = {}
+
+    async def fake_create(session, **kwargs):
+        captured.update(kwargs)
+        return UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
+
+    monkeypatch.setattr(
+        "app.notifications.service.create_notification",
+        fake_create,
+    )
+
+    from app.notifications.service import notify_assessment_completed
+
+    review_id = UUID("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb")
+    owner_id = UUID("cccccccc-cccc-cccc-cccc-cccccccccccc")
+    await notify_assessment_completed(
+        None,  # type: ignore[arg-type]
+        review_id=review_id,
+        owner_id=owner_id,
+        risk_level="blocking",
+        sensor_critical=True,
+    )
+
+    assert captured["event_type"] == "assessment.completed"
+    assert "Critical" in captured["summary"]
+    assert "blocking" not in captured["summary"].lower()
+
+
+@pytest.mark.asyncio
 async def test_notifications_limit(client: AsyncClient):
     resp = await client.get("/notifications?limit=1")
     assert resp.status_code == 200
