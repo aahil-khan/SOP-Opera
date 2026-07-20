@@ -5,7 +5,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import random
-from datetime import datetime, timezone
+from dataclasses import dataclass
+from datetime import datetime, timedelta, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -56,6 +57,14 @@ class ScenarioAlreadyRunningError(RuntimeError):
     """Raised when start() is called while a scenario is already in flight."""
 
 
+@dataclass
+class InactiveLock:
+    asset_id: str
+    review_id: str
+    unlock_at: datetime
+    review_closed: bool = False
+
+
 class DemoController:
     """
     Singleton-ish coordinator for Demo Mode scenario replay and Random Mode.
@@ -76,6 +85,8 @@ class DemoController:
         self._orch_sim = OrchestratorSim()
         self._sources_used: list[str] = []
         self._locked_asset_ids: set[str] = set()
+        self._inactive_locks_by_asset: dict[str, InactiveLock] = {}
+        self._inactive_locks_by_review: dict[str, str] = {}
 
     @property
     def locked_asset_ids(self) -> set[str]:
@@ -89,6 +100,83 @@ class DemoController:
 
     def clear_locks(self) -> None:
         self._locked_asset_ids.clear()
+        self._inactive_locks_by_asset.clear()
+        self._inactive_locks_by_review.clear()
+
+    def _clear_stale_inactive_locks(self) -> None:
+        now = datetime.now(timezone.utc)
+        stale_assets: list[str] = []
+        for asset_id, lock in self._inactive_locks_by_asset.items():
+            if lock.review_closed and lock.unlock_at <= now:
+                stale_assets.append(asset_id)
+        for asset_id in stale_assets:
+            lock = self._inactive_locks_by_asset.pop(asset_id, None)
+            if lock:
+                self._inactive_locks_by_review.pop(lock.review_id, None)
+
+    @property
+    def inactive_asset_ids(self) -> set[str]:
+        self._clear_stale_inactive_locks()
+        return set(self._inactive_locks_by_asset.keys())
+
+    def is_asset_inactive(self, asset_id: str | UUID) -> bool:
+        self._clear_stale_inactive_locks()
+        return str(asset_id) in self._inactive_locks_by_asset
+
+    async def wait_until_asset_active(self, asset_id: str | UUID) -> None:
+        while self.is_asset_inactive(asset_id):
+            await asyncio.sleep(1.0)
+
+    def lock_asset_inactive(
+        self, *, asset_id: str | UUID, review_id: str | UUID, duration_seconds: float
+    ) -> None:
+        self._clear_stale_inactive_locks()
+        aid = str(asset_id)
+        rid = str(review_id)
+        unlock_at = datetime.now(timezone.utc) + timedelta(
+            seconds=max(0.0, float(duration_seconds))
+        )
+        # Clear prior mapping for this review if it targeted a different asset.
+        previous_asset = self._inactive_locks_by_review.get(rid)
+        if previous_asset and previous_asset != aid:
+            self._inactive_locks_by_asset.pop(previous_asset, None)
+        self._inactive_locks_by_asset[aid] = InactiveLock(
+            asset_id=aid,
+            review_id=rid,
+            unlock_at=unlock_at,
+            review_closed=False,
+        )
+        self._inactive_locks_by_review[rid] = aid
+
+    def clear_inactive_lock_for_review(self, review_id: str | UUID) -> None:
+        rid = str(review_id)
+        aid = self._inactive_locks_by_review.pop(rid, None)
+        if aid is None:
+            return
+        self._inactive_locks_by_asset.pop(aid, None)
+
+    def mark_review_closed(
+        self, *, review_id: str | UUID, asset_id: str | UUID | None = None
+    ) -> None:
+        self._clear_stale_inactive_locks()
+        rid = str(review_id)
+        candidates: list[InactiveLock] = []
+        aid = self._inactive_locks_by_review.get(rid)
+        if aid is not None:
+            lock = self._inactive_locks_by_asset.get(aid)
+            if lock is not None:
+                candidates.append(lock)
+        if asset_id is not None:
+            by_asset = self._inactive_locks_by_asset.get(str(asset_id))
+            if by_asset is not None and by_asset not in candidates:
+                candidates.append(by_asset)
+        for lock in candidates:
+            # Prefer strict review-id match, but allow asset-level close fallback
+            # so unlock is not blocked by stale mapping state.
+            if lock.review_id == rid or asset_id is not None:
+                lock.review_closed = True
+                self._inactive_locks_by_review[lock.review_id] = lock.asset_id
+        self._clear_stale_inactive_locks()
 
     def status(self) -> dict[str, Any]:
         from app.simulator.ambient import ambient_loop
@@ -108,6 +196,7 @@ class DemoController:
             "sources": list_sources(),
             "ambient_running": ambient_loop.running,
             "demo_locked_assets": sorted(self._locked_asset_ids),
+            "demo_inactive_assets": sorted(self.inactive_asset_ids),
             "config": (
                 self._random_config.model_dump() if self._random_config else None
             ),
@@ -121,10 +210,32 @@ class DemoController:
                 "POST /demo/reset or wait for it to finish"
             )
 
+    async def _wipe_runtime(self) -> None:
+        """Delete demo runtime rows so scenarios can replay cleanly."""
+        orchestrator.drain()
+        worker = orchestrator._worker_task
+        orchestrator.stop()
+        if worker is not None:
+            try:
+                await asyncio.wait_for(asyncio.shield(worker), timeout=2.0)
+            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+
+        async with SessionLocal() as session:
+            for table in _RESET_DELETE_ORDER:
+                await session.execute(text(f"DELETE FROM {table}"))
+            await session.commit()
+
+        orchestrator.start()
+
     async def start(self, name: str) -> dict[str, Any]:
         self._assert_idle()
 
         scenario = load_scenario(name)  # raises ScenarioNotFoundError
+
+        # Replay requires a clean runtime — unchanged derived facts skip review open.
+        await self._wipe_runtime()
+        self.clear_locks()
 
         self._mode = "scripted"
         self._scenario_name = scenario.name
@@ -178,6 +289,9 @@ class DemoController:
         settings = get_settings()
         try:
             for i, step in enumerate(scenario.steps):
+                async with SessionLocal() as session:
+                    asset_id = await resolve_asset_id(session, step.asset)
+                await self.wait_until_asset_active(asset_id)
                 delay = (
                     step.delay_seconds
                     if step.delay_seconds is not None
@@ -185,6 +299,7 @@ class DemoController:
                 )
                 if delay > 0:
                     await asyncio.sleep(delay)
+                await self.wait_until_asset_active(asset_id)
 
                 self._step_index = i
                 async with SessionLocal() as session:
@@ -259,14 +374,20 @@ class DemoController:
                     busy = set(await list_assets_with_open_reviews(session))
                     for aid in busy:
                         self.lock_asset(aid)
+                    inactive = self.inactive_asset_ids
                     compound = (
                         busy
                         and rng.random() < config.compound_probability
                     )
                     if compound:
-                        pool = [a for a in assets if a.id in busy]
+                        pool = [a for a in assets if a.id in busy and a.id not in inactive]
                     else:
-                        pool = [a for a in assets if a.id not in busy] or assets
+                        pool = [a for a in assets if a.id not in busy and a.id not in inactive]
+                        if not pool:
+                            pool = [a for a in assets if a.id not in inactive]
+                    if not pool:
+                        logger.debug("random mode: all candidate assets inactive; skipping spawn")
+                        continue
 
                     asset = rng.choice(pool)
                     signals = pick_signals(rng, config)
@@ -323,23 +444,7 @@ class DemoController:
         self._sources_used = []
         self.clear_locks()
 
-        # Drain + pause the assessment worker so an in-flight job cannot re-insert
-        # rows between DELETE statements (FK violation race).
-        orchestrator.drain()
-        worker = orchestrator._worker_task
-        orchestrator.stop()
-        if worker is not None:
-            try:
-                await asyncio.wait_for(asyncio.shield(worker), timeout=2.0)
-            except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
-                pass
-
-        async with SessionLocal() as session:
-            for table in _RESET_DELETE_ORDER:
-                await session.execute(text(f"DELETE FROM {table}"))
-            await session.commit()
-
-        orchestrator.start()
+        await self._wipe_runtime()
         logger.info("demo reset complete — runtime tables wiped")
         return {"status": "reset"}
 

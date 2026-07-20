@@ -153,3 +153,34 @@ async def test_reset_cancels_and_wipes(ready):
     status = await demo_controller.start("gas_leak")
     assert status["running"] is True
     await _wait_idle(demo_controller, timeout=15.0)
+
+
+@pytest.mark.asyncio
+async def test_scripted_scenario_replays_without_manual_reset(ready):
+    """Second start must wipe stale facts so steps re-open reviews."""
+    from app.db.session import SessionLocal
+
+    await demo_controller.start("gas_leak")
+    await _wait_idle(demo_controller, timeout=15.0)
+
+    async with SessionLocal() as session:
+        first_count = (
+            await session.execute(text("SELECT count(*) FROM reviews"))
+        ).scalar_one()
+        assert first_count >= 1
+
+    await demo_controller.start("gas_leak")
+    await _wait_idle(demo_controller, timeout=15.0)
+
+    async with SessionLocal() as session:
+        second_count = (
+            await session.execute(text("SELECT count(*) FROM reviews"))
+        ).scalar_one()
+        assert second_count >= 1
+        states = [
+            r[0]
+            for r in (
+                await session.execute(text("SELECT state FROM reviews"))
+            ).fetchall()
+        ]
+        assert any(s in ("assessing", "pending_decision", "opened") for s in states)

@@ -356,10 +356,13 @@ class AmbientPlantLoop:
         except Exception:  # noqa: BLE001
             logger.debug("ambient soft persist failed", exc_info=True)
 
-    async def _coincidence(self, locked: set[str], settings: Any) -> None:
+    async def _coincidence(
+        self, locked: set[str], inactive: set[str], settings: Any
+    ) -> None:
         if self._rng.random() >= settings.ambient_coincidence_probability:
             return
-        unlocked = [a for a in self._assets_cache if a["id"] not in locked]
+        blocked = locked | inactive
+        unlocked = [a for a in self._assets_cache if a["id"] not in blocked]
         if not unlocked:
             return
         asset = self._rng.choice(unlocked)
@@ -393,7 +396,9 @@ class AmbientPlantLoop:
         except Exception:  # noqa: BLE001
             logger.exception("ambient coincidence failed")
 
-    async def _heartbeat(self, locked: set[str], settings: Any) -> None:
+    async def _heartbeat(
+        self, locked: set[str], inactive: set[str], settings: Any
+    ) -> None:
         """Rare quiet hard-ingest — refreshes context without Orchestrator WS spam."""
         now = datetime.now(timezone.utc)
         if self._last_heartbeat is not None:
@@ -401,7 +406,8 @@ class AmbientPlantLoop:
             if elapsed < settings.ambient_heartbeat_seconds:
                 return
         self._last_heartbeat = now
-        unlocked = [a for a in self._assets_cache if a["id"] not in locked]
+        blocked = locked | inactive
+        unlocked = [a for a in self._assets_cache if a["id"] not in blocked]
         if not unlocked:
             return
         asset = unlocked[self._cursor % len(unlocked)]
@@ -446,11 +452,12 @@ class AmbientPlantLoop:
                     settings = get_settings()
 
                 locked = set(demo_controller.locked_asset_ids)
+                inactive = set(demo_controller.inactive_asset_ids)
                 if ticks % 40 == 0:
                     await self._refresh_assets()
                 await self._soft_tick(locked, tick=ticks, settings=settings)
-                await self._coincidence(locked, settings)
-                await self._heartbeat(locked, settings)
+                await self._coincidence(locked, inactive, settings)
+                await self._heartbeat(locked, inactive, settings)
                 ticks += 1
                 await asyncio.sleep(settings.ambient_tick_seconds)
         except asyncio.CancelledError:
