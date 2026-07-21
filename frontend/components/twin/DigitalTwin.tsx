@@ -26,7 +26,6 @@ import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
 import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
-import { ShiftGate, hasStartedShift } from "./ShiftGate";
 import { MapControls } from "./MapControls";
 import {
   MapLayerToggle,
@@ -115,7 +114,7 @@ export function DigitalTwin() {
   const floorTabRefs = useRef<Partial<Record<"all" | PlantFloor, HTMLButtonElement | null>>>(
     {},
   );
-  const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarWidth, setSidebarWidth] = useState(SIDEBAR_WIDTH_MIN);
   const [sidebarResizing, setSidebarResizing] = useState(false);
   const [drawerWidth, setDrawerWidth] = useState(DRAWER_WIDTH_MIN);
@@ -123,7 +122,6 @@ export function DigitalTwin() {
   const [viewMode, setViewMode] = useState<ViewMode>("overview");
   const [activeFloor, setActiveFloor] = useState<PlantFloor>("ground");
   const [slideDir, setSlideDir] = useState<SlideDir>("in");
-  const [shiftGateOpen, setShiftGateOpen] = useState(false);
   /** Overview is diving into a floor before detail mounts. */
   const [overviewExiting, setOverviewExiting] = useState(false);
   const [floorSlider, setFloorSlider] = useState({ left: 0, width: 0 });
@@ -133,6 +131,9 @@ export function DigitalTwin() {
   const lastFocusedRef = useRef<string | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
   const viewTransitionTimerRef = useRef<number | null>(null);
+  /** Summary-mode width to restore after leaving full review. */
+  const summaryDrawerWidthRef = useRef(DRAWER_WIDTH_MIN);
+  const prevAssetPanelModeRef = useRef(assetPanelMode);
 
   const drawerMin =
     assetPanelMode === "fullReview" ? DRAWER_WIDTH_EXPANDED_MIN : DRAWER_WIDTH_MIN;
@@ -142,8 +143,22 @@ export function DigitalTwin() {
   );
 
   useEffect(() => {
-    if (drawerWidth < drawerMin) setDrawerWidth(drawerMin);
-  }, [drawerMin, drawerWidth]);
+    const prev = prevAssetPanelModeRef.current;
+    if (prev === assetPanelMode) return;
+    prevAssetPanelModeRef.current = assetPanelMode;
+
+    if (assetPanelMode === "fullReview") {
+      summaryDrawerWidthRef.current = drawerWidth;
+      if (drawerWidth < DRAWER_WIDTH_EXPANDED_MIN) {
+        setDrawerWidth(DRAWER_WIDTH_EXPANDED_MIN);
+      }
+      return;
+    }
+
+    if (prev === "fullReview") {
+      setDrawerWidth(summaryDrawerWidthRef.current);
+    }
+  }, [assetPanelMode, drawerWidth]);
 
   const activeFloorTab: "all" | PlantFloor =
     viewMode === "overview" || slideDir === "out" ? "all" : activeFloor;
@@ -158,10 +173,6 @@ export function DigitalTwin() {
   useEffect(() => () => clearViewTransition(), [clearViewTransition]);
 
   useEffect(() => {
-    setShiftGateOpen(!hasStartedShift());
-  }, []);
-
-  useEffect(() => {
     setEnabledLayers(readEnabledLayers());
   }, []);
 
@@ -174,16 +185,6 @@ export function DigitalTwin() {
       return next;
     });
   }, []);
-
-  const handleStartShift = useCallback(
-    (attentionAssetId: string | null) => {
-      setShiftGateOpen(false);
-      if (attentionAssetId) {
-        selectAsset(attentionAssetId);
-      }
-    },
-    [selectAsset],
-  );
 
   const {
     riskByAsset,
@@ -686,7 +687,6 @@ export function DigitalTwin() {
         onResizingChange={setSidebarResizing}
       />
 
-      {shiftGateOpen ? <ShiftGate onStartShift={handleStartShift} /> : null}
     </div>
   );
 }

@@ -47,16 +47,19 @@ function inverseRateTone(rate: number, warnMax: number, badMax: number): Tone {
 function HeroStat({
   value,
   label,
+  hint,
   tone = "neutral",
 }: {
   value: string;
   label: string;
+  hint: string;
   tone?: Tone;
 }) {
   return (
-    <div className={styles.hero} data-tone={tone}>
+    <div className={styles.hero} data-tone={tone} title={hint}>
       <span className={styles.heroValue}>{value}</span>
       <span className={styles.heroLabel}>{label}</span>
+      <span className={styles.heroHint}>{hint}</span>
     </div>
   );
 }
@@ -65,17 +68,17 @@ function RateBar({
   label,
   value,
   displayValue,
-  detail,
+  hint,
   tone = "neutral",
 }: {
   label: string;
   value: number;
   displayValue: string;
-  detail?: string;
+  hint: string;
   tone?: Tone;
 }) {
   return (
-    <div className={styles.rate} data-tone={tone}>
+    <div className={styles.rate} data-tone={tone} title={hint}>
       <div className={styles.rateHead}>
         <span className={styles.rateLabel}>{label}</span>
         <span className={styles.rateValue}>{displayValue}</span>
@@ -86,14 +89,22 @@ function RateBar({
           style={{ width: `${clamp01(value) * 100}%` }}
         />
       </div>
-      {detail ? <p className={styles.rateDetail}>{detail}</p> : null}
+      <p className={styles.rateDetail}>{hint}</p>
     </div>
   );
 }
 
-function StatPair({ label, value }: { label: string; value: string }) {
+function StatPair({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
   return (
-    <div className={styles.statPair}>
+    <div className={styles.statPair} title={hint}>
       <span className={styles.statValue}>{value}</span>
       <span className={styles.statLabel}>{label}</span>
     </div>
@@ -182,19 +193,23 @@ export function AIOpsDashboard() {
         <HeroStat
           value={summary ? pct(summary.success_rate) : "—"}
           label="Success rate"
+          hint="Share of assessment runs that reached a complete verdict, all-time"
           tone={summary ? rateTone(summary.success_rate, 0.95, 0.85) : "neutral"}
         />
         <HeroStat
           value={fmtLatency(summary?.mean_latency_ms)}
           label="Mean latency"
+          hint="Average wall-clock time from job claim to persisted verdict"
         />
         <HeroStat
           value={summary ? fmtTokens(totalTokens) : "—"}
           label="Total tokens"
+          hint="Combined input + output tokens across every LangGraph LLM call"
         />
         <HeroStat
           value={summary ? fmtCost(summary.total_cost_usd) : "—"}
           label="Total cost"
+          hint="Estimated USD from token pricing tables — mock and Ollama always record $0"
           tone={summary && summary.total_cost_usd > 0 ? "warn" : "neutral"}
         />
       </div>
@@ -203,12 +218,16 @@ export function AIOpsDashboard() {
         <section className={styles.panel}>
           <header className={styles.panelHeader}>
             <h2 className={styles.panelTitle}>Reliability</h2>
+            <p className={styles.panelSubtitle}>
+              How often assessment runs finish cleanly
+            </p>
           </header>
           <div className={styles.panelBody}>
             <RateBar
               label="Success rate"
               value={summary?.success_rate ?? 0}
               displayValue={summary ? pct(summary.success_rate) : "—"}
+              hint="Share of runs that reached a complete verdict without failing validation or a provider error"
               tone={
                 summary ? rateTone(summary.success_rate, 0.95, 0.85) : "neutral"
               }
@@ -217,7 +236,7 @@ export function AIOpsDashboard() {
               label="LLM fallback rate"
               value={summary?.llm_fallback_rate ?? 0}
               displayValue={summary ? pct(summary.llm_fallback_rate) : "—"}
-              detail="Share of runs that completed on template fallbacks"
+              hint="Share of live-provider LLM attempts that fell back to a template response instead of a real model output"
               tone={
                 summary
                   ? inverseRateTone(summary.llm_fallback_rate, 0.05, 0.25)
@@ -228,20 +247,24 @@ export function AIOpsDashboard() {
               <StatPair
                 label="Failed"
                 value={summary ? String(summary.failed_count) : "—"}
+                hint="Runs that never reached a verdict"
               />
               <StatPair
                 label="Validation failures"
                 value={
                   summary ? String(summary.validation_failure_count) : "—"
                 }
+                hint="Failed runs where the LLM output didn't pass schema validation after retries"
               />
               <StatPair
                 label="Provider errors"
                 value={summary ? String(summary.provider_error_count) : "—"}
+                hint="Failed runs where the provider call itself errored — timeout, API error, or similar"
               />
               <StatPair
                 label="LLM-degraded"
                 value={summary ? String(summary.degraded_count) : "—"}
+                hint="Completed runs where at least one agent call fell back to a template while the pipeline still finished"
               />
             </div>
           </div>
@@ -250,12 +273,16 @@ export function AIOpsDashboard() {
         <section className={styles.panel}>
           <header className={styles.panelHeader}>
             <h2 className={styles.panelTitle}>Retrieval quality</h2>
+            <p className={styles.panelSubtitle}>
+              How often RAG finds usable evidence
+            </p>
           </header>
           <div className={styles.panelBody}>
             <RateBar
               label="RAG hit rate"
               value={summary?.rag_hit_rate ?? 0}
               displayValue={summary ? pct(summary.rag_hit_rate) : "—"}
+              hint="Share of retrievals where vector search over historical incidents cleared the relevance quality gate"
               tone={
                 summary ? rateTone(summary.rag_hit_rate, 0.8, 0.5) : "neutral"
               }
@@ -264,7 +291,7 @@ export function AIOpsDashboard() {
               label="RAG fallback rate"
               value={summary?.rag_fallback_rate ?? 0}
               displayValue={summary ? pct(summary.rag_fallback_rate) : "—"}
-              detail="Share of runs where vector search missed and deterministic SQL filled in"
+              hint="Share of runs where vector search missed the quality gate and deterministic SQL filled in"
               tone={
                 summary
                   ? inverseRateTone(summary.rag_fallback_rate, 0.15, 0.4)
@@ -279,16 +306,19 @@ export function AIOpsDashboard() {
                   ? "—"
                   : summary.mean_retrieval_relevance.toFixed(3)
               }
+              hint="Average cosine-similarity score of the historical-incident chunks that cleared the RAG quality gate (RAG hits only, 0–1)"
               tone="neutral"
             />
             <div className={styles.statGrid}>
               <StatPair
                 label="Retrievals run"
                 value={summary ? String(summary.retrieval_ran_count) : "—"}
+                hint="Runs that had at least one derived fact to retrieve context for"
               />
               <StatPair
                 label="Complete runs"
                 value={summary ? String(summary.complete_count) : "—"}
+                hint="Runs that reached a persisted verdict"
               />
             </div>
           </div>
@@ -297,9 +327,15 @@ export function AIOpsDashboard() {
         <section className={styles.panel}>
           <header className={styles.panelHeader}>
             <h2 className={styles.panelTitle}>Agent spend</h2>
+            <p className={styles.panelSubtitle}>
+              Token volume and USD cost across LLM calls
+            </p>
           </header>
           <div className={styles.panelBody}>
-            <div className={styles.tokenSplit}>
+            <div
+              className={styles.tokenSplit}
+              title="Combined input + output tokens across every LangGraph LLM call (domain narration + orchestrator), all-time"
+            >
               <div className={styles.tokenSplitHead}>
                 <span className={styles.rateLabel}>Input / output tokens</span>
                 <span className={styles.rateValue}>
@@ -336,10 +372,12 @@ export function AIOpsDashboard() {
                     ? "—"
                     : fmtCost(summary.mean_cost_usd)
                 }
+                hint="Average estimated cost per completed run"
               />
               <StatPair
                 label="Total cost"
                 value={summary ? fmtCost(summary.total_cost_usd) : "—"}
+                hint="Cumulative estimated spend, all-time"
               />
             </div>
             <p className={styles.note}>

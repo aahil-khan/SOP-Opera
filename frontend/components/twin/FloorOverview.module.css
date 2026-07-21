@@ -40,7 +40,9 @@
   border: 1px solid var(--border-muted);
   border-radius: var(--radius-lg, 12px);
   background: color-mix(in srgb, var(--surface-panel) 92%, transparent);
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--accent-selection) 28%, transparent);
   color: inherit;
   font: inherit;
   text-align: left;
@@ -51,10 +53,40 @@
     background 180ms var(--ease-out);
 }
 
+.card[data-severity="elevated"] {
+  border-color: color-mix(in srgb, var(--status-elevated) 45%, var(--border-muted));
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--status-elevated) 70%, transparent);
+}
+
+.card[data-severity="blocking"] {
+  border-color: color-mix(in srgb, var(--status-blocking) 50%, var(--border-muted));
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--status-blocking) 75%, transparent);
+}
+
 .card:hover {
   border-color: color-mix(in srgb, var(--accent-selection) 55%, var(--border-default));
-  box-shadow: var(--shadow-sm);
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--accent-selection) 45%, transparent);
   background: color-mix(in srgb, var(--surface-panel) 96%, transparent);
+}
+
+.card[data-severity="elevated"]:hover {
+  border-color: color-mix(in srgb, var(--status-elevated) 55%, var(--accent-selection));
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--status-elevated) 80%, transparent);
+}
+
+.card[data-severity="blocking"]:hover {
+  border-color: color-mix(in srgb, var(--status-blocking) 55%, var(--accent-selection));
+  box-shadow:
+    var(--shadow-sm),
+    inset 3px 0 0 color-mix(in srgb, var(--status-blocking) 85%, transparent);
 }
 
 .card:hover .hoverHint {
@@ -88,6 +120,11 @@
   pointer-events: none;
 }
 
+.schematicRoot {
+  animation: schematic-breath 6s ease-in-out infinite;
+  transform-origin: center;
+}
+
 .previewCanvas {
   fill: var(--surface-canvas);
 }
@@ -96,6 +133,25 @@
   fill: var(--text-muted);
   font-family: var(--font-sans), system-ui, sans-serif;
   font-size: 72px;
+}
+
+.assetDot {
+  fill: color-mix(in srgb, var(--text-muted) 55%, transparent);
+  opacity: 0.3;
+  animation: nominal-dot-breath 6s ease-in-out infinite;
+  animation-delay: calc(var(--dot-index, 0) * 0.35s);
+}
+
+.assetDot[data-risk="elevated"] {
+  fill: var(--status-elevated);
+  opacity: 0.85;
+  animation: none;
+}
+
+.assetDot[data-risk="blocking"] {
+  fill: var(--status-blocking);
+  opacity: 0.9;
+  animation: none;
 }
 
 .hoverHint {
@@ -147,10 +203,27 @@
   background: var(--accent-ok, #2f9e6a);
 }
 
+.livePip {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--accent-ok, #2f9e6a);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok, #2f9e6a) 28%, transparent);
+  animation: live-pulse 1.6s ease-out infinite;
+}
+
 .metaRight {
   display: inline-flex;
   align-items: center;
   gap: 0.4rem;
+}
+
+.idleHint {
+  font-size: var(--text-xs);
+  font-family: var(--font-mono);
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
 }
 
 .riskHint {
@@ -204,6 +277,54 @@
   to {
     opacity: 1;
     transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes live-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ok, #2f9e6a) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@keyframes nominal-dot-breath {
+  0%,
+  100% {
+    opacity: 0.22;
+  }
+  50% {
+    opacity: 0.38;
+  }
+}
+
+@keyframes schematic-breath {
+  0%,
+  100% {
+    opacity: 0.94;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .schematicRoot,
+  .assetDot,
+  .livePip {
+    animation: none;
+  }
+
+  .assetDot {
+    opacity: 0.3;
+  }
+
+  .livePip {
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok, #2f9e6a) 28%, transparent);
   }
 }
 

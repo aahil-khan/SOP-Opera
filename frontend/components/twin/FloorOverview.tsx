@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, type CSSProperties } from "react";
+import { useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { MAP_VIEWBOX } from "./MapViewport";
@@ -14,6 +14,8 @@ import styles from "./FloorOverview.module.css";
 
 type FloorEntry = {
   floor?: PlantFloor;
+  x?: number;
+  y?: number;
 };
 
 interface FloorOverviewProps {
@@ -26,6 +28,21 @@ interface FloorOverviewProps {
 }
 
 const MAP = floorPlanMap as Record<string, FloorEntry>;
+const DOT_RADIUS = 16;
+
+const RISK_RANK: Record<RiskLevel, number> = {
+  nominal: 0,
+  elevated: 1,
+  blocking: 2,
+};
+
+function worstRisk(levels: RiskLevel[]): RiskLevel {
+  let worst: RiskLevel = "nominal";
+  for (const level of levels) {
+    if (RISK_RANK[level] > RISK_RANK[worst]) worst = level;
+  }
+  return worst;
+}
 
 function FloorThumb({
   floor,
@@ -56,16 +73,29 @@ function FloorThumb({
     };
   }, [floor]);
 
-  const hotCount = Object.entries(MAP).filter(([assetId, entry]) => {
-    if ((entry.floor ?? "ground") !== floor) return false;
-    const risk = riskByAsset[assetId] ?? "nominal";
-    return risk !== "nominal";
-  }).length;
+  const assets = useMemo(
+    () =>
+      Object.entries(MAP)
+        .filter(([, entry]) => (entry.floor ?? "ground") === floor)
+        .map(([assetId, entry], index) => ({
+          assetId,
+          x: entry.x ?? 0,
+          y: entry.y ?? 0,
+          risk: (riskByAsset[assetId] ?? "nominal") as RiskLevel,
+          index,
+        })),
+    [floor, riskByAsset],
+  );
+
+  const hotCount = assets.filter((a) => a.risk !== "nominal").length;
+  const severity = worstRisk(assets.map((a) => a.risk));
+  const idle = hotCount === 0 && activity === 0;
 
   return (
     <button
       type="button"
       className={styles.card}
+      data-severity={severity}
       onClick={onSelect}
       aria-label={`Open ${FLOOR_LABELS[floor]} floor${fresh ? ", new data" : ""}`}
     >
@@ -85,7 +115,7 @@ function FloorThumb({
           />
           {schematic ? (
             <g
-              className="fps-root"
+              className={`fps-root ${styles.schematicRoot}`}
               pointerEvents="none"
               dangerouslySetInnerHTML={{ __html: schematic }}
             />
@@ -99,21 +129,50 @@ function FloorThumb({
               Loading…
             </text>
           )}
+          {schematic ? (
+            <g className={styles.assetDots} pointerEvents="none">
+              {assets.map((asset) => (
+                <circle
+                  key={asset.assetId}
+                  className={styles.assetDot}
+                  data-risk={asset.risk}
+                  cx={asset.x}
+                  cy={asset.y}
+                  r={DOT_RADIUS}
+                  style={
+                    {
+                      "--dot-index": asset.index,
+                    } as CSSProperties
+                  }
+                />
+              ))}
+            </g>
+          ) : null}
         </svg>
         <span className={styles.hoverHint}>Click to zoom in</span>
       </div>
       <div className={styles.meta}>
         <span className={styles.floorName}>
-          {fresh ? <span className={styles.freshDot} aria-label="New data" /> : null}
+          {fresh ? (
+            <span className={styles.freshDot} aria-label="New data" />
+          ) : idle ? (
+            <span className={styles.livePip} aria-hidden />
+          ) : null}
           {FLOOR_LABELS[floor]}
         </span>
         <span className={styles.metaRight}>
-          {hotCount > 0 ? (
-            <span className={styles.riskHint}>{hotCount} elevated</span>
-          ) : null}
-          {activity > 0 ? (
-            <span className={styles.activityBadge}>{activity}</span>
-          ) : null}
+          {idle ? (
+            <span className={styles.idleHint}>Nominal · monitored</span>
+          ) : (
+            <>
+              {hotCount > 0 ? (
+                <span className={styles.riskHint}>{hotCount} elevated</span>
+              ) : null}
+              {activity > 0 ? (
+                <span className={styles.activityBadge}>{activity}</span>
+              ) : null}
+            </>
+          )}
         </span>
       </div>
     </button>

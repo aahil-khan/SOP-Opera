@@ -13,7 +13,7 @@
   background: color-mix(in srgb, var(--status-elevated) 10%, var(--surface-overlay));
 }
 
-.banner[data-tone="escalate"] {
+.banner[data-tone="worsened"] {
   border-color: color-mix(in srgb, var(--status-blocking) 50%, var(--border-muted));
   background: color-mix(in srgb, var(--status-blocking) 12%, var(--surface-overlay));
 }
@@ -34,7 +34,7 @@
   border-top-color: var(--status-elevated);
 }
 
-.banner[data-tone="escalate"] .spinner {
+.banner[data-tone="worsened"] .spinner {
   border-color: color-mix(in srgb, var(--status-blocking) 30%, transparent);
   border-top-color: var(--status-blocking);
 }
@@ -59,7 +59,7 @@
   color: var(--text-primary);
 }
 
-.banner[data-tone="escalate"] .title {
+.banner[data-tone="worsened"] .title {
   color: var(--status-blocking);
 }
 

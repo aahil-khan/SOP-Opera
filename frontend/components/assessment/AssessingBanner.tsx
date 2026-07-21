@@ -2,7 +2,7 @@ import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import type { RiskLevel } from "@/shared/enums";
 import styles from "./AssessingBanner.module.css";
 
-export type AssessingTone = "initial" | "reassess" | "escalate";
+export type AssessingTone = "initial" | "reassess" | "worsened";
 
 export interface AssessingBannerProps {
   /** Prior settled assessment risk, when this is a re-run. */
@@ -49,7 +49,7 @@ export function assessingTone(
 ): AssessingTone {
   if (!priorRisk) return "initial";
   const next = sensorCritical ? "critical" : provisionalRisk;
-  if (rank(next) > rank(priorRisk)) return "escalate";
+  if (rank(next) > rank(priorRisk)) return "worsened";
   return "reassess";
 }
 
@@ -69,8 +69,8 @@ export function AssessingBanner({
   let hint =
     "Domain agents are analyzing signals and drafting a recommendation. This usually takes a few moments.";
 
-  if (tone === "escalate") {
-    title = "Risk escalated — reassessment in progress";
+  if (tone === "worsened") {
+    title = "Risk rose — reassessment in progress";
     const from = priorRisk ? formatRisk(priorRisk) : "prior level";
     const to = displayNext ? formatRisk(displayNext) : "a higher level";
     hint = sensorCritical

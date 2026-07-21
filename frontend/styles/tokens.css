@@ -38,6 +38,11 @@
   --text-2xl: 1.6875rem; /* 27px */
   --text-3xl: 2.1875rem; /* 35px */
   --text-4xl: 2.9375rem; /* 47px */
+  /* Display steps — marketing surfaces only (landing, login). Fluid so the
+     hero holds its proportions from phone to ultrawide. */
+  --text-5xl: clamp(2.5rem, 1.6rem + 3.6vw, 3.75rem); /* 40 → 60px */
+  --text-6xl: clamp(3rem, 1.7rem + 5.2vw, 4.75rem); /* 48 → 76px */
+  --leading-display: 1.05;
   --leading-tight: 1.25;
   --leading-normal: 1.45;
   --leading-relaxed: 1.55;
