@@ -16,8 +16,8 @@ Weighted: Business Impact 25% · Technical Excellence 25% · Scalability 20% · 
 | --- | --- |
 | Compound-risk accuracy vs single-sensor baseline, false-negative reduction | `backend/app/eval/` — `detectors.py` has `single_sensor_alarm` / `compound_alarm` / `forecast_alarm`; `metrics.py` computes the confusion matrices; results render at `/eval` and in `docs/eval-report.md` |
 | Prediction lead time before incident threshold | `eval/lead_time.py` + `agents/nodes/predictive_trend.py` (OLS trend forecast) |
-| Geospatial evidence quality | `graph/` knowledge graph + `agents/nodes/spatial.py`; twin map, floor plans, risk heatmap in `frontend/components/twin/` |
-| Regulatory coverage (OISD / Factory Act / DGMS) | seeded `knowledge_chunks` corpus (`db/seed_embeddings.py`) surfaced through RAG retrieval and cited in assessments |
+| Geospatial evidence quality | `graph/kg.py` (networkx, real Euclidean adjacency over `graph/floor_plan_map.json`) + `agents/nodes/spatial.py`; twin map and floor plans in `frontend/components/twin/`. **Deliberately not a scored detector input** — `eval/detectors.py` passes no observations, so spatial never affects a reported metric. Making it one requires a distance-based criterion in `eval/hazard_ground_truth.py` first; adding cross-asset cases without that would re-introduce the circular labeling W2 removed. Spatial is positioned as evidence for the supervisor, not as accuracy. |
+| Regulatory coverage (OISD / Factories Act) | clause-level statutory corpus in `db/seed_embeddings.py` (`INDIAN_REGULATIONS`, each with a `clause` and primary-source `source_url`), surfaced by **deterministic SQL** and validated by `assessment/citations.py`; measured by `eval/coverage.py` |
 | Scalability | durable `SKIP LOCKED` assessment queue, gated agent fan-out, webhook ingest |
 
 The headline story is the VSP coke-oven scenario (`simulator/scenarios/vsp_coke_oven.yaml`): the compound engine blocks while gas is still **below** the single-sensor critical threshold.
@@ -96,10 +96,13 @@ Route prefixes are inconsistent by design/history: most domains are unprefixed (
 Not policy — just the load-bearing structure. Changing any of it is fine, but know what you're cutting through, because several of these are single choke points with side effects attached.
 
 1. **`transition_review()` in `reviews/repository.py` is the only writer of `reviews.state`.** It validates against the pure table in `reviews/state_machine.py`, records audit, broadcasts `review.status_changed`, and fires side effects by target state (`assessing` → enqueue assessment, `reopened` → cancel open tasks, `closed` → generate report). A raw `UPDATE reviews SET state` silently skips all of that.
-2. **Fact detection is deterministic Python, not the LLM.** Pure `rule_*` functions over `ContextEntryView` in `context/derived_facts.py`, thresholds injected from settings. This is what the eval harness measures, so a fact moved into LLM judgement stops being scoreable against the single-sensor baseline.
-3. **Retrieval is orchestrator-driven, not model-driven.** `assessment/retrieval/` runs RAG (pgvector) first, applies a quality gate, then falls back to deterministic SQL so regulation/SOP citations are always present for the compliance-coverage story.
-4. LLM output is Pydantic-validated with `assessment_max_retries` retry, then fails *visibly* — the supervisor retries, switches provider, or writes a manual assessment (`assessment/manual.py`).
-5. WebSocket broadcasts go to **all** clients; the frontend filters for relevance.
+2. **Fact detection is deterministic Python, not the LLM.** Pure `rule_*` functions over `ContextEntryView` in `context/derived_facts.py`, thresholds injected from settings. This is what the eval harness measures, so a fact moved into LLM judgement stops being scoreable against the single-sensor baseline. Purity is load-bearing: rules see only the context entry, never asset metadata or the knowledge graph. That is why `rule_zone_occupied` reads a *reported hazard classification* (`worker_location.payload["zone"]`, values `hazardous`/`safe`) rather than comparing against `assets.zone`, which is a plant-area label (`coke-oven-battery`, …). Same field name, different meanings — read the docstring on that rule before "fixing" it.
+2b. **`risk/policy.py` is the only place facts become a verdict.** `classify()` maps facts to hazard dimensions (atmosphere · ignition/energy · exposure · control failure) and blocks on a *pathway*, not a fact count. The agent orchestrator, `reviews/service.py` and `eval/detectors.py` all delegate to it — do not reimplement the gate anywhere, or the shipped verdict and the measured verdict will drift. The LLM never writes `risk_level`; it only writes `summary`.
+3. **Retrieval is orchestrator-driven, not model-driven.** `assessment/retrieval/` tries pgvector first, applies a quality gate, then falls back to deterministic SQL. Two things to know before describing this as RAG: `RAG_VECTOR_SOURCE_TYPES` is **incidents-only**, so regulations and SOPs are *never* vector-searched in any config; and with the default `EMBEDDING_PROVIDER=mock` (a hash-derived random vector) the quality gate never passes, so the deterministic path always wins. That is a deliberate trade for guaranteed citation coverage — just do not call the regulatory path RAG.
+3b. **A summary may only cite what was retrieved.** `assessment/citations.py` checks citation-shaped tokens in generated prose against the enriched references and strips unsupported ones. Without it the only guard was a prompt instruction.
+4. Generation is retried `assessment_max_retries` times, then fails *visibly* — the supervisor retries, switches provider, or writes a manual assessment (`assessment/manual.py`). The seam to patch in tests is `assessment.pipeline.run_agent_assessment`.
+5. WebSocket broadcasts go to **all** clients; the frontend filters for relevance. There is no per-client queue or backpressure, so one stalled client blocks the send loop.
+6. **`audit/service.py` is the only writer of `audit_entries`, and every entry is hash-chained** (`audit/chain.py`). Appends take a transaction-scoped advisory lock so concurrent writers cannot fork the chain; `GET /audit/verify` recomputes it and reports breaks. Inserting an audit row by any other path leaves an unverifiable gap.
 
 ### Assessment pipeline
 
@@ -107,7 +110,9 @@ Not policy — just the load-bearing structure. Changing any of it is fine, but 
 
 `assessment/pipeline.py` executes one job: retrieve → `agents/graph.py` → validate → persist → transition. The LangGraph `StateGraph` fans out **selectively** — `agents/routing.py` gates source agents (scada/permit/maintenance/workforce) on matching facts or context categories, spatial and predictive-trend on elevated signals, incident-pattern and shift-handover on elevated/blocking verdicts. A nominal review is orchestrator-only. Agent steps stream to the UI Brain panel as `agent.step` events.
 
-Providers (`assessment/providers/`): `mock` (default, used for dev/CI), `openai_compatible`, `ollama`. Embeddings (`assessment/embeddings/`): `mock` / `local` / `openai_compatible`. Selected by `AI_PROVIDER` / `EMBEDDING_PROVIDER`.
+LLM selection is `agents/llm.py` `get_chat_model()`: `mock` (default — returns `None`, so **no network call is made and every narration is a deterministic template**), `openai_compatible`, `ollama`. The UI surfaces this as "deterministic narration · no LLM configured" rather than implying reasoning. Embeddings (`assessment/embeddings/`): `mock` / `local` / `openai_compatible`. Selected by `AI_PROVIDER` / `EMBEDDING_PROVIDER`.
+
+There was a second, parallel `assessment/providers/` package implementing the same idea with structured output; nothing reached it and it has been deleted. If you need to change how the LLM is called, `agents/llm.py` is the only seam.
 
 ### Database
 
