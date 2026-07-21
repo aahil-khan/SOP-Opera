@@ -39,26 +39,42 @@ async def session():
     await seed_minimal()
 
     async with SessionLocal() as s:
-        await s.execute(text("DELETE FROM assessment_metadata"))
-        await s.execute(text("DELETE FROM recommendations"))
-        await s.execute(text("DELETE FROM assessments"))
-        await s.execute(text("DELETE FROM notifications"))
-        await s.execute(text("DELETE FROM reports"))
+        # Children before parents, following the FK graph in schema.sql:
+        #   review_tasks -> decisions -> assessments -> reviews
+        #   evidence     -> decisions, assessments, reviews
+        # The original order cleared assessments first, which fails as soon as
+        # another test file has left a decision behind, and never covered
+        # review_tasks at all (that table was added after this fixture).
         await s.execute(text("DELETE FROM evidence"))
+        await s.execute(text("DELETE FROM review_tasks"))
         await s.execute(text("DELETE FROM decisions"))
+        await s.execute(text("DELETE FROM reports"))
+        await s.execute(text("DELETE FROM notifications"))
+        await s.execute(text("DELETE FROM review_comments"))
+        await s.execute(text("DELETE FROM recommendations"))
+        await s.execute(text("DELETE FROM assessment_metadata"))
+        await s.execute(text("DELETE FROM assessments"))
         await s.execute(
             text("DELETE FROM reviews WHERE asset_id = CAST(:aid AS uuid)"),
             {"aid": str(VESSEL_A)},
         )
         await s.commit()
         yield s
-        await s.execute(text("DELETE FROM assessment_metadata"))
-        await s.execute(text("DELETE FROM recommendations"))
-        await s.execute(text("DELETE FROM assessments"))
-        await s.execute(text("DELETE FROM notifications"))
-        await s.execute(text("DELETE FROM reports"))
+        # Children before parents, following the FK graph in schema.sql:
+        #   review_tasks -> decisions -> assessments -> reviews
+        #   evidence     -> decisions, assessments, reviews
+        # The original order cleared assessments first, which fails as soon as
+        # another test file has left a decision behind, and never covered
+        # review_tasks at all (that table was added after this fixture).
         await s.execute(text("DELETE FROM evidence"))
+        await s.execute(text("DELETE FROM review_tasks"))
         await s.execute(text("DELETE FROM decisions"))
+        await s.execute(text("DELETE FROM reports"))
+        await s.execute(text("DELETE FROM notifications"))
+        await s.execute(text("DELETE FROM review_comments"))
+        await s.execute(text("DELETE FROM recommendations"))
+        await s.execute(text("DELETE FROM assessment_metadata"))
+        await s.execute(text("DELETE FROM assessments"))
         await s.execute(
             text("DELETE FROM reviews WHERE asset_id = CAST(:aid AS uuid)"),
             {"aid": str(VESSEL_A)},
@@ -101,10 +117,16 @@ async def _make_assessment(session, review_id: UUID, status: str, version: int) 
 
 @pytest.mark.asyncio
 async def test_recover_pending_reclaims_pending_and_generating(session):
-    review_id = await _make_review(session, "assessing")
-    pending_id = await _make_assessment(session, review_id, "pending", 1)
-    generating_id = await _make_assessment(session, review_id, "generating", 2)
-    complete_id = await _make_assessment(session, review_id, "complete", 3)
+    # One in-flight job per review: the partial unique index on
+    # assessments(review_id) WHERE status IN ('pending','generating') makes a
+    # pending *and* a generating row for the same review impossible, which is the
+    # invariant the queue always relied on and now enforces.
+    pending_review = await _make_review(session, "assessing")
+    generating_review = await _make_review(session, "assessing")
+
+    pending_id = await _make_assessment(session, pending_review, "pending", 1)
+    generating_id = await _make_assessment(session, generating_review, "generating", 1)
+    complete_id = await _make_assessment(session, pending_review, "complete", 2)
     await session.commit()
 
     orch = AssessmentOrchestrator()

@@ -35,10 +35,42 @@ class AssessmentOrchestrator:
         self._wake = asyncio.Event()
 
     def set_provider_override(self, assessment_id: UUID, provider: str) -> None:
+        """In-process cache only — the durable copy lives on the assessment row."""
         self._provider_override[assessment_id] = provider
 
-    def pop_provider_override(self, assessment_id: UUID) -> str | None:
-        return self._provider_override.pop(assessment_id, None)
+    async def pop_provider_override(self, assessment_id: UUID) -> str | None:
+        """
+        Read the override for a job, preferring the persisted value.
+
+        This used to be a module-level dict only, which meant a supervisor's
+        "retry with provider X" was invisible to any other worker process — with
+        the default of 2 workers in one process it usually worked, and would have
+        silently stopped working the moment the API ran with `--workers N`.
+        """
+        cached = self._provider_override.pop(assessment_id, None)
+        async with SessionLocal() as session:
+            # RETURNING yields post-update values, so join against a locked
+            # snapshot of the row to read the override as it was before clearing.
+            result = await session.execute(
+                text(
+                    """
+                    UPDATE assessments a
+                    SET provider_override = NULL
+                    FROM (
+                        SELECT id, provider_override
+                        FROM assessments
+                        WHERE id = CAST(:aid AS uuid)
+                        FOR UPDATE
+                    ) prev
+                    WHERE a.id = prev.id
+                    RETURNING prev.provider_override
+                    """
+                ),
+                {"aid": str(assessment_id)},
+            )
+            persisted = result.scalar_one_or_none()
+            await session.commit()
+        return persisted or cached
 
     def enqueue(self, assessment_id: UUID) -> None:
         self._queue.put_nowait(assessment_id)
@@ -84,7 +116,7 @@ class AssessmentOrchestrator:
                 text(
                     """
                     UPDATE assessments a
-                    SET status = 'pending'
+                    SET status = 'pending', claimed_at = NULL
                     WHERE a.status = 'generating'
                       AND EXISTS (
                           SELECT 1 FROM reviews r
@@ -141,10 +173,39 @@ class AssessmentOrchestrator:
                     """
                 )
             )
+            # Reclaim jobs whose lease expired: a worker that died (or threw after
+            # generation) leaves `generating` behind, and recover_pending() only
+            # runs at boot. Without this the row — and its review — stay stuck.
+            lease_seconds = int(get_settings().assessment_lease_seconds)
+            expired = await session.execute(
+                text(
+                    """
+                    UPDATE assessments a
+                    SET status = 'pending', claimed_at = NULL
+                    WHERE a.status = 'generating'
+                      AND a.claimed_at IS NOT NULL
+                      AND a.claimed_at < now() - make_interval(secs => :lease)
+                      AND EXISTS (
+                          SELECT 1 FROM reviews r
+                          WHERE r.id = a.review_id AND r.state = 'assessing'
+                      )
+                    RETURNING a.id
+                    """
+                ),
+                {"lease": lease_seconds},
+            )
+            reclaimed = [row._mapping["id"] for row in expired.fetchall()]
+            if reclaimed:
+                logger.warning(
+                    "reclaimed %d assessment job(s) with expired lease (>%ds)",
+                    len(reclaimed),
+                    lease_seconds,
+                )
+
             result = await session.execute(
                 text(
                     """
-                    UPDATE assessments SET status = 'generating'
+                    UPDATE assessments SET status = 'generating', claimed_at = now()
                     WHERE id = (
                         SELECT a.id
                         FROM assessments a
@@ -223,7 +284,7 @@ class AssessmentOrchestrator:
             if assessment_id is None:
                 continue
             try:
-                override = self.pop_provider_override(assessment_id)
+                override = await self.pop_provider_override(assessment_id)
                 await run_assessment_job(
                     assessment_id,
                     provider_name=override,
@@ -324,23 +385,6 @@ async def enqueue_for_review(
     Insert a pending AI assessment for this review and enqueue it.
     Idempotent: skips if a pending/generating assessment already exists.
     """
-    existing = await session.execute(
-        text(
-            """
-            SELECT id FROM assessments
-            WHERE review_id = CAST(:review_id AS uuid)
-              AND status IN ('pending', 'generating')
-            LIMIT 1
-            """
-        ),
-        {"review_id": str(review.id)},
-    )
-    if existing.first() is not None:
-        logger.debug(
-            "skip enqueue — assessment already in flight for review %s", review.id
-        )
-        return None
-
     fact_ids = await _true_fact_ids(session, review.asset_id)
     ver_row = await session.execute(
         text(
@@ -358,15 +402,19 @@ async def enqueue_for_review(
         text(
             """
             INSERT INTO assessments (
-                review_id, assessment_type, status, derived_fact_ids, version
+                review_id, assessment_type, status, derived_fact_ids, version,
+                provider_override
             )
             VALUES (
                 CAST(:review_id AS uuid),
                 'ai',
                 'pending',
                 CAST(:fact_ids AS uuid[]),
-                :version
+                :version,
+                :provider_override
             )
+            ON CONFLICT (review_id) WHERE status IN ('pending', 'generating')
+            DO NOTHING
             RETURNING id
             """
         ),
@@ -374,10 +422,20 @@ async def enqueue_for_review(
             "review_id": str(review.id),
             "fact_ids": [str(i) for i in fact_ids],
             "version": version,
+            "provider_override": provider_override,
         },
     )
-    assessment_id = result.scalar_one()
+    assessment_id = result.scalar_one_or_none()
     await session.commit()
+
+    # Idempotency is enforced by the partial unique index, not by a prior SELECT:
+    # a check-then-insert let two concurrent `assessing` transitions both pass the
+    # check and insert. No row returned means one is already in flight.
+    if assessment_id is None:
+        logger.debug(
+            "skip enqueue — assessment already in flight for review %s", review.id
+        )
+        return None
 
     if provider_override:
         orchestrator.set_provider_override(assessment_id, provider_override)

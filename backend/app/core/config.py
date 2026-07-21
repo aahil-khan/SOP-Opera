@@ -32,6 +32,13 @@ class Settings(BaseSettings):
     assessment_max_retries: int = 1
     # Parallel in-process assessment workers (durable claim via SKIP LOCKED).
     assessment_worker_count: int = 2
+    # A claimed job whose worker died is reclaimable after this long. Must exceed
+    # the worst-case job duration (retrieval + agent graph + LLM) or a healthy
+    # job will be stolen mid-flight.
+    assessment_lease_seconds: int = 300
+
+    db_pool_size: int = 20
+    db_max_overflow: int = 10
     # Elevated = compound-engine early warning (sub-critical co-occurrence).
     # Critical = single-sensor "incident threshold" — baseline alarm line for
     # false-negative / lead-time eval. Critical must stay above elevated.

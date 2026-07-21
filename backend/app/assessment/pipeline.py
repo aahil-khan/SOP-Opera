@@ -397,7 +397,7 @@ async def run_assessment_job(
             claimed = await session.execute(
                 text(
                     """
-                    UPDATE assessments SET status = 'generating'
+                    UPDATE assessments SET status = 'generating', claimed_at = now()
                     WHERE id = (
                         SELECT id FROM assessments
                         WHERE id = CAST(:id AS uuid)
