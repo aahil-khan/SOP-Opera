@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { ThemeSwitcher } from "@/components/theme/ThemeSwitcher";
+import { Logo } from "@/components/brand/Logo";
 import styles from "./LandingNav.module.css";
 
 export function LandingNav() {
@@ -9,7 +9,8 @@ export function LandingNav() {
     <nav className={styles.nav} aria-label="Landing navigation">
       <div className={styles.left}>
         <Link href="/landing" className={styles.brand}>
-          SOP Opera
+          <Logo className={styles.brandLogo} />
+          <span>SOP Opera</span>
         </Link>
         <span className={styles.subtitle}>Operational Safety Intelligence</span>
       </div>
@@ -24,7 +25,6 @@ export function LandingNav() {
         <a href="#built-for" className={styles.link}>
           About
         </a>
-        <ThemeSwitcher />
         <button className={`btn ${styles.loginBtn}`} type="button">
           Login
         </button>

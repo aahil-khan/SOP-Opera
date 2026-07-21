@@ -1,0 +1,3 @@
+.panel {
+  width: min(480px, calc(100vw - 24px));
+}

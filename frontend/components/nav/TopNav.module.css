@@ -12,6 +12,9 @@
 }
 
 .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
   font-family: var(--font-display);
   font-weight: var(--weight-semibold);
   font-size: var(--text-sm);
@@ -22,6 +25,11 @@
 
 .brand:hover {
   text-decoration: none;
+}
+
+.brandLogo {
+  width: 1.75rem;
+  height: 1.75rem;
 }
 
 .links {
@@ -56,14 +64,40 @@
   flex: 1;
 }
 
-.devLink {
-  color: var(--text-muted);
-  font-size: var(--text-xs);
-  text-decoration: none;
-  margin-left: var(--space-3);
+.identityWrap {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
 }
 
-.devLink:hover {
+.identityChip {
+  display: inline-flex;
+  align-items: center;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border-muted);
+  border-radius: 999px;
+  color: var(--text-primary);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  background: var(--surface-card);
+  max-width: 16rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.logoutBtn {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+  border: 1px solid var(--border-muted);
+  background: transparent;
+  padding: var(--space-1) var(--space-2);
+  border-radius: 10px;
+  cursor: pointer;
+}
+
+.logoutBtn:hover {
   color: var(--text-secondary);
-  text-decoration: none;
+  border-color: var(--border-selected);
 }

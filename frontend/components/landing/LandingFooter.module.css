@@ -19,6 +19,11 @@
   gap: var(--space-3);
 }
 
+.brandLogo {
+  width: 1.5rem;
+  height: 1.5rem;
+}
+
 .brand {
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);

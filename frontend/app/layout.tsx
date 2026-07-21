@@ -47,6 +47,23 @@ const plusJakarta = Plus_Jakarta_Sans({
 export const metadata: Metadata = {
   title: "SOP Opera",
   description: "Operational Review Platform",
+  icons: {
+    icon: [
+      { url: "/favicons/favicon_io/favicon.ico" },
+      {
+        url: "/favicons/favicon_io/favicon-16x16.png",
+        sizes: "16x16",
+        type: "image/png",
+      },
+      {
+        url: "/favicons/favicon_io/favicon-32x32.png",
+        sizes: "32x32",
+        type: "image/png",
+      },
+    ],
+    apple: "/favicons/favicon_io/apple-touch-icon.png",
+  },
+  manifest: "/favicons/favicon_io/site.webmanifest",
 };
 
 const themeInitScript = `

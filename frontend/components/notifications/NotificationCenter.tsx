@@ -2,10 +2,13 @@
 
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import { useDndMode } from "@/lib/dndMode";
+import { getActorFromCookie } from "@/lib/actorCookie";
 import {
   focusReviewAssetOnTwin,
   useLiveStore,
 } from "@/lib/liveStore";
+import { dismissAllNotificationToasts } from "@/lib/notificationToast";
 import {
   isAlertNotification,
   presentNotification,
@@ -18,16 +21,31 @@ export function NotificationCenter() {
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
+  const actor = getActorFromCookie();
+
+  const dndEnabled = useDndMode((s) => s.enabled);
+  const hydrateDnd = useDndMode((s) => s.hydrate);
+  const setDndEnabled = useDndMode((s) => s.setEnabled);
+
   const notifications = useLiveStore((s) => s.notifications);
   const unreadIds = useLiveStore((s) => s.unreadNotificationIds);
   const markRead = useLiveStore((s) => s.markNotificationsRead);
   const dismissNotification = useLiveStore((s) => s.dismissNotification);
   const clearNotifications = useLiveStore((s) => s.clearNotifications);
 
-  const alerts = notifications.filter(isAlertNotification);
-  const unreadCount = unreadIds.filter((id) =>
-    alerts.some((n) => n.id === id),
-  ).length;
+  const visibleNotifications =
+    actor?.id != null
+      ? notifications.filter((n) => n.recipient_ids.includes(actor.id))
+      : notifications;
+
+  const alerts = visibleNotifications.filter(isAlertNotification);
+  const unreadCount = dndEnabled
+    ? 0
+    : unreadIds.filter((id) => alerts.some((n) => n.id === id)).length;
+
+  useEffect(() => {
+    hydrateDnd();
+  }, [hydrateDnd]);
 
   useEffect(() => {
     if (!open) return;
@@ -52,32 +70,61 @@ export function NotificationCenter() {
     };
   }, [open]);
 
+  const toggleDnd = () => {
+    const next = !dndEnabled;
+    if (next) {
+      dismissAllNotificationToasts();
+      markRead();
+    }
+    setDndEnabled(next);
+  };
+
   return (
     <div className={styles.root} ref={rootRef}>
       <button
         type="button"
         className={styles.trigger}
         aria-label={
-          unreadCount > 0 ? `Activity, ${unreadCount} unread` : "Activity"
+          dndEnabled
+            ? "Activity, do not disturb on"
+            : unreadCount > 0
+              ? `Activity, ${unreadCount} unread`
+              : "Activity"
         }
         aria-expanded={open}
         aria-controls={panelId}
         data-open={open ? "true" : undefined}
         data-unread={unreadCount > 0 ? "true" : undefined}
+        data-dnd={dndEnabled ? "true" : undefined}
         onClick={() => setOpen((v) => !v)}
       >
-        <svg
-          className={styles.icon}
-          viewBox="0 0 24 24"
-          width="16"
-          height="16"
-          aria-hidden="true"
-        >
-          <path
-            fill="currentColor"
-            d="M12 22a2.2 2.2 0 0 0 2.2-2.2h-4.4A2.2 2.2 0 0 0 12 22Zm7-5.2V11a7 7 0 1 0-14 0v5.8L3 19v1h18v-1l-2-2.2Z"
-          />
-        </svg>
+        {dndEnabled ? (
+          <svg
+            className={styles.icon}
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M12 3a9 9 0 0 0-9 9v5.8L1 19v1h22v-1l-2-2.2V12a9 9 0 0 0-9-9Zm0 2a7 7 0 0 1 7 7v5.8l1 1.1H4l1-1.1V12a7 7 0 0 1 7-7Zm-1 3v6h2V8h-2Z"
+            />
+          </svg>
+        ) : (
+          <svg
+            className={styles.icon}
+            viewBox="0 0 24 24"
+            width="16"
+            height="16"
+            aria-hidden="true"
+          >
+            <path
+              fill="currentColor"
+              d="M12 22a2.2 2.2 0 0 0 2.2-2.2h-4.4A2.2 2.2 0 0 0 12 22Zm7-5.2V11a7 7 0 1 0-14 0v5.8L3 19v1h18v-1l-2-2.2Z"
+            />
+          </svg>
+        )}
         {unreadCount > 0 && (
           <span className={styles.badge}>
             {unreadCount > 9 ? "9+" : unreadCount}
@@ -93,24 +140,47 @@ export function NotificationCenter() {
           aria-label="Activity"
         >
           <header className={styles.header}>
-            <h2 className={styles.title}>Activity</h2>
-            {alerts.length > 0 && (
+            <div className={styles.headerMain}>
+              <h2 className={styles.title}>Activity</h2>
+              {dndEnabled && (
+                <span className={styles.dndStatus}>Do not disturb</span>
+              )}
+            </div>
+            <div className={styles.headerActions}>
               <button
                 type="button"
-                className={styles.clearAll}
-                onClick={() => clearNotifications()}
+                className={styles.dndToggle}
+                data-active={dndEnabled ? "true" : undefined}
+                aria-pressed={dndEnabled}
+                onClick={toggleDnd}
               >
-                Clear all
+                {dndEnabled ? "DND on" : "DND off"}
               </button>
-            )}
+              {alerts.length > 0 && (
+                <button
+                  type="button"
+                  className={styles.clearAll}
+                  onClick={() => clearNotifications()}
+                >
+                  Clear all
+                </button>
+              )}
+            </div>
           </header>
+
+          {dndEnabled && (
+            <p className={styles.dndHint}>
+              Alerts are still logged here, but toasts, sounds, and badges are
+              muted.
+            </p>
+          )}
 
           {alerts.length === 0 ? (
             <p className={styles.empty}>No recent alerts</p>
           ) : (
             <ul className={styles.list}>
               {alerts.map((n) => {
-                const unread = unreadIds.includes(n.id);
+                const unread = !dndEnabled && unreadIds.includes(n.id);
                 const presentation = presentNotification(n);
                 return (
                   <li
@@ -134,12 +204,18 @@ export function NotificationCenter() {
                       <p className={styles.summary}>{presentation.detail}</p>
                       {n.review_id && (
                         <Link
-                          href="/"
+                          href={
+                            actor?.kind === "worker"
+                              ? `/supervisor?review=${n.review_id}`
+                              : "/"
+                          }
                           className={styles.link}
                           onClick={() => {
                             setOpen(false);
                             dismissNotification(n.id);
-                            void focusReviewAssetOnTwin(n.review_id!);
+                            if (actor?.kind !== "worker") {
+                              void focusReviewAssetOnTwin(n.review_id!);
+                            }
                           }}
                         >
                           Open

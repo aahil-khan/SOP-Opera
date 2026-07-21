@@ -1,0 +1,121 @@
+.panel,
+.embedded {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.panel {
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--surface-panel);
+}
+
+.head {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-semibold);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--text-secondary);
+}
+
+.hint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+  max-width: 40rem;
+}
+
+.group {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.group + .group {
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border-muted);
+}
+
+.groupTitle {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+}
+
+.groupHint {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-2);
+}
+
+.field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.input {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-canvas);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.input:focus {
+  outline: 1px solid var(--accent-selection);
+  border-color: var(--accent-selection);
+}
+
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.save,
+.reset {
+  font-size: var(--text-xs);
+}
+
+.ok {
+  font-size: var(--text-xs);
+  color: var(--accent-ok, #2f9e6a);
+}
+
+.error {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--status-blocking);
+}
+
+@media (max-width: 720px) {
+  .grid {
+    grid-template-columns: 1fr;
+  }
+}

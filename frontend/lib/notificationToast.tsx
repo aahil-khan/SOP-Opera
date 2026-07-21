@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { toast, type TypeOptions } from "react-toastify";
 import type { Notification } from "@/shared/schemas";
+import { isDndEnabled } from "@/lib/dndMode";
 import {
   notificationToastId,
   presentNotification,
@@ -77,6 +78,7 @@ export function showNotificationToast(
   n: Notification,
   options?: { onClear?: () => void; onOpen?: () => void },
 ): void {
+  if (isDndEnabled()) return;
   const presentation = presentNotification(n);
   if (!presentation.toastable) return;
 
@@ -129,6 +131,7 @@ export function showReassessmentToast(options: {
   previousState: string;
   onOpen?: () => void;
 }): void {
+  if (isDndEnabled()) return;
   const toastId = `reassess-${options.reviewId}`;
   const fromDecision =
     options.previousState === "pending_decision" ||
