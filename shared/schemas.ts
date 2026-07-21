@@ -44,6 +44,8 @@ export interface RetrievedReference {
   snippet?: string | null;
   code?: string | null;
   triggered_by_fact?: string | null;
+  /** Primary-source link, so a cited clause can be checked rather than trusted. */
+  source_url?: string | null;
 }
 
 export interface ReasoningFactor {

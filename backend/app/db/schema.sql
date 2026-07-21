@@ -327,3 +327,8 @@ ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
 
 -- Escalation state removed; map leftover rows to pending_decision.
 UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';
+
+-- Clause-level provenance for the statutory corpus, so a citation can be checked
+-- against its source text rather than taken on trust.
+ALTER TABLE regulations ADD COLUMN IF NOT EXISTS clause TEXT;
+ALTER TABLE regulations ADD COLUMN IF NOT EXISTS source_url TEXT;

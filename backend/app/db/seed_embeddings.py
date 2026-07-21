@@ -13,7 +13,7 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 # Fixed UUIDs so deterministic retrieval tests are stable across restarts
-REGULATIONS = [
+_INTERNATIONAL_REGULATIONS = [
     (
         "a1111111-1111-1111-1111-111111111101",
         "OSHA-1910.146",
@@ -98,50 +98,111 @@ REGULATIONS = [
         "Hot work and outdoor lifting suspend when wind or lightning exceeds site weather-hold criteria.",
         "weather_hold",
     ),
-    # Indian regulatory pack — hero VSP compound-risk story (OISD / Factory Act / DGMS)
+]
+
+# --- Indian statutory pack --------------------------------------------------
+#
+# These carry the compliance-coverage story, so they are quoted at clause level
+# from the primary text rather than paraphrased, and each carries a source URL a
+# reviewer can check. The previous versions of these rows were invented: they
+# cited "Factory Act 1948 §41" (the hazardous-process provisions are §41A-41H),
+# "DGMS Circular 2017" (no number or series — and DGMS regulates mines, not a
+# steel-plant coke oven), and "OISD-STD-117" as the work-permit standard (117 is
+# Fire Protection Facilities; the work-permit standard is OISD-STD-105).
+#
+# Tuple shape: (id, code, title, body_summary, category, clause, source_url)
+INDIAN_REGULATIONS = [
     (
         "a1111111-1111-1111-1111-111111111113",
-        "OISD-GDN-116",
-        "Fire Safety in Petroleum Refineries — Atmospheric Monitoring",
-        "Continuous gas monitoring is mandatory in hazardous areas; work must stop when "
-        "combustible or toxic gas exceeds action levels and personnel must evacuate until "
-        "atmosphere is verified safe.",
+        "Factories Act 1948",
+        "Explosive or inflammable dust, gas, etc.",
+        "Where a manufacturing process produces gas, fume or vapour likely to explode on "
+        "ignition, all practicable measures shall be taken to prevent explosion by "
+        "(a) effective enclosure of the plant or machinery used in the process; "
+        "(b) removal or prevention of the accumulation of such dust, gas, fume or vapour; "
+        "(c) exclusion or effective enclosure of all possible sources of ignition.",
         "elevated_gas",
+        "s.37(1)",
+        "https://indiankanoon.org/doc/1217692/",
     ),
     (
         "a1111111-1111-1111-1111-111111111114",
-        "OISD-GDN-106",
-        "Fire Protection Facilities — Hot Work Controls",
-        "Hot work permits require verified isolation of energy sources and fire-watch "
-        "arrangements; overlapping or unverified permits must be suspended before work proceeds.",
+        "OISD-STD-105",
+        "Work Permit System (Rev. I, September 2004)",
+        "Guidelines for a work permit system in hydrocarbon processing and handling "
+        "installations. Defines permit types and issue procedures, with distinct formats "
+        "for cold work, hot work, confined space entry, and electrical isolation or "
+        "energization, so that work is carried out without injury, fire or property loss.",
         "incomplete_isolation",
+        "Rev. I",
+        "https://www.oisd.gov.in/",
     ),
     (
         "a1111111-1111-1111-1111-111111111115",
-        "Factory Act 1948 §41",
-        "Hazardous Process — Occupier Safety Duties",
-        "Occupiers must ensure no worker remains in a hazardous zone during abnormal process "
-        "conditions; entry during elevated gas or unverified isolation is prohibited.",
+        "Factories Act 1948",
+        "Precautions against dangerous fumes, gases, etc.",
+        "No person shall be required or allowed to enter a confined space until all "
+        "practicable measures have been taken to remove any gas, fume, vapour or dust so as "
+        "to bring its level within the permissible limits and to prevent ingress, and unless "
+        "(a) a certificate in writing has been given by a competent person, based on a test "
+        "carried out by himself, that the space is reasonably free from dangerous gas, fume, "
+        "vapour or dust; or (b) the person is wearing suitable breathing apparatus and a belt "
+        "securely attached to a rope held by a person outside the confined space.",
         "zone_occupied",
+        "s.36(2)",
+        "https://indiankanoon.org/doc/1762196/",
     ),
     (
         "a1111111-1111-1111-1111-111111111116",
-        "DGMS Circular 2017",
-        "Gas Monitoring in Confined and Hazardous Areas",
-        "Mines and heavy-industry analogues require multi-point gas detection with immediate "
-        "work stoppage when readings trend toward explosive or toxic limits; isolation must "
-        "be confirmed before maintenance resumes.",
-        "incomplete_isolation",
+        "Factories Act 1948",
+        "Right of workers to warn about imminent danger",
+        "Where workers in a factory engaged in a hazardous process have reasonable "
+        "apprehension of a likelihood of imminent danger to their lives or health, they may "
+        "bring it to the notice of the occupier, agent, manager or person in charge, and "
+        "simultaneously to the Inspector. It is the duty of that person, if satisfied of the "
+        "existence of such imminent danger, to take immediate remedial action and send a "
+        "report forthwith to the nearest Inspector.",
+        "supervisor_safety_hazard",
+        "s.41H",
+        "https://indiankanoon.org/doc/602901/",
     ),
     (
         "a1111111-1111-1111-1111-111111111117",
-        "OISD-STD-117",
-        "Permit to Work — Simultaneous Operations",
-        "Permits for hot work, confined space, and adjacent process activities must be "
-        "reconciled; simultaneous incompatible operations on connected equipment are prohibited.",
+        "Factories Act 1948",
+        "Compulsory disclosure of information by the occupier",
+        "Every occupier of a factory involving a hazardous process shall, with the approval "
+        "of the Chief Inspector, draw up an on-site emergency plan and detailed disaster "
+        "control measures, and make known to the workers and to the general public living in "
+        "the vicinity the safety measures required to be taken in the event of an accident.",
         "permit_conflict",
+        "s.41B",
+        "https://indiankanoon.org/doc/1155991/",
     ),
 ]
+
+def _full_code(code: str, clause: str) -> str:
+    """"Factories Act 1948" + "s.37(1)" -> "Factories Act 1948 s.37(1)"."""
+    return f"{code} {clause}" if clause and not clause.startswith("Rev") else code
+
+
+REGULATIONS: list[tuple[str, str, str, str, str]] = [
+    *_INTERNATIONAL_REGULATIONS,
+    *(
+        (rid, _full_code(code, clause), title, body, cat)
+        for rid, code, title, body, cat, clause, _url in INDIAN_REGULATIONS
+    ),
+]
+
+# source_id -> (clause, source_url); only the statutory pack is clause-level.
+REGULATION_CLAUSES: dict[str, tuple[str, str]] = {
+    rid: (clause, url) for rid, _c, _t, _b, _cat, clause, url in INDIAN_REGULATIONS
+}
+
+STATUTORY_CODES: frozenset[str] = frozenset(
+    _full_code(code, clause)
+    for _rid, code, _t, _b, _cat, clause, _url in INDIAN_REGULATIONS
+)
+"""Codes that count toward regulatory coverage."""
 
 SOPS = [
     (
@@ -215,7 +276,8 @@ SOPS = [
         "SOP-OISD Coke Oven Gas Response",
         "On elevated gas in coke oven battery areas: stop hot work, confirm isolation tags, "
         "evacuate non-essential personnel, and do not re-enter until atmosphere is verified "
-        "below action level — per OISD-GDN-116 and DGMS gas-monitoring guidance.",
+        "below action level — giving effect to Factories Act 1948 s.37(1)(c) (exclusion of "
+        "ignition sources) under the OISD-STD-105 work permit system.",
         "elevated_gas",
     ),
     (
@@ -272,19 +334,34 @@ INCIDENTS = [
 async def seed_embeddings() -> None:
     async with SessionLocal() as session:
         for rid, code, title, body, cat in REGULATIONS:
+            clause, source_url = REGULATION_CLAUSES.get(rid, (None, None))
             await session.execute(
                 text(
                     """
-                    INSERT INTO regulations (id, code, title, body_summary, applies_to_category)
-                    VALUES (CAST(:id AS uuid), :code, :title, :body, :cat)
+                    INSERT INTO regulations (
+                        id, code, title, body_summary, applies_to_category, clause, source_url
+                    )
+                    VALUES (
+                        CAST(:id AS uuid), :code, :title, :body, :cat, :clause, :source_url
+                    )
                     ON CONFLICT (id) DO UPDATE SET
                       code = EXCLUDED.code,
                       title = EXCLUDED.title,
                       body_summary = EXCLUDED.body_summary,
-                      applies_to_category = EXCLUDED.applies_to_category
+                      applies_to_category = EXCLUDED.applies_to_category,
+                      clause = EXCLUDED.clause,
+                      source_url = EXCLUDED.source_url
                     """
                 ),
-                {"id": rid, "code": code, "title": title, "body": body, "cat": cat},
+                {
+                    "id": rid,
+                    "code": code,
+                    "title": title,
+                    "body": body,
+                    "cat": cat,
+                    "clause": clause,
+                    "source_url": source_url,
+                },
             )
 
         for sid, title, body, cat in SOPS:

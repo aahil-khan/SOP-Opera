@@ -12,12 +12,12 @@ from shared.python.schemas import RetrievedReference
 
 SourceType = Literal["regulations", "historical_incidents", "sops"]
 
-# Indian regulatory codes surfaced first for challenge compliance coverage.
+# Statutory provisions surface first: a citation carrying a clause reference and a
+# source URL can be checked against the primary text, so it outranks an advisory
+# standard. This replaces a `code LIKE 'OISD%'` prefix test, which ranked by how a
+# string happened to start and silently stopped matching when codes were corrected.
 _INDIAN_REG_ORDER = """
-    CASE
-        WHEN code LIKE 'OISD%' OR code LIKE 'DGMS%' OR code LIKE 'Factory Act%' THEN 0
-        ELSE 1
-    END,
+    CASE WHEN clause IS NOT NULL THEN 0 ELSE 1 END,
     code
 """
 

@@ -44,12 +44,12 @@ async def enrich_references(
     for r in parsed:
         by_source.setdefault(r.source, []).append(r.id)
 
-    reg_map: dict[str, tuple[str, str, str]] = {}
+    reg_map: dict[str, tuple[str, str, str, str | None, str | None]] = {}
     if by_source["regulations"]:
         result = await session.execute(
             text(
                 """
-                SELECT id, code, title, body_summary
+                SELECT id, code, title, body_summary, clause, source_url
                 FROM regulations
                 WHERE id = ANY(CAST(:ids AS uuid[]))
                 """
@@ -58,7 +58,13 @@ async def enrich_references(
         )
         for row in result.fetchall():
             m = row._mapping
-            reg_map[str(m["id"])] = (m["code"], m["title"], m["body_summary"])
+            reg_map[str(m["id"])] = (
+                m["code"],
+                m["title"],
+                m["body_summary"],
+                m["clause"],
+                m["source_url"],
+            )
 
     sop_map: dict[str, tuple[str, str]] = {}
     if by_source["sops"]:
@@ -98,8 +104,9 @@ async def enrich_references(
         title = r.title
         snippet = r.snippet
         code = r.code
+        source_url = None
         if r.source == "regulations" and key in reg_map:
-            code, title, snippet = reg_map[key]
+            code, title, snippet, _clause, source_url = reg_map[key]
         elif r.source == "sops" and key in sop_map:
             title, snippet = sop_map[key]
             code = None
@@ -118,6 +125,7 @@ async def enrich_references(
                 snippet=snippet,
                 code=code,
                 triggered_by_fact=r.triggered_by_fact,
+                source_url=source_url,
             )
         )
     return enriched

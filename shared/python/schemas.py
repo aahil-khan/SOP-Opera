@@ -59,6 +59,8 @@ class RetrievedReference(BaseModel):
     snippet: str | None = None
     code: str | None = None
     triggered_by_fact: str | None = None
+    source_url: str | None = None
+    """Primary-source link, so a cited clause can be checked rather than trusted."""
 
 
 class ReasoningFactor(BaseModel):
