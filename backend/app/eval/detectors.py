@@ -2,11 +2,12 @@
 
 from __future__ import annotations
 
-from app.agents.nodes.orchestrator import _fuse_risk
-from app.assessment.providers.mock import CRITICAL_SENSOR_FACTS
+from typing import Any
+
 from app.context.lead_time import forecast_asset_trends
 from app.context.derived_facts import ContextEntryView, evaluate_rules
 from app.core.config import get_settings
+from app.risk.policy import CRITICAL_SENSOR_FACTS, classify
 
 
 def active_fact_types(entries: list[ContextEntryView]) -> set[str]:
@@ -22,12 +23,20 @@ def single_sensor_alarm(entries: list[ContextEntryView]) -> bool:
     return bool(active_fact_types(entries) & CRITICAL_SENSOR_FACTS)
 
 
-def compound_alarm(entries: list[ContextEntryView]) -> bool:
+def compound_alarm(
+    entries: list[ContextEntryView],
+    observations: list[dict[str, Any]] | None = None,
+) -> bool:
     """
-    SOP Opera compound engine: derived facts fused to a blocking verdict.
+    SOP Opera compound engine: derived facts fused to a blocking verdict by the
+    same policy the pipeline ships (app/risk/policy.py) — not a reimplementation.
+
+    `observations` carries agent signals (spatial, predictive trend) so the eval
+    can score the pipeline with and without them. Defaults to none, which scores
+    the rules engine alone.
     """
     grounded = sorted(active_fact_types(entries) - {"spatial_cooccurrence"})
-    return _fuse_risk(grounded, []) == "blocking"
+    return classify(grounded, observations or []).is_blocking
 
 
 def forecast_alarm(entries: list[ContextEntryView]) -> bool:

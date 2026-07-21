@@ -21,7 +21,7 @@ from shared.python.schemas import Decision
 
 logger = logging.getLogger(__name__)
 
-DECISIONABLE_STATES = frozenset({"pending_decision", "escalated"})
+DECISIONABLE_STATES = frozenset({"pending_decision"})
 
 
 class DecisionError(Exception):
@@ -130,7 +130,7 @@ async def submit_decision(
         raise LookupError(f"Review {review_id} not found")
     if review.state not in DECISIONABLE_STATES:
         raise DecisionError(
-            f"Decision only allowed in pending_decision or escalated "
+            f"Decision only allowed in pending_decision "
             f"(current={review.state})",
             status_code=409,
         )

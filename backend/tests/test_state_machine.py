@@ -15,7 +15,6 @@ ALL_STATES: list[ReviewState] = [
     "assessing",
     "pending_decision",
     "decided",
-    "escalated",
     "closed",
     "reopened",
 ]
@@ -41,6 +40,6 @@ def test_all_illegal_pairs_raise():
 
 def test_illegal_error_message():
     with pytest.raises(IllegalTransitionError) as exc:
-        next_state("closed", ReviewEvent.ESCALATE)
+        next_state("closed", ReviewEvent.SUBMIT_DECISION)
     assert "closed" in str(exc.value)
-    assert "escalate" in str(exc.value)
+    assert "submit_decision" in str(exc.value)

@@ -35,7 +35,7 @@ export function columnForReviewState(
   ) {
     return "investigating";
   }
-  if (state === "pending_decision" || state === "escalated") {
+  if (state === "pending_decision") {
     return "awaiting_decision";
   }
   if (state === "decided") return "awaiting_fix";
@@ -73,7 +73,7 @@ export function columnForView(view: LiveAssetView): OpenWorkColumnId {
   ) {
     return "investigating";
   }
-  if (state === "pending_decision" || state === "escalated") {
+  if (state === "pending_decision") {
     return "awaiting_decision";
   }
   if (state === "decided") {

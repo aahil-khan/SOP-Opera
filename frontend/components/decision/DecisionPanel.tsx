@@ -398,8 +398,7 @@ export function DecisionPanel({
   const [reopenError, setReopenError] = useState<string | null>(null);
 
   const canDecide =
-    (reviewState === "pending_decision" || reviewState === "escalated") &&
-    assessment?.status === "complete";
+    reviewState === "pending_decision" && assessment?.status === "complete";
 
   const priorDecisionSuperseded =
     Boolean(existing) &&
@@ -537,11 +536,10 @@ export function DecisionPanel({
       {priorDecisionSuperseded && existing ? (
         <p className={styles.superseded}>
           Prior decision ({existing.outcome.replaceAll("_", " ")}) superseded
-          — situation escalated since{" "}
+          — situation changed since{" "}
           {new Date(existing.submitted_at).toLocaleTimeString()}.
         </p>
       ) : null}
-      <EscalationControls reviewId={reviewId} reviewState={reviewState} />
       <DecisionForm
         key={assessment.id}
         reviewId={reviewId}
@@ -549,89 +547,5 @@ export function DecisionPanel({
         zoneOwnerId={areaOwner?.worker_id ?? null}
       />
     </div>
-  );
-}
-
-function EscalationControls({
-  reviewId,
-  reviewState,
-}: {
-  reviewId: string;
-  reviewState: string;
-}) {
-  const escalateReview = useLiveStore((s) => s.escalateReview);
-  const deEscalateReview = useLiveStore((s) => s.deEscalateReview);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [reason, setReason] = useState("");
-
-  if (reviewState !== "pending_decision" && reviewState !== "escalated") {
-    return null;
-  }
-
-  const isEscalated = reviewState === "escalated";
-
-  async function onToggle() {
-    setBusy(true);
-    setError(null);
-    try {
-      if (isEscalated) {
-        await deEscalateReview(reviewId, reason.trim());
-      } else {
-        await escalateReview(reviewId, reason.trim() || "Operator escalation");
-      }
-      setReason("");
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  return (
-    <section className={styles.section} aria-labelledby="escalation-heading">
-      <p id="escalation-heading" className={styles.label}>
-        Escalation
-      </p>
-      {isEscalated ? (
-        <p className={styles.escalatedBanner} role="status">
-          This review is escalated — decide now or resolve the escalation.
-        </p>
-      ) : (
-        <p className={styles.sectionHint}>
-          Escalate when this needs senior attention before a decision.
-        </p>
-      )}
-      <label className={styles.conditionsLabel} htmlFor="escalation-reason">
-        Reason (optional)
-      </label>
-      <input
-        id="escalation-reason"
-        className={styles.escalationInput}
-        value={reason}
-        onChange={(e) => setReason(e.target.value)}
-        placeholder={
-          isEscalated ? "Why resolving escalation…" : "Why escalating…"
-        }
-        disabled={busy}
-      />
-      <div className={styles.actionRow}>
-        <button
-          type="button"
-          className={`btn ${styles.secondaryAction}`}
-          disabled={busy}
-          onClick={() => void onToggle()}
-        >
-          {busy
-            ? isEscalated
-              ? "Resolving…"
-              : "Escalating…"
-            : isEscalated
-              ? "Resolve escalation"
-              : "Escalate"}
-        </button>
-      </div>
-      {error ? <p className={styles.error}>{error}</p> : null}
-    </section>
   );
 }

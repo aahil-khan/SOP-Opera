@@ -324,3 +324,6 @@ ALTER TABLE reviews ADD COLUMN IF NOT EXISTS raised_by_worker_id UUID REFERENCES
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS tagged_worker_ids UUID[] NOT NULL DEFAULT '{}';
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_description TEXT;
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
+
+-- Escalation state removed; map leftover rows to pending_decision.
+UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';

@@ -3,7 +3,6 @@ from __future__ import annotations
 # Re-export request models that live with context for routing convenience
 from app.context.schemas import (  # noqa: F401
     CreateReviewIn,
-    EscalateIn,
     ReopenIn,
     ReviewDetailOut,
 )
@@ -24,3 +23,5 @@ class SharedReviewOut(BaseModel):
     concern_type: str
     raised_by_name: str
     created_at: datetime
+    origin: str = "system"
+    source: str = "shared"  # raised | shared | zone

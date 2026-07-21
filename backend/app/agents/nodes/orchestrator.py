@@ -11,53 +11,23 @@ from app.agents.llm import get_chat_model, model_label, provider_label, usage_re
 from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
-from app.assessment.providers.mock import COMPOUND_TRIO, CRITICAL_SENSOR_FACTS, FACT_RECOMMENDATIONS
-from app.reviews.concerns import BLOCKING_SUPERVISOR_FACTS, SUPERVISOR_FACT_TYPES
+from app.assessment.providers.mock import FACT_RECOMMENDATIONS
+from app.reviews.concerns import SUPERVISOR_FACT_TYPES
+from app.risk import policy as risk_policy
 from app.assessment.schemas import AssessmentResult
 from app.core.config import get_settings
 from app.context.lead_time import compute_lead_time_for_verdict
 
 
+def _fuse_verdict(
+    grounded: list[str], observations: list[dict[str, Any]]
+) -> risk_policy.RiskVerdict:
+    """Delegate to the one risk policy — see app/risk/policy.py."""
+    return risk_policy.classify(grounded, observations)
+
+
 def _fuse_risk(grounded: list[str], observations: list[dict[str, Any]]) -> str:
-    grounded_set = set(grounded)
-    # Drop non-rule spatial marker from grounding set for trio checks
-    rule_facts = grounded_set - {"spatial_cooccurrence"}
-    spatial_hit = any(
-        o.get("agent") == "spatial" and o.get("local_risk") in ("elevated", "blocking")
-        for o in observations
-    )
-    if rule_facts & CRITICAL_SENSOR_FACTS:
-        return "blocking"
-    if rule_facts & BLOCKING_SUPERVISOR_FACTS:
-        return "blocking"
-    if rule_facts & SUPERVISOR_FACT_TYPES:
-        return "elevated"
-    if COMPOUND_TRIO.issubset(rule_facts) or len(rule_facts) >= 3:
-        return "blocking"
-    # Spatial hot-work near gas + at least one grounded process/people fact → block
-    if spatial_hit and (
-        "elevated_gas" in rule_facts
-        or "zone_occupied" in rule_facts
-        or "permit_conflict" in rule_facts
-        or any(ft.startswith("elevated") or ft == "incomplete_isolation" for ft in rule_facts)
-    ):
-        return "blocking"
-    if any(o.get("local_risk") == "blocking" for o in observations):
-        # Spatial-only blocking still needs grounding via require_grounding_for_block
-        if spatial_hit and not rule_facts:
-            return "elevated"
-        return "blocking"
-    trend_hit = any(
-        o.get("agent") == "predictive_trend"
-        and o.get("local_risk") == "elevated"
-        and "predicted_trend_risk" in (o.get("fact_types") or [])
-        for o in observations
-    )
-    if rule_facts or any(o.get("local_risk") == "elevated" for o in observations):
-        return "elevated"
-    if trend_hit:
-        return "elevated"
-    return "nominal"
+    return _fuse_verdict(grounded, observations).level
 
 
 def _recommendations(

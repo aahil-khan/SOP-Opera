@@ -391,33 +391,6 @@
   flex: 0 0 auto;
 }
 
-.escalatedBanner {
-  margin: 0;
-  padding: var(--space-2);
-  border-radius: var(--radius-sm);
-  border: 1px solid color-mix(in srgb, var(--status-blocking) 40%, transparent);
-  background: color-mix(in srgb, var(--status-blocking) 10%, transparent);
-  color: var(--status-blocking);
-  font-size: var(--text-xs);
-  line-height: var(--leading-normal);
-}
-
-.escalationInput {
-  width: 100%;
-  padding: 0.4rem 0.55rem;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border-muted);
-  background: color-mix(in srgb, var(--surface-canvas) 88%, var(--border-muted));
-  color: var(--text-primary);
-  font: inherit;
-  font-size: var(--text-xs);
-}
-
-.escalationInput:focus {
-  outline: none;
-  border-color: var(--border-hover);
-}
-
 .done {
   margin: 0;
   color: var(--status-nominal);

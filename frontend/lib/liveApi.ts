@@ -292,26 +292,6 @@ export function postReopenReview(
   });
 }
 
-export function postEscalateReview(
-  reviewId: string,
-  reason = "",
-): Promise<Review> {
-  return request<Review>(`/reviews/${reviewId}/escalate`, {
-    method: "POST",
-    body: JSON.stringify({ reason }),
-  });
-}
-
-export function postDeEscalateReview(
-  reviewId: string,
-  reason = "",
-): Promise<Review> {
-  return request<Review>(`/reviews/${reviewId}/de-escalate`, {
-    method: "POST",
-    body: JSON.stringify({ reason }),
-  });
-}
-
 export function postRetryAssessment(
   reviewId: string,
   provider?: "openai_compatible" | "ollama" | "mock" | null,
@@ -392,6 +372,8 @@ export interface SharedReview {
   concern_type: string;
   raised_by_name: string;
   created_at: string;
+  origin?: string;
+  source?: "raised" | "shared" | "zone";
 }
 
 export function fetchRaisedReviews(): Promise<SharedReview[]> {
@@ -400,6 +382,10 @@ export function fetchRaisedReviews(): Promise<SharedReview[]> {
 
 export function fetchSharedReviews(): Promise<SharedReview[]> {
   return request<SharedReview[]>("/reviews/shared-with-me");
+}
+
+export function fetchZoneReviews(): Promise<SharedReview[]> {
+  return request<SharedReview[]>("/reviews/in-my-zones");
 }
 
 export function postSupervisorReport(

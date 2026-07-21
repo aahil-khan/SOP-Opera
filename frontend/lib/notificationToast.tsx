@@ -49,7 +49,7 @@ function ToastBody({
       <div className={styles.actions}>
         {reviewId ? (
           <Link
-            href="/"
+            href="/operator"
             className={styles.action}
             onClick={() => {
               onOpen?.();
@@ -133,9 +133,7 @@ export function showReassessmentToast(options: {
 }): void {
   if (isDndEnabled()) return;
   const toastId = `reassess-${options.reviewId}`;
-  const fromDecision =
-    options.previousState === "pending_decision" ||
-    options.previousState === "escalated";
+  const fromDecision = options.previousState === "pending_decision";
   if (!fromDecision && options.previousState !== "reopened") return;
 
   toast(

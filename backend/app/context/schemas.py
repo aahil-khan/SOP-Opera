@@ -52,10 +52,6 @@ class CreateReviewIn(BaseModel):
     concern_type: SupervisorConcernType = "other"
 
 
-class EscalateIn(BaseModel):
-    reason: str = ""
-
-
 class ReopenIn(BaseModel):
     reason: str = ""
 

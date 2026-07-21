@@ -236,28 +236,15 @@ async def transition_review(
         payload=audit_payload,
     )
 
-    if event == ReviewEvent.ESCALATE or event == ReviewEvent.RISK_ESCALATED:
-        from app.notifications.service import notify_review_escalated
+    if event == ReviewEvent.RISK_RETURNED:
+        from app.notifications.service import notify_review_reopened_for_risk
 
-        default_reason = (
-            "Risk escalated since prior decision — new assessment required"
-            if event == ReviewEvent.RISK_ESCALATED
-            else None
-        )
-        await notify_review_escalated(
+        await notify_review_reopened_for_risk(
             session,
             review_id=updated.id,
             owner_id=updated.owner_id,
-            reason=(extra_payload or {}).get("reason") or default_reason,
-        )
-    elif event == ReviewEvent.RESOLVE_ESCALATION:
-        from app.notifications.service import notify_review_de_escalated
-
-        await notify_review_de_escalated(
-            session,
-            review_id=updated.id,
-            owner_id=updated.owner_id,
-            reason=(extra_payload or {}).get("reason") or None,
+            reason=(extra_payload or {}).get("reason")
+            or "Risk returned since prior decision — new assessment required",
         )
     elif event == ReviewEvent.SUBMIT_DECISION:
         from app.notifications.service import notify_decision_submitted

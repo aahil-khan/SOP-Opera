@@ -21,8 +21,6 @@ import {
   fetchThresholds,
   postCloseReview,
   postReopenReview,
-  postEscalateReview,
-  postDeEscalateReview,
   postDecision,
   postManualAssessment,
   postRetryAssessment,
@@ -350,8 +348,6 @@ interface LiveState {
   submitDecision: (id: string, body: DecisionIn) => Promise<Decision>;
   closeReview: (id: string) => Promise<Review>;
   reopenReview: (id: string, reason?: string) => Promise<Review>;
-  escalateReview: (id: string, reason?: string) => Promise<Review>;
-  deEscalateReview: (id: string, reason?: string) => Promise<Review>;
   retryAssessment: (
     id: string,
     provider?: "openai_compatible" | "ollama" | "mock" | null,
@@ -438,7 +434,7 @@ function deriveRisk(
     return "elevated";
   }
 
-  // Reassessment after escalation — prefer live derived facts over stale assessment.
+  // Reassessment in flight — prefer live derived facts over stale assessment.
   if (review.state === "assessing" || review.state === "reopened") {
     const active =
       detail?.derived_facts?.filter(
@@ -911,20 +907,6 @@ export const useLiveStore = create<LiveState>((set, get) => {
 
   reopenReview: async (id, reason = "") => {
     const review = await postReopenReview(id, reason);
-    await get().loadReviewDetail(id);
-    await get().refreshOverview();
-    return review;
-  },
-
-  escalateReview: async (id, reason = "") => {
-    const review = await postEscalateReview(id, reason);
-    await get().loadReviewDetail(id);
-    await get().refreshOverview();
-    return review;
-  },
-
-  deEscalateReview: async (id, reason = "") => {
-    const review = await postDeEscalateReview(id, reason);
     await get().loadReviewDetail(id);
     await get().refreshOverview();
     return review;

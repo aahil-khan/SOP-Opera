@@ -25,21 +25,8 @@ def _fact(fact_type: str) -> DerivedFact:
     )
 
 
-def test_escalated_resolve_returns_pending_decision():
-    assert (
-        next_state("escalated", ReviewEvent.RESOLVE_ESCALATION)
-        == "pending_decision"
-    )
-
-
-def test_pending_decision_escalate():
-    assert next_state("pending_decision", ReviewEvent.ESCALATE) == "escalated"
-
-
-def test_decided_to_reopened_transition():
-    assert (
-        next_state("decided", ReviewEvent.RISK_ESCALATED) == "reopened"
-    )
+def test_decided_to_reopened_on_risk_returned():
+    assert next_state("decided", ReviewEvent.RISK_RETURNED) == "reopened"
 
 
 def test_decided_to_reopened_via_manual_reopen():
@@ -70,7 +57,6 @@ def test_should_not_reassess_closed_on_benign_change():
     )
     facts = [_fact("elevated_gas")]
     assert should_reassess(review, ["elevated_gas"], facts) is False
-
 
 
 def test_should_reopen_on_critical_gas():

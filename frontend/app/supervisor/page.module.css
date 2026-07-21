@@ -839,6 +839,13 @@ select.fieldControl {
   background: color-mix(in srgb, var(--status-elevated) 12%, var(--surface-card));
 }
 
+.zoneBadge {
+  flex-shrink: 0;
+  color: var(--domain-sensors);
+  border-color: color-mix(in srgb, var(--domain-sensors) 40%, transparent);
+  background: color-mix(in srgb, var(--domain-sensors) 12%, var(--surface-card));
+}
+
 .sharedPreview {
   margin: var(--space-1) 0 0;
   font-size: var(--text-xs);
@@ -856,6 +863,10 @@ select.fieldControl {
 
 .task[data-reported="true"] {
   border-left-color: var(--status-elevated);
+}
+
+.task[data-zone="true"] {
+  border-left-color: var(--domain-sensors);
 }
 
 @media (max-width: 900px) {

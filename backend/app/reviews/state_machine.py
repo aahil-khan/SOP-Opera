@@ -8,7 +8,6 @@ ReviewState = Literal[
     "assessing",
     "pending_decision",
     "decided",
-    "escalated",
     "closed",
     "reopened",
 ]
@@ -17,12 +16,10 @@ ReviewState = Literal[
 class ReviewEvent(str, Enum):
     TRIGGER_ASSESSMENT = "trigger_assessment"
     ASSESSMENT_COMPLETED = "assessment_completed"
-    ESCALATE = "escalate"
-    RESOLVE_ESCALATION = "resolve_escalation"
     SUBMIT_DECISION = "submit_decision"
     CLOSE = "close"
     REOPEN = "reopen"
-    RISK_ESCALATED = "risk_escalated"
+    RISK_RETURNED = "risk_returned"
 
 
 class IllegalTransitionError(Exception):
@@ -37,13 +34,10 @@ TRANSITIONS: dict[tuple[ReviewState, ReviewEvent], ReviewState] = {
     ("opened", ReviewEvent.TRIGGER_ASSESSMENT): "assessing",
     ("assessing", ReviewEvent.ASSESSMENT_COMPLETED): "pending_decision",
     ("pending_decision", ReviewEvent.TRIGGER_ASSESSMENT): "assessing",
-    ("pending_decision", ReviewEvent.ESCALATE): "escalated",
     ("pending_decision", ReviewEvent.SUBMIT_DECISION): "decided",
-    ("escalated", ReviewEvent.RESOLVE_ESCALATION): "pending_decision",
-    ("escalated", ReviewEvent.SUBMIT_DECISION): "decided",
     ("decided", ReviewEvent.CLOSE): "closed",
     ("decided", ReviewEvent.REOPEN): "reopened",
-    ("decided", ReviewEvent.RISK_ESCALATED): "reopened",
+    ("decided", ReviewEvent.RISK_RETURNED): "reopened",
     ("closed", ReviewEvent.REOPEN): "reopened",
     ("reopened", ReviewEvent.TRIGGER_ASSESSMENT): "assessing",
 }

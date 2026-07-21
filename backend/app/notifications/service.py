@@ -144,7 +144,7 @@ async def notify_review_closed(
     )
 
 
-async def notify_review_escalated(
+async def notify_review_reopened_for_risk(
     session: AsyncSession,
     *,
     review_id: UUID,
@@ -155,25 +155,8 @@ async def notify_review_escalated(
     await create_notification(
         session,
         review_id=review_id,
-        event_type="review.escalated",
-        summary=f"Review escalated{suffix}",
-        recipient_ids=[owner_id],
-    )
-
-
-async def notify_review_de_escalated(
-    session: AsyncSession,
-    *,
-    review_id: UUID,
-    owner_id: UUID,
-    reason: str | None = None,
-) -> None:
-    suffix = f" — {reason}" if reason else ""
-    await create_notification(
-        session,
-        review_id=review_id,
-        event_type="review.de_escalated",
-        summary=f"Escalation resolved{suffix}",
+        event_type="review.reopened_for_risk",
+        summary=f"Review reopened{suffix}",
         recipient_ids=[owner_id],
     )
 

@@ -13,7 +13,6 @@ ReviewState = Literal[
     "assessing",
     "pending_decision",
     "decided",
-    "escalated",
     "closed",
     "reopened",
 ]

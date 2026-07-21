@@ -12,6 +12,7 @@ import {
   fetchAssets,
   fetchSharedReviews,
   fetchRaisedReviews,
+  fetchZoneReviews,
   postAcknowledgeTask,
   postDoneTask,
   postSupervisorReport,
@@ -86,6 +87,7 @@ export default function SupervisorPage() {
   const [tasks, setTasks] = useState<ReviewTask[]>([]);
   const [sharedReviews, setSharedReviews] = useState<SharedReview[]>([]);
   const [raisedReviews, setRaisedReviews] = useState<SharedReview[]>([]);
+  const [zoneReviews, setZoneReviews] = useState<SharedReview[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
@@ -210,20 +212,23 @@ export default function SupervisorPage() {
     setLoading(true);
     setError(null);
     try {
-      const [items, shared, raised] = await Promise.all([
+      const [items, shared, raised, zone] = await Promise.all([
         fetchTasks(actor.id),
         fetchSharedReviews(),
         fetchRaisedReviews(),
+        fetchZoneReviews(),
       ]);
       setTasks(items);
       setSharedReviews(shared);
       setRaisedReviews(raised);
+      setZoneReviews(zone);
       setSelectedReviewId((current) => {
         if (!current) return null;
         const stillVisible =
           items.some((t) => t.review_id === current) ||
           shared.some((s) => s.review_id === current) ||
-          raised.some((s) => s.review_id === current);
+          raised.some((s) => s.review_id === current) ||
+          zone.some((s) => s.review_id === current);
         return stillVisible ? current : null;
       });
     } catch (e) {
@@ -319,6 +324,15 @@ export default function SupervisorPage() {
     [raisedReviews, taskReviewIds, sharedOpen],
   );
 
+  const zoneOpen = useMemo(() => {
+    const covered = new Set([
+      ...taskReviewIds,
+      ...sharedOpen.map((s) => s.review_id),
+      ...raisedOpen.map((r) => r.review_id),
+    ]);
+    return zoneReviews.filter((z) => !covered.has(z.review_id));
+  }, [zoneReviews, taskReviewIds, sharedOpen, raisedOpen]);
+
   const groups = useMemo(() => {
     return {
       open: tasks.filter((t) => t.status === "open"),
@@ -342,8 +356,13 @@ export default function SupervisorPage() {
   const showEmptyBoard =
     tasks.length === 0 &&
     sharedReviews.length === 0 &&
-    raisedReviews.length === 0;
-  const openCount = groups.open.length + sharedOpen.length + raisedOpen.length;
+    raisedReviews.length === 0 &&
+    zoneReviews.length === 0;
+  const openCount =
+    groups.open.length +
+    sharedOpen.length +
+    raisedOpen.length +
+    zoneOpen.length;
 
   function renderReportCard(
     item: SharedReview,
@@ -361,8 +380,9 @@ export default function SupervisorPage() {
         key={`${badge}-${item.review_id}`}
         className={styles.task}
         data-active={active ? "true" : "false"}
-        data-shared={badge !== "Reported" ? "true" : undefined}
+        data-shared={badge === "Shared" ? "true" : undefined}
         data-reported={badge === "Reported" ? "true" : undefined}
+        data-zone={badge === "Zone" ? "true" : undefined}
       >
         <button
           type="button"
@@ -425,6 +445,15 @@ export default function SupervisorPage() {
     return renderReportCard(item, "Reported", styles.reportedBadge);
   }
 
+  function renderZoneCard(item: SharedReview) {
+    return renderReportCard(
+      item,
+      "Zone",
+      styles.zoneBadge,
+      item.origin === "system" ? "From live signals" : `From ${item.raised_by_name}`,
+    );
+  }
+
   return (
     <div className={styles.wrap}>
       <div
@@ -455,7 +484,7 @@ export default function SupervisorPage() {
                 type="button"
                 className={`btn btn-primary ${styles.reportTrigger}`}
                 data-active={raiseOpen ? "true" : "false"}
-                onClick={openReportPanel}
+                onClick={() => openReportPanel()}
               >
                 Report floor issue
               </button>
@@ -477,14 +506,14 @@ export default function SupervisorPage() {
               <p className={styles.emptyCopy}>
                 {loading
                   ? "Checking for work assigned to your zones."
-                  : "Tasks assigned to you will appear here as reviews move through the workflow. Report a floor issue if something in your zones needs operator attention."}
+                  : "Open work in your zones, shared reports, and assigned tasks appear here. Report a floor issue if something needs operator attention."}
               </p>
               {!loading ? (
                 <button
                   type="button"
                   className={`btn btn-primary ${styles.reportTrigger}`}
                   data-active={raiseOpen ? "true" : "false"}
-                  onClick={openReportPanel}
+                  onClick={() => openReportPanel()}
                 >
                   Report floor issue
                 </button>
@@ -503,6 +532,7 @@ export default function SupervisorPage() {
                   <ul className={styles.columnList}>
                     {key === "open" ? (
                       <>
+                        {zoneOpen.map((item) => renderZoneCard(item))}
                         {raisedOpen.map((item) => renderRaisedCard(item))}
                         {sharedOpen.map((item) => renderSharedCard(item))}
                       </>

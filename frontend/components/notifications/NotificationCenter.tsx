@@ -227,7 +227,7 @@ export function NotificationCenter() {
                           href={
                             actor?.kind === "worker"
                               ? `/supervisor?review=${n.review_id}`
-                              : "/"
+                              : "/operator"
                           }
                           className={styles.link}
                           onClick={() => {

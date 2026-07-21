@@ -12,7 +12,8 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import text
 
 from app.core.config import get_settings
-from app.assessment.providers.mock import COMPOUND_TRIO, CRITICAL_SENSOR_FACTS
+from app.risk import policy as risk_policy
+from app.risk.policy import CRITICAL_SENSOR_FACTS
 
 
 REASSESSABLE_STATES = frozenset({"opened", "pending_decision", "reopened"})
@@ -21,7 +22,6 @@ ACTIVE_REVIEW_STATES = frozenset(
         "opened",
         "assessing",
         "pending_decision",
-        "escalated",
         "decided",
         "reopened",
     }
@@ -37,13 +37,8 @@ def _active_rule_facts(current_true_facts: list[DerivedFact]) -> set[str]:
 
 
 def _is_blocking_compound(current_true_facts: list[DerivedFact]) -> bool:
-    """Mirror orchestrator blocking gate — compound trio, 3+ facts, or critical sensor."""
-    rule_facts = _active_rule_facts(current_true_facts)
-    if rule_facts & CRITICAL_SENSOR_FACTS:
-        return True
-    if COMPOUND_TRIO.issubset(rule_facts):
-        return True
-    return len(rule_facts) >= 3
+    """Delegate to the one risk policy — see app/risk/policy.py."""
+    return risk_policy.is_blocking_compound(_active_rule_facts(current_true_facts))
 
 
 def _newly_true_facts(
@@ -225,7 +220,7 @@ async def handle_context_change(
         review = await transition_review(
             session,
             review.id,
-            ReviewEvent.RISK_ESCALATED,
+            ReviewEvent.RISK_RETURNED,
             actor,
             extra_payload={"changed_fact_types": changed_fact_types},
         )
@@ -468,6 +463,7 @@ async def list_shared_reviews_for_worker(
               r.asset_id,
               r.state AS review_state,
               r.created_at,
+              r.origin,
               a.name AS asset_name,
               a.zone AS asset_zone,
               COALESCE(w.name, 'Unknown') AS raised_by_name,
@@ -512,6 +508,8 @@ async def list_shared_reviews_for_worker(
                 concern_type=m["concern_type"],
                 raised_by_name=m["raised_by_name"],
                 created_at=m["created_at"],
+                origin=m["origin"] if "origin" in m else "system",
+                source="shared",
             )
         )
     return out
@@ -532,6 +530,7 @@ async def list_raised_reviews_for_worker(
               r.asset_id,
               r.state AS review_state,
               r.created_at,
+              r.origin,
               a.name AS asset_name,
               a.zone AS asset_zone,
               COALESCE(w.name, 'Unknown') AS raised_by_name,
@@ -569,6 +568,80 @@ async def list_raised_reviews_for_worker(
                 concern_type=m["concern_type"],
                 raised_by_name=m["raised_by_name"],
                 created_at=m["created_at"],
+                origin=m["origin"] if "origin" in m else "supervisor",
+                source="raised",
+            )
+        )
+    return out
+
+
+async def list_zone_reviews_for_worker(
+    session: AsyncSession,
+    *,
+    worker_id: UUID,
+) -> list:
+    """Open reviews on assets in zones this worker owns (pre-decision visibility)."""
+    from app.reviews.schemas import SharedReviewOut
+
+    result = await session.execute(
+        text(
+            """
+            SELECT
+              r.id AS review_id,
+              r.asset_id,
+              r.state AS review_state,
+              r.created_at,
+              r.origin,
+              r.triggered_by,
+              a.name AS asset_name,
+              a.zone AS asset_zone,
+              COALESCE(w.name, NULL) AS raised_by_name,
+              COALESCE(
+                NULLIF(r.report_description, ''),
+                NULLIF(REPLACE(r.triggered_by, ',', ' · '), ''),
+                'Open work in your zone'
+              ) AS description,
+              COALESCE(
+                NULLIF(r.report_concern_type, ''),
+                'other'
+              ) AS concern_type
+            FROM reviews r
+            JOIN assets a ON a.id = r.asset_id
+            JOIN zone_owners zo ON zo.zone = a.zone
+            LEFT JOIN workers w ON w.id = r.raised_by_worker_id
+            WHERE zo.worker_id = CAST(:wid AS uuid)
+              AND r.state <> 'closed'
+            ORDER BY r.created_at DESC
+            LIMIT 50
+            """
+        ),
+        {"wid": str(worker_id)},
+    )
+    out: list[SharedReviewOut] = []
+    for row in result.fetchall():
+        m = row._mapping
+        origin = m["origin"] if "origin" in m else "system"
+        raised_name = m["raised_by_name"]
+        if not raised_name:
+            if origin == "operator":
+                raised_name = "Operator"
+            elif origin == "supervisor":
+                raised_name = "Supervisor"
+            else:
+                raised_name = "Live signals"
+        out.append(
+            SharedReviewOut(
+                review_id=m["review_id"],
+                asset_id=m["asset_id"],
+                asset_name=m["asset_name"],
+                asset_zone=m["asset_zone"],
+                review_state=m["review_state"],
+                description=m["description"],
+                concern_type=m["concern_type"],
+                raised_by_name=raised_name,
+                created_at=m["created_at"],
+                origin=origin,
+                source="zone",
             )
         )
     return out

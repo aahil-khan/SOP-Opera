@@ -19,7 +19,7 @@ from app.reviews.repository import (
     transition_review,
     update_review_supervisor_report,
 )
-from app.reviews.schemas import CreateReviewIn, EscalateIn, ReopenIn, ReviewDetailOut, SharedReviewOut
+from app.reviews.schemas import CreateReviewIn, ReopenIn, ReviewDetailOut, SharedReviewOut
 from app.reviews.service import (
     find_active_review_for_asset,
     find_latest_review_for_asset,
@@ -27,6 +27,7 @@ from app.reviews.service import (
     list_raised_reviews_for_worker,
     list_reviews,
     list_shared_reviews_for_worker,
+    list_zone_reviews_for_worker,
 )
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
 from app.reviews.comments_service import (
@@ -222,7 +223,7 @@ async def post_review(
                     ReviewEvent.TRIGGER_ASSESSMENT,
                     "api:supervisor_report",
                 )
-            # assessing / escalated: attach report only; leave state alone
+            # assessing: attach report only; leave state alone
         else:
             review = await create_review(
                 session,
@@ -298,6 +299,17 @@ async def get_shared_reviews(
     if actor.kind != "worker":
         raise HTTPException(status_code=403, detail="Workers only")
     return await list_shared_reviews_for_worker(session, worker_id=actor.id)
+
+
+@router.get("/in-my-zones", response_model=list[SharedReviewOut])
+async def get_zone_reviews(
+    actor: ActorMeOut = Depends(get_current_actor),
+    session: AsyncSession = Depends(get_session),
+) -> list[SharedReviewOut]:
+    """Open reviews on assets in zones owned by this supervisor."""
+    if actor.kind != "worker":
+        raise HTTPException(status_code=403, detail="Workers only")
+    return await list_zone_reviews_for_worker(session, worker_id=actor.id)
 
 
 @router.get("/{review_id}", response_model=ReviewDetailOut)
@@ -401,46 +413,6 @@ async def post_manual_assessment(
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     except LookupError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
-
-
-@router.post("/{review_id}/escalate", response_model=Review)
-async def escalate_review(
-    review_id: UUID,
-    body: EscalateIn,
-    session: AsyncSession = Depends(get_session),
-) -> Review:
-    if await get_review(session, review_id) is None:
-        raise HTTPException(status_code=404, detail="Review not found")
-    try:
-        return await transition_review(
-            session,
-            review_id,
-            ReviewEvent.ESCALATE,
-            "api:escalate",
-            extra_payload={"reason": body.reason},
-        )
-    except IllegalTransitionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
-
-
-@router.post("/{review_id}/de-escalate", response_model=Review)
-async def de_escalate_review(
-    review_id: UUID,
-    body: EscalateIn | None = None,
-    session: AsyncSession = Depends(get_session),
-) -> Review:
-    if await get_review(session, review_id) is None:
-        raise HTTPException(status_code=404, detail="Review not found")
-    try:
-        return await transition_review(
-            session,
-            review_id,
-            ReviewEvent.RESOLVE_ESCALATION,
-            "api:de_escalate",
-            extra_payload={"reason": (body.reason if body else "") or ""},
-        )
-    except IllegalTransitionError as exc:
-        raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
 @router.post("/{review_id}/reopen", response_model=Review)

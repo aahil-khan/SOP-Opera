@@ -5,7 +5,6 @@ export type ReviewState =
   | "assessing"
   | "pending_decision"
   | "decided"
-  | "escalated"
   | "closed"
   | "reopened";
 
