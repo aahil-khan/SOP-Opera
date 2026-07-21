@@ -30,6 +30,12 @@ class AiOpsSummary(BaseModel):
     total_cost_usd: float = 0.0
     mean_cost_usd: float | None = None
     # LangSmith deep-link
+    # Realtime backpressure — a live ceiling a judge can watch move.
+    ws_clients: int = 0
+    ws_queue_depth_max: int = 0
+    ws_queue_capacity: int = 0
+    ws_dropped_frames: int = 0
+
     langsmith_enabled: bool = False
     langsmith_project: str = "sop-opera"
     langsmith_url: str | None = None
