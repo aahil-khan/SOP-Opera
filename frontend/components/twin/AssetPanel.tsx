@@ -5,8 +5,6 @@ import dynamic from "next/dynamic";
 import type { LiveAssetView } from "@/lib/liveStore";
 import { useLiveStore } from "@/lib/liveStore";
 import { AgentBrainPanel } from "./AgentBrainPanel";
-import { DomainRadar } from "./DomainRadar";
-import { TrendForecastCard } from "./TrendForecastCard";
 import { WhyBrief } from "./WhyBrief";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
@@ -31,6 +29,16 @@ const ReviewDetail = dynamic(
       <p className={styles.loadingHint}>Loading full review…</p>
     ),
   },
+);
+
+const DomainRadar = dynamic(
+  () => import("./DomainRadar").then((m) => m.DomainRadar),
+  { ssr: false },
+);
+
+const TrendForecastCard = dynamic(
+  () => import("./TrendForecastCard").then((m) => m.TrendForecastCard),
+  { ssr: false },
 );
 
 interface AssetPanelProps {

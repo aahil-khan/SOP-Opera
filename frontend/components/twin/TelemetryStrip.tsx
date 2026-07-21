@@ -28,6 +28,8 @@ const METRIC_META: Record<
   wind_ms: { label: "Wind", unit: "m/s" },
 };
 
+const EMPTY_BY_SOURCE: Record<string, TelemetrySample> = {};
+
 function latestNumericAcrossPlant(
   bySource: Record<string, TelemetrySample>,
   source: string,
@@ -56,29 +58,19 @@ function latestNumericAcrossPlant(
   return best ? { value: best.value, asset: best.asset } : null;
 }
 
-function countActivePermits(status: { category: string; label: string }[]): number {
-  return status.filter(
-    (s) => s.category === "permit" && s.label.toLowerCase().includes("active"),
-  ).length;
-}
-
-function countHazardousWorkers(status: { category: string; label: string }[]): number {
-  return status.filter(
-    (s) =>
-      s.category === "worker_location" &&
-      s.label.toLowerCase().includes("hazardous"),
-  ).length;
-}
-
 interface TelemetryStripProps {
   shiftForDrawer?: boolean;
 }
 
 export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) {
-  const bySource = useLiveStore((s) => s.telemetryBySource);
-  const status = useLiveStore((s) => s.telemetryStatus);
-  const thresholdsConfig = useLiveStore((s) => s.thresholdsConfig);
   const [source, setSource] = useState<(typeof SOURCES)[number]["id"]>("scada");
+  const opsSummary = useLiveStore((s) => s.opsSummary);
+  const thresholdsConfig = useLiveStore((s) => s.thresholdsConfig);
+  /** Only subscribe to bySource while the SCADA tab is active. */
+  const bySource = useLiveStore((s) =>
+    source === "scada" ? s.telemetryBySource : EMPTY_BY_SOURCE,
+  );
+  const hasLiveFeed = useLiveStore((s) => s.opsSummary.assetsWithOps > 0);
 
   const cards = useMemo(() => {
     if (source === "scada") {
@@ -106,27 +98,22 @@ export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) 
         {
           key: "permits",
           label: "Active permits",
-          value: String(countActivePermits(status)),
+          value: String(opsSummary.activePermits),
           unit: "",
           hint: "plant-wide",
-          risk: countActivePermits(status) > 1 ? "elevated" : "nominal",
+          risk: opsSummary.activePermits > 1 ? "elevated" : "nominal",
         },
       ];
     }
     if (source === "maintenance") {
-      const incomplete = status.filter(
-        (s) =>
-          s.category === "isolation_status" &&
-          s.label.toLowerCase().includes("incomplete"),
-      ).length;
       return [
         {
           key: "iso",
           label: "Isolation flags",
-          value: String(incomplete),
+          value: String(opsSummary.incompleteIsolations),
           unit: "",
-          hint: incomplete ? "check assets" : "nominal",
-          risk: incomplete ? "elevated" : "nominal",
+          hint: opsSummary.incompleteIsolations ? "check assets" : "nominal",
+          risk: opsSummary.incompleteIsolations ? "elevated" : "nominal",
         },
       ];
     }
@@ -134,15 +121,13 @@ export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) 
       {
         key: "zone",
         label: "In hazardous zone",
-        value: String(countHazardousWorkers(status)),
+        value: String(opsSummary.peopleAtRisk),
         unit: "",
         hint: "workforce",
-        risk: countHazardousWorkers(status) > 0 ? "elevated" : "nominal",
+        risk: opsSummary.peopleAtRisk > 0 ? "elevated" : "nominal",
       },
     ];
-  }, [bySource, source, status, thresholdsConfig]);
-
-  const sampleCount = Object.keys(bySource).length;
+  }, [bySource, source, opsSummary, thresholdsConfig]);
 
   return (
     <div
@@ -154,7 +139,7 @@ export function TelemetryStrip({ shiftForDrawer = false }: TelemetryStripProps) 
       <div className={styles.header}>
         <span className={styles.mark}>Live</span>
         <span className={styles.title}>Plant feed</span>
-        <span className={styles.pulse} data-live={sampleCount > 0 ? "true" : undefined} />
+        <span className={styles.pulse} data-live={hasLiveFeed ? "true" : undefined} />
         <div className={styles.tabs} role="tablist" aria-label="Source">
           {SOURCES.map((s) => (
             <button

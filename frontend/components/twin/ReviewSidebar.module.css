@@ -54,10 +54,9 @@
   font-family: var(--font-mono);
   font-size: var(--text-xs);
   text-align: center;
-  animation: rail-count-pulse 2.4s var(--ease-out) infinite;
 }
 
-/* Collapsed rail still shows the badge — no need to keep pulsing. */
+/* Collapsed rail still shows the badge — keep it static (no continuous pulse). */
 .rail[data-open="true"] .railCount {
   animation: none;
 }
@@ -641,12 +640,10 @@
   inset: 18%;
   border-color: color-mix(in srgb, var(--status-info) 34%, transparent);
   opacity: 0.9;
-  animation: orbit-breathe 3.6s var(--ease-out) infinite;
 }
 
 .orbitRing[data-ring="outer"] {
   opacity: 0.55;
-  animation: orbit-breathe 3.6s var(--ease-out) 0.45s infinite;
 }
 
 .orbitCore {
@@ -659,7 +656,6 @@
   border-radius: 50%;
   background: color-mix(in srgb, var(--status-info) 88%, white);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-info) 14%, transparent);
-  animation: orbit-core-pulse 2.4s ease-in-out infinite;
 }
 
 .orbitCompact .orbitCore {
@@ -672,7 +668,6 @@
 .orbitBlip {
   position: absolute;
   inset: 0;
-  animation: orbit-spin 7.5s linear infinite;
 }
 
 .orbitBlipDot {

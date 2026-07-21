@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type CSSProperties } from "react";
+import { memo, useEffect, useMemo, useState, type CSSProperties } from "react";
 import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { MAP_VIEWBOX } from "./MapViewport";
@@ -179,7 +179,7 @@ function FloorThumb({
   );
 }
 
-export function FloorOverview({
+export const FloorOverview = memo(function FloorOverview({
   riskByAsset,
   activityByFloor,
   freshByFloor = {},
@@ -211,4 +211,4 @@ export function FloorOverview({
       ))}
     </div>
   );
-}
+});

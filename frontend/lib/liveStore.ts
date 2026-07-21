@@ -79,9 +79,9 @@ const NOTIFICATION_CAP = 50;
 const AGENT_STEP_CAP = 100;
 const TELEMETRY_RING_CAP = 30;
 /** Coalesce rapid soft samples into one Zustand write. */
-const TELEMETRY_FLUSH_MS = 250;
+const TELEMETRY_FLUSH_MS = 400;
 /** Coalesce bursty domain WS events into one reviews refetch. */
-const OVERVIEW_REFRESH_DEBOUNCE_MS = 400;
+const OVERVIEW_REFRESH_DEBOUNCE_MS = 500;
 
 
 export type TelemetrySource = "scada" | "ptw" | "maintenance" | "workforce" | string;

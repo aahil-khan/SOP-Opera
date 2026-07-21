@@ -239,7 +239,10 @@ export default function SupervisorPage() {
   }
 
   useEffect(() => {
-    void refreshBoard();
+    const timer = window.setTimeout(() => {
+      void refreshBoard();
+    }, 300);
+    return () => window.clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [actor?.id, taskEventSeq, boardEventSeq]);
 

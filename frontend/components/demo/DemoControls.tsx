@@ -112,10 +112,19 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   }, [refreshStatus]);
 
   useEffect(() => {
-    const id = setInterval(() => {
+    const tick = () => {
+      if (document.hidden) return;
       void refreshStatus();
-    }, status?.running ? 1500 : 8000);
-    return () => clearInterval(id);
+    };
+    const id = setInterval(tick, status?.running ? 1500 : 8000);
+    const onVisibility = () => {
+      if (!document.hidden) void refreshStatus();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
   }, [status?.running, refreshStatus]);
 
   function toggleFloor(f: PlantFloor) {

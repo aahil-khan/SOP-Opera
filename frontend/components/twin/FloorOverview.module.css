@@ -121,7 +121,6 @@
 }
 
 .schematicRoot {
-  animation: schematic-breath 6s ease-in-out infinite;
   transform-origin: center;
 }
 
@@ -137,21 +136,17 @@
 
 .assetDot {
   fill: color-mix(in srgb, var(--text-muted) 55%, transparent);
-  opacity: 0.3;
-  animation: nominal-dot-breath 6s ease-in-out infinite;
-  animation-delay: calc(var(--dot-index, 0) * 0.35s);
+  opacity: 0.35;
 }
 
 .assetDot[data-risk="elevated"] {
   fill: var(--status-elevated);
   opacity: 0.85;
-  animation: none;
 }
 
 .assetDot[data-risk="blocking"] {
   fill: var(--status-blocking);
   opacity: 0.9;
-  animation: none;
 }
 
 .hoverHint {
@@ -210,7 +205,6 @@
   flex-shrink: 0;
   background: var(--accent-ok, #2f9e6a);
   box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok, #2f9e6a) 28%, transparent);
-  animation: live-pulse 1.6s ease-out infinite;
 }
 
 .metaRight {
