@@ -454,13 +454,19 @@ export interface EvalSummary {
   hero_t_forecast_minutes: number | null;
   hero_t_compound_minutes: number | null;
   hero_t_single_sensor_minutes: number | null;
+  /** Cases where a statutory stop-work provision applies. */
   positive_count?: number;
+  /** What the ground-truth labels are derived from. */
   label_basis?: string;
   single_sensor: DetectorSummary;
   forecast: DetectorSummary;
   compound: DetectorSummary;
   case_count: number;
   compound_only_catch_count: number;
+  // Regulatory compliance coverage.
+  regulation_coverage_pct?: number;
+  statutory_coverage_pct?: number;
+  coverage_by_standard?: Record<string, number>;
 }
 
 export function fetchEvalSummary(): Promise<EvalSummary> {
