@@ -152,3 +152,48 @@ async def test_raised_by_me_includes_decided_reviews(client: AsyncClient):
     match = next(item for item in raised.json() if item["review_id"] == review_id)
     assert match["review_state"] == "decided"
 
+
+@pytest.mark.asyncio
+async def test_zone_owner_sees_open_system_reviews(client: AsyncClient):
+    """Zone supervisors see live/system reviews in their zones before a decision."""
+    from datetime import datetime, timedelta, timezone
+
+    now = datetime.now(timezone.utc)
+    until = (now + timedelta(hours=4)).isoformat()
+    frm = now.isoformat()
+
+    r1 = await client.post(
+        "/context",
+        json={
+            "asset_id": str(VESSEL_A),
+            "category": "sensor",
+            "payload": {"gas_reading": 25.5, "unit": "ppm"},
+            "provider": "simulator",
+            "valid_from": frm,
+            "valid_until": until,
+            "confidence": 0.98,
+        },
+    )
+    assert r1.status_code == 200, r1.text
+    review = r1.json().get("review")
+    assert review is not None
+    review_id = review["id"]
+
+    login = await client.post("/auth/login", json={"actor_id": str(ASHA)})
+    assert login.status_code == 200
+
+    zone = await client.get("/reviews/in-my-zones")
+    assert zone.status_code == 200, zone.text
+    items = zone.json()
+    match = next(item for item in items if item["review_id"] == review_id)
+    assert match["source"] == "zone"
+    assert match["asset_zone"] == "coke-oven-battery"
+    assert match["raised_by_name"]
+
+    # Dev owns hazardous, not coke-oven-battery — should not see Vessel A.
+    login_dev = await client.post("/auth/login", json={"actor_id": str(DEV)})
+    assert login_dev.status_code == 200
+    zone_dev = await client.get("/reviews/in-my-zones")
+    assert zone_dev.status_code == 200
+    assert all(item["review_id"] != review_id for item in zone_dev.json())
+

@@ -30,7 +30,7 @@ from app.graph.kg import neighbors_within_radius, get_plant_graph
 from app.realtime.connection_manager import manager
 from app.reviews.ownership import get_zone_owner, resolve_worker_names
 from app.reviews.repository import get_review, transition_review
-from app.reviews.state_machine import ReviewEvent
+from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
 from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReference
 
 logger = logging.getLogger(__name__)
@@ -424,6 +424,35 @@ async def run_assessment_job(
             logger.error("review %s missing for assessment %s", review_id, assessment_id)
             return
 
+        # Review may have been decided/closed while this job was queued or mid-flight.
+        # assessment_completed is only legal from assessing — drop the job quietly.
+        if review.state != "assessing":
+            await session.execute(
+                text(
+                    """
+                    UPDATE assessments
+                    SET status = 'superseded',
+                        summary = :summary
+                    WHERE id = CAST(:id AS uuid)
+                      AND status IN ('pending', 'generating')
+                    """
+                ),
+                {
+                    "id": str(assessment_id),
+                    "summary": (
+                        f"Skipped: review left assessing (state={review.state})"
+                    ),
+                },
+            )
+            await session.commit()
+            logger.info(
+                "skip assessment %s — review %s is %s",
+                assessment_id,
+                review_id,
+                review.state,
+            )
+            return
+
         facts = await _load_true_facts(session, review.asset_id)
         context_ids = await _context_ids(session, review.asset_id)
         asset_name, asset_zone = await _load_asset(session, review.asset_id)
@@ -687,13 +716,44 @@ async def run_assessment_job(
         )
         await session.commit()
 
-        await transition_review(
-            session,
-            review_id,
-            ReviewEvent.ASSESSMENT_COMPLETED,
-            f"assessment:{generation.provider}",
-            extra_payload={"assessment_id": str(assessment_id)},
-        )
+        try:
+            await transition_review(
+                session,
+                review_id,
+                ReviewEvent.ASSESSMENT_COMPLETED,
+                f"assessment:{generation.provider}",
+                extra_payload={"assessment_id": str(assessment_id)},
+            )
+        except IllegalTransitionError as exc:
+            # Race: supervisor decided/closed (or manual assessment completed)
+            # while we were generating. Supersede this row — do not crash.
+            await session.execute(
+                text(
+                    """
+                    UPDATE assessments
+                    SET status = 'superseded',
+                        summary = COALESCE(
+                            summary,
+                            :summary
+                        )
+                    WHERE id = CAST(:id AS uuid)
+                      AND status = 'complete'
+                    """
+                ),
+                {
+                    "id": str(assessment_id),
+                    "summary": (
+                        f"Superseded after race: review left assessing ({exc})"
+                    ),
+                },
+            )
+            await session.commit()
+            logger.info(
+                "assessment %s complete but review transition skipped: %s",
+                assessment_id,
+                exc,
+            )
+            return
 
         await manager.broadcast(
             "assessment.completed",

@@ -128,6 +128,35 @@ async def test_recover_pending_reclaims_pending_and_generating(session):
 
 
 @pytest.mark.asyncio
+async def test_recover_pending_supersedes_jobs_for_non_assessing_reviews(session):
+    """Restart must not re-queue jobs whose review already left assessing."""
+    decided_id = await _make_review(session, "decided")
+    closed_id = await _make_review(session, "closed")
+    assessing_id = await _make_review(session, "assessing")
+
+    stale_pending = await _make_assessment(session, decided_id, "pending", 1)
+    stale_generating = await _make_assessment(session, closed_id, "generating", 1)
+    live = await _make_assessment(session, assessing_id, "pending", 1)
+    await session.commit()
+
+    orch = AssessmentOrchestrator()
+    recovered = await orch.recover_pending()
+    assert recovered == 1
+
+    queued: set[UUID] = set()
+    while not orch._queue.empty():
+        queued.add(orch._queue.get_nowait())
+    assert queued == {live}
+
+    for aid in (stale_pending, stale_generating):
+        row = await session.execute(
+            text("SELECT status FROM assessments WHERE id = CAST(:id AS uuid)"),
+            {"id": str(aid)},
+        )
+        assert row.scalar_one() == "superseded"
+
+
+@pytest.mark.asyncio
 async def test_recover_pending_noop_when_nothing_stuck(session):
     review_id = await _make_review(session, "pending_decision")
     await _make_assessment(session, review_id, "complete", 1)
@@ -137,3 +166,49 @@ async def test_recover_pending_noop_when_nothing_stuck(session):
     recovered = await orch.recover_pending()
     assert recovered == 0
     assert orch._queue.empty()
+
+
+@pytest.mark.asyncio
+async def test_claim_next_pending_skips_decided_reviews(session):
+    """Poll path must not claim jobs whose review already left assessing."""
+    decided_id = await _make_review(session, "decided")
+    assessing_id = await _make_review(session, "assessing")
+    stale = await _make_assessment(session, decided_id, "pending", 1)
+    live = await _make_assessment(session, assessing_id, "pending", 1)
+    await session.commit()
+
+    orch = AssessmentOrchestrator()
+    claimed = await orch.claim_next_pending()
+    assert claimed == live
+
+    row = await session.execute(
+        text("SELECT status FROM assessments WHERE id = CAST(:id AS uuid)"),
+        {"id": str(stale)},
+    )
+    assert row.scalar_one() == "superseded"
+
+    row = await session.execute(
+        text("SELECT status FROM assessments WHERE id = CAST(:id AS uuid)"),
+        {"id": str(live)},
+    )
+    assert row.scalar_one() == "generating"
+
+
+@pytest.mark.asyncio
+async def test_run_assessment_job_skips_when_review_already_decided(session):
+    """In-flight / queued job must not crash on assessment_completed after decide."""
+    from app.assessment.pipeline import run_assessment_job
+
+    review_id = await _make_review(session, "decided")
+    assessment_id = await _make_assessment(session, review_id, "generating", 1)
+    await session.commit()
+
+    await run_assessment_job(assessment_id, preclaimed=True)
+
+    row = await session.execute(
+        text("SELECT status, summary FROM assessments WHERE id = CAST(:id AS uuid)"),
+        {"id": str(assessment_id)},
+    )
+    m = row.one()._mapping
+    assert m["status"] == "superseded"
+    assert "left assessing" in (m["summary"] or "")

@@ -46,13 +46,19 @@ async def create_manual_assessment(
     )
     version = int(ver_row.scalar_one()) + 1
 
+    # Cancel in-flight AI jobs as well as prior completes — otherwise a
+    # generating worker can finish later and crash on assessment_completed.
     await session.execute(
         text(
             """
             UPDATE assessments
-            SET status = 'superseded'
+            SET status = 'superseded',
+                summary = COALESCE(
+                    summary,
+                    'Superseded by manual assessment'
+                )
             WHERE review_id = CAST(:review_id AS uuid)
-              AND status = 'complete'
+              AND status IN ('pending', 'generating', 'complete')
             """
         ),
         {"review_id": str(review_id)},

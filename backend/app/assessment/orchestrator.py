@@ -49,13 +49,48 @@ class AssessmentOrchestrator:
         Re-queue assessments stuck in pending OR generating (crash/restart recovery).
         A 'generating' row means a previous worker claimed it and died mid-job;
         reset it to pending so SKIP LOCKED claim can re-take it.
+
+        Jobs whose review has already left `assessing` are superseded — otherwise
+        restart would re-run them and crash on assessment_completed.
         """
         async with SessionLocal() as session:
+            stale = await session.execute(
+                text(
+                    """
+                    UPDATE assessments a
+                    SET status = 'superseded',
+                        summary = COALESCE(
+                            a.summary,
+                            'Skipped: review no longer assessing'
+                        )
+                    WHERE a.status IN ('pending', 'generating')
+                      AND EXISTS (
+                          SELECT 1 FROM reviews r
+                          WHERE r.id = a.review_id
+                            AND r.state <> 'assessing'
+                      )
+                    RETURNING a.id
+                    """
+                )
+            )
+            stale_ids = [row._mapping["id"] for row in stale.fetchall()]
+            if stale_ids:
+                logger.info(
+                    "superseded %d stale assessment job(s) (review left assessing)",
+                    len(stale_ids),
+                )
+
             await session.execute(
                 text(
                     """
-                    UPDATE assessments SET status = 'pending'
-                    WHERE status = 'generating'
+                    UPDATE assessments a
+                    SET status = 'pending'
+                    WHERE a.status = 'generating'
+                      AND EXISTS (
+                          SELECT 1 FROM reviews r
+                          WHERE r.id = a.review_id
+                            AND r.state = 'assessing'
+                      )
                     """
                 )
             )
@@ -63,9 +98,12 @@ class AssessmentOrchestrator:
             result = await session.execute(
                 text(
                     """
-                    SELECT id FROM assessments
-                    WHERE status = 'pending'
-                    ORDER BY created_at ASC
+                    SELECT a.id
+                    FROM assessments a
+                    JOIN reviews r ON r.id = a.review_id
+                    WHERE a.status = 'pending'
+                      AND r.state = 'assessing'
+                    ORDER BY a.created_at ASC
                     """
                 )
             )
@@ -77,17 +115,44 @@ class AssessmentOrchestrator:
         return len(ids)
 
     async def claim_next_pending(self) -> UUID | None:
-        """Atomically claim the oldest pending assessment (multi-worker safe)."""
+        """Atomically claim the oldest pending assessment (multi-worker safe).
+
+        Only claims jobs whose review is still `assessing` — otherwise a stale
+        pending row for a decided/closed review would burn a worker cycle and
+        risk an illegal assessment_completed transition.
+        """
         async with SessionLocal() as session:
+            # Drop stale pending/generating jobs before claiming.
+            await session.execute(
+                text(
+                    """
+                    UPDATE assessments a
+                    SET status = 'superseded',
+                        summary = COALESCE(
+                            a.summary,
+                            'Skipped: review no longer assessing'
+                        )
+                    WHERE a.status IN ('pending', 'generating')
+                      AND EXISTS (
+                          SELECT 1 FROM reviews r
+                          WHERE r.id = a.review_id
+                            AND r.state <> 'assessing'
+                      )
+                    """
+                )
+            )
             result = await session.execute(
                 text(
                     """
                     UPDATE assessments SET status = 'generating'
                     WHERE id = (
-                        SELECT id FROM assessments
-                        WHERE status = 'pending'
-                        ORDER BY created_at ASC
-                        FOR UPDATE SKIP LOCKED
+                        SELECT a.id
+                        FROM assessments a
+                        JOIN reviews r ON r.id = a.review_id
+                        WHERE a.status = 'pending'
+                          AND r.state = 'assessing'
+                        ORDER BY a.created_at ASC
+                        FOR UPDATE OF a SKIP LOCKED
                         LIMIT 1
                     )
                     RETURNING id
