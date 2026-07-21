@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import {
   useLiveAssetViews,
@@ -85,12 +85,6 @@ function metricsForAsset(sample: TelemetrySample) {
     });
 }
 
-function countHazardousWorkers(status: TelemetryStatusChip[]): number {
-  return status.filter(
-    (s) => s.category === "worker_location" && s.label.toLowerCase().includes("hazardous"),
-  ).length;
-}
-
 function assetLabel(
   assetId: string,
   assets: Asset[],
@@ -153,26 +147,30 @@ function groupByFloor<T>(
   return groups;
 }
 
-// ── Component ──────────────────────────────────────────────────────────────
+// ── Feed overlay (telemetry subscriptions only while open) ─────────────────
 
-export function OverviewPanel() {
+type OverviewFeedOverlayProps = {
+  kpiGrid: ReactNode;
+  overlayClosing: boolean;
+  onRequestClose: () => void;
+  onClosed: () => void;
+  onGoToAsset: (assetId: string) => void;
+};
+
+function OverviewFeedOverlay({
+  kpiGrid,
+  overlayClosing,
+  onRequestClose,
+  onClosed,
+  onGoToAsset,
+}: OverviewFeedOverlayProps) {
   const assets = useLiveStore((s) => s.assets);
-  const views = useLiveAssetViews();
   const telemetryStatus = useLiveStore((s) => s.telemetryStatus);
   const bySource = useLiveStore((s) => s.telemetryBySource);
-  const selectAsset = useLiveStore((s) => s.selectAsset);
 
-  const [overlayOpen, setOverlayOpen] = useState(false);
-  const [overlayClosing, setOverlayClosing] = useState(false);
   const [expandedSource, setExpandedSource] = useState<FeedSourceId | null>(null);
   const [paneClosing, setPaneClosing] = useState(false);
-  const [mounted, setMounted] = useState(false);
-  const afterCloseRef = useRef<(() => void) | null>(null);
   const paneSourceRef = useRef<FeedSourceId | null>(null);
-
-  useEffect(() => {
-    setMounted(true);
-  }, []);
 
   useEffect(() => {
     if (expandedSource) paneSourceRef.current = expandedSource;
@@ -207,23 +205,6 @@ export function OverviewPanel() {
   }, [scadaAssets, ptwRows, maintRows, workforceRows]);
 
   const { isNew, now } = useNewEntries(feedEntryIds);
-  const hasFreshFeed = feedEntryIds.some(isNew);
-
-  const kpis = useMemo(() => {
-    const openReviews = views.filter((v) => v.review != null && v.review.state !== "closed").length;
-    const zones = new Set<string>();
-    for (const v of views) {
-      if (isElevatedOrBlocking(v) && v.asset.zone) zones.add(v.asset.zone);
-    }
-    const peopleAtRisk = countHazardousWorkers(telemetryStatus);
-    const blockedWork = views.filter(isBlockedWork).length;
-    return [
-      { key: "open", label: "Open reviews", value: openReviews, warn: openReviews > 0 },
-      { key: "zones", label: "Zones locked", value: zones.size, warn: zones.size > 0 },
-      { key: "people", label: "People at risk", value: peopleAtRisk, warn: peopleAtRisk > 0 },
-      { key: "blocked", label: "Blocked work", value: blockedWork, warn: blockedWork > 0 },
-    ];
-  }, [views, telemetryStatus]);
 
   const categoryCards = useMemo(() => {
     const scadaElevated = scadaAssets.filter((a) =>
@@ -306,31 +287,6 @@ export function OverviewPanel() {
 
   const sampleCount = Object.keys(bySource).length;
 
-  const openMaximize = useCallback(() => {
-    afterCloseRef.current = null;
-    setExpandedSource(null);
-    setPaneClosing(false);
-    setOverlayClosing(false);
-    setOverlayOpen(true);
-  }, []);
-
-  const finishClose = useCallback(() => {
-    setOverlayOpen(false);
-    setOverlayClosing(false);
-    setExpandedSource(null);
-    setPaneClosing(false);
-    const after = afterCloseRef.current;
-    afterCloseRef.current = null;
-    after?.();
-  }, []);
-
-  const closeMaximize = useCallback(() => {
-    if (!overlayOpen || overlayClosing) return;
-    setPaneClosing(false);
-    setExpandedSource(null);
-    setOverlayClosing(true);
-  }, [overlayOpen, overlayClosing]);
-
   const collapsePane = useCallback(() => {
     if (!expandedSource || paneClosing) return;
     setPaneClosing(true);
@@ -339,21 +295,14 @@ export function OverviewPanel() {
 
   const goToAsset = useCallback(
     (assetId: string) => {
-      afterCloseRef.current = () => selectAsset(assetId);
-      if (!overlayOpen) {
-        selectAsset(assetId);
-        return;
-      }
-      if (overlayClosing) return;
       setPaneClosing(false);
       setExpandedSource(null);
-      setOverlayClosing(true);
+      onGoToAsset(assetId);
     },
-    [overlayOpen, overlayClosing, selectAsset],
+    [onGoToAsset],
   );
 
   useEffect(() => {
-    if (!overlayOpen) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
       e.preventDefault();
@@ -361,23 +310,12 @@ export function OverviewPanel() {
       if (expandedSource || paneClosing) {
         collapsePane();
       } else {
-        closeMaximize();
+        onRequestClose();
       }
     };
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
-  }, [overlayOpen, expandedSource, paneClosing, collapsePane, closeMaximize]);
-
-  const kpiGrid = (
-    <div className={styles.kpis}>
-      {kpis.map((k) => (
-        <div key={k.key} className={styles.kpi} data-warn={k.warn ? "true" : undefined}>
-          <span className={styles.kpiValue}>{k.value}</span>
-          <span className={styles.kpiLabel}>{k.label}</span>
-        </div>
-      ))}
-    </div>
-  );
+  }, [expandedSource, paneClosing, collapsePane, onRequestClose]);
 
   const expandedMeta = visiblePaneSource
     ? SOURCES.find((s) => s.id === visiblePaneSource)
@@ -601,120 +539,191 @@ export function OverviewPanel() {
     </div>
   );
 
-  const maximizedOverlay =
-    mounted && overlayOpen
-      ? createPortal(
-          <div
-            className={styles.overlay}
-            data-closing={overlayClosing ? "true" : undefined}
-            role="dialog"
-            aria-modal="true"
-            aria-label="Plant overview"
-          >
-            <div
-              className={styles.overlayPanel}
-              onAnimationEnd={(e) => {
-                if (e.target !== e.currentTarget) return;
-                if (overlayClosing) finishClose();
-              }}
+  return createPortal(
+    <div
+      className={styles.overlay}
+      data-closing={overlayClosing ? "true" : undefined}
+      role="dialog"
+      aria-modal="true"
+      aria-label="Plant overview"
+    >
+      <div
+        className={styles.overlayPanel}
+        onAnimationEnd={(e) => {
+          if (e.target !== e.currentTarget) return;
+          if (overlayClosing) onClosed();
+        }}
+      >
+        <div className={styles.header}>
+          <span className={styles.panelTitle}>
+            {expandedMeta ? expandedMeta.label : "Overview"}
+          </span>
+          {sampleCount > 0 && <span className={styles.liveDot} title="Live data" />}
+          <div className={styles.controls}>
+            <button
+              type="button"
+              className={styles.ctrl}
+              onClick={onRequestClose}
+              title="Close"
+              aria-label="Close overview"
             >
-              <div className={styles.header}>
-                <span className={styles.panelTitle}>
-                  {expandedMeta ? expandedMeta.label : "Overview"}
-                </span>
-                {sampleCount > 0 && <span className={styles.liveDot} title="Live data" />}
-                <div className={styles.controls}>
-                  <button
-                    type="button"
-                    className={styles.ctrl}
-                    onClick={closeMaximize}
-                    title="Close"
-                    aria-label="Close overview"
-                  >
-                    ⤓
-                  </button>
-                </div>
-              </div>
+              ⤓
+            </button>
+          </div>
+        </div>
 
-              <div className={styles.overlayBody}>
-                <div className={styles.section} data-recessed={visiblePaneSource ? "true" : undefined}>
-                  <div className={styles.sectionHeader}>
-                    <span className={styles.sectionMark}>Impact</span>
-                    <span className={styles.sectionTitle}>Ops KPIs</span>
-                  </div>
-                  {kpiGrid}
-                </div>
-                <div className={styles.divider} />
-                <div className={`${styles.section} ${styles.liveSection}`}>
-                  <div className={styles.sectionHeader}>
-                    <span className={styles.sectionMarkGreen}>Live</span>
-                    <span className={styles.sectionTitle}>
-                      {expandedMeta ? expandedMeta.mark : "Plant feed"}
-                    </span>
-                    <span className={styles.feedSummary}>
-                      {visiblePaneSource ? "By floor" : "All sources"}
-                    </span>
-                  </div>
-
-                  <div className={styles.feedStage}>
-                    <div className={styles.feedScroll}>{allCategoriesGrid}</div>
-
-                    {visiblePaneSource ? (
-                      <div
-                        key={visiblePaneSource}
-                        className={styles.expandPane}
-                        data-closing={paneClosing ? "true" : undefined}
-                        style={{ transformOrigin: ORIGIN_BY_SOURCE[visiblePaneSource] }}
-                        role="region"
-                        aria-label={`${expandedMeta?.label} by floor`}
-                        onAnimationEnd={(e) => {
-                          if (e.target !== e.currentTarget) return;
-                          if (paneClosing) setPaneClosing(false);
-                        }}
-                      >
-                        <div className={styles.expandPaneHead}>
-                          <button
-                            type="button"
-                            className={styles.backBtn}
-                            onClick={collapsePane}
-                            aria-label="Back to overview"
-                          >
-                            ←
-                          </button>
-                          <div className={styles.expandPaneTitles}>
-                            <span className={styles.categoryMark}>{expandedMeta?.mark}</span>
-                            <h3 className={styles.expandPaneTitle}>{expandedMeta?.label}</h3>
-                          </div>
-                          <button
-                            type="button"
-                            className={styles.ctrl}
-                            onClick={collapsePane}
-                            title="Collapse"
-                            aria-label="Collapse category"
-                          >
-                            ⤓
-                          </button>
-                        </div>
-                        <div className={styles.expandPaneBody}>{floorBoard}</div>
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
+        <div className={styles.overlayBody}>
+          <div className={styles.section} data-recessed={visiblePaneSource ? "true" : undefined}>
+            <div className={styles.sectionHeader}>
+              <span className={styles.sectionMark}>Impact</span>
+              <span className={styles.sectionTitle}>Ops KPIs</span>
             </div>
-          </div>,
-          document.body,
-        )
-      : null;
+            {kpiGrid}
+          </div>
+          <div className={styles.divider} />
+          <div className={`${styles.section} ${styles.liveSection}`}>
+            <div className={styles.sectionHeader}>
+              <span className={styles.sectionMarkGreen}>Live</span>
+              <span className={styles.sectionTitle}>
+                {expandedMeta ? expandedMeta.mark : "Plant feed"}
+              </span>
+              <span className={styles.feedSummary}>
+                {visiblePaneSource ? "By floor" : "All sources"}
+              </span>
+            </div>
+
+            <div className={styles.feedStage}>
+              <div className={styles.feedScroll}>{allCategoriesGrid}</div>
+
+              {visiblePaneSource ? (
+                <div
+                  key={visiblePaneSource}
+                  className={styles.expandPane}
+                  data-closing={paneClosing ? "true" : undefined}
+                  style={{ transformOrigin: ORIGIN_BY_SOURCE[visiblePaneSource] }}
+                  role="region"
+                  aria-label={`${expandedMeta?.label} by floor`}
+                  onAnimationEnd={(e) => {
+                    if (e.target !== e.currentTarget) return;
+                    if (paneClosing) setPaneClosing(false);
+                  }}
+                >
+                  <div className={styles.expandPaneHead}>
+                    <button
+                      type="button"
+                      className={styles.backBtn}
+                      onClick={collapsePane}
+                      aria-label="Back to overview"
+                    >
+                      ←
+                    </button>
+                    <div className={styles.expandPaneTitles}>
+                      <span className={styles.categoryMark}>{expandedMeta?.mark}</span>
+                      <h3 className={styles.expandPaneTitle}>{expandedMeta?.label}</h3>
+                    </div>
+                    <button
+                      type="button"
+                      className={styles.ctrl}
+                      onClick={collapsePane}
+                      title="Collapse"
+                      aria-label="Collapse category"
+                    >
+                      ⤓
+                    </button>
+                  </div>
+                  <div className={styles.expandPaneBody}>{floorBoard}</div>
+                </div>
+              ) : null}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>,
+    document.body,
+  );
+}
+
+// ── Shell (light subscriptions only) ───────────────────────────────────────
+
+export function OverviewPanel() {
+  const views = useLiveAssetViews();
+  const opsSummary = useLiveStore((s) => s.opsSummary);
+  const selectAsset = useLiveStore((s) => s.selectAsset);
+
+  const [overlayOpen, setOverlayOpen] = useState(false);
+  const [overlayClosing, setOverlayClosing] = useState(false);
+  const [mounted, setMounted] = useState(false);
+  const afterCloseRef = useRef<(() => void) | null>(null);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  const kpis = useMemo(() => {
+    const openReviews = views.filter((v) => v.review != null && v.review.state !== "closed").length;
+    const zones = new Set<string>();
+    for (const v of views) {
+      if (isElevatedOrBlocking(v) && v.asset.zone) zones.add(v.asset.zone);
+    }
+    const peopleAtRisk = opsSummary.peopleAtRisk;
+    const blockedWork = views.filter(isBlockedWork).length;
+    return [
+      { key: "open", label: "Open reviews", value: openReviews, warn: openReviews > 0 },
+      { key: "zones", label: "Zones locked", value: zones.size, warn: zones.size > 0 },
+      { key: "people", label: "People at risk", value: peopleAtRisk, warn: peopleAtRisk > 0 },
+      { key: "blocked", label: "Blocked work", value: blockedWork, warn: blockedWork > 0 },
+    ];
+  }, [views, opsSummary.peopleAtRisk]);
+
+  const openMaximize = useCallback(() => {
+    afterCloseRef.current = null;
+    setOverlayClosing(false);
+    setOverlayOpen(true);
+  }, []);
+
+  const finishClose = useCallback(() => {
+    setOverlayOpen(false);
+    setOverlayClosing(false);
+    const after = afterCloseRef.current;
+    afterCloseRef.current = null;
+    after?.();
+  }, []);
+
+  const closeMaximize = useCallback(() => {
+    if (!overlayOpen || overlayClosing) return;
+    setOverlayClosing(true);
+  }, [overlayOpen, overlayClosing]);
+
+  const goToAsset = useCallback(
+    (assetId: string) => {
+      afterCloseRef.current = () => selectAsset(assetId);
+      if (!overlayOpen) {
+        selectAsset(assetId);
+        return;
+      }
+      if (overlayClosing) return;
+      setOverlayClosing(true);
+    },
+    [overlayOpen, overlayClosing, selectAsset],
+  );
+
+  const kpiGrid = (
+    <div className={styles.kpis}>
+      {kpis.map((k) => (
+        <div key={k.key} className={styles.kpi} data-warn={k.warn ? "true" : undefined}>
+          <span className={styles.kpiValue}>{k.value}</span>
+          <span className={styles.kpiLabel}>{k.label}</span>
+        </div>
+      ))}
+    </div>
+  );
 
   return (
     <>
       <div className={styles.embedded} role="region" aria-label="Plant overview">
         <div className={styles.header}>
           <span className={styles.panelTitle}>Overview</span>
-          {hasFreshFeed ? (
-            <span className={styles.dot} aria-label="New data" title="New live data" />
-          ) : sampleCount > 0 ? (
+          {opsSummary.assetsWithOps > 0 ? (
             <span className={styles.liveDot} title="Live data" />
           ) : null}
           <div className={styles.controls}>
@@ -737,7 +746,15 @@ export function OverviewPanel() {
           {kpiGrid}
         </div>
       </div>
-      {maximizedOverlay}
+      {mounted && overlayOpen ? (
+        <OverviewFeedOverlay
+          kpiGrid={kpiGrid}
+          overlayClosing={overlayClosing}
+          onRequestClose={closeMaximize}
+          onClosed={finishClose}
+          onGoToAsset={goToAsset}
+        />
+      ) : null}
     </>
   );
 }

@@ -30,7 +30,7 @@
   border-radius: 50%;
   background: var(--accent-ok, #2f9e6a);
   flex-shrink: 0;
-  animation: live-pulse 1.6s ease-out infinite;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok, #2f9e6a) 28%, transparent);
 }
 
 @keyframes live-pulse {

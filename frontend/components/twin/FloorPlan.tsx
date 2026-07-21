@@ -19,6 +19,7 @@ import {
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { SpatialLinksLayer } from "./SpatialLinksLayer";
 import { AssetMarker } from "./AssetMarker";
+import markerStyles from "./AssetMarker.module.css";
 import { MAP_VIEWBOX, MAP_WORLD } from "./MapViewport";
 import { loadFloorSchematic } from "./floorPlanShared";
 import styles from "./FloorPlan.module.css";
@@ -339,10 +340,16 @@ export const FloorPlan = memo(function FloorPlan({
   showOpsLayer = false,
 }: FloorPlanProps) {
   const [schematic, setSchematic] = useState<string>("");
-  const [hoveredAssetId, setHoveredAssetId] = useState<string | null>(null);
-  const [hoverTip, setHoverTip] = useState<HoverTip | null>(null);
   const [mounted, setMounted] = useState(false);
   const pointerDownRef = useRef<{ x: number; y: number } | null>(null);
+  const tipRef = useRef<HTMLDivElement | null>(null);
+  const tipNameRef = useRef<HTMLSpanElement | null>(null);
+  const tipSepRef = useRef<HTMLSpanElement | null>(null);
+  const tipOpsRef = useRef<HTMLSpanElement | null>(null);
+  const tipRiskRef = useRef<HTMLSpanElement | null>(null);
+  const tipFreshRef = useRef<HTMLSpanElement | null>(null);
+  const markerEls = useRef(new Map<string, SVGGElement>());
+  const hoveredAssetIdRef = useRef<string | null>(null);
 
   const floorEntries = useMemo(
     () =>
@@ -376,6 +383,63 @@ export const FloorPlan = memo(function FloorPlan({
     };
   }, [floor]);
 
+  const clearMarkerHover = () => {
+    const prev = hoveredAssetIdRef.current;
+    if (!prev) return;
+    markerEls.current.get(prev)?.classList.remove(markerStyles.hovered);
+    hoveredAssetIdRef.current = null;
+  };
+
+  const paintTip = (tip: HoverTip | null) => {
+    const root = tipRef.current;
+    if (!root) return;
+
+    clearMarkerHover();
+
+    if (!tip) {
+      root.style.visibility = "hidden";
+      root.dataset.visible = "false";
+      delete root.dataset.risk;
+      delete root.dataset.kind;
+      delete root.dataset.place;
+      delete root.dataset.fresh;
+      return;
+    }
+
+    hoveredAssetIdRef.current = tip.assetId;
+    markerEls.current.get(tip.assetId)?.classList.add(markerStyles.hovered);
+
+    const isOps = Boolean(tip.opsDetail);
+    if (isOps) {
+      delete root.dataset.risk;
+      root.dataset.kind = "ops";
+    } else {
+      root.dataset.risk = tip.riskLabel;
+      root.dataset.kind = "risk";
+    }
+    root.dataset.place = tip.place;
+    if (tip.fresh) root.dataset.fresh = "true";
+    else delete root.dataset.fresh;
+
+    root.style.left = `${Math.min(Math.max(tip.x, 12), window.innerWidth - 12)}px`;
+    root.style.top = `${tip.y}px`;
+    root.style.visibility = "visible";
+    root.dataset.visible = "true";
+
+    if (tipNameRef.current) tipNameRef.current.textContent = tip.label;
+
+    if (tipSepRef.current) tipSepRef.current.hidden = !isOps;
+    if (tipOpsRef.current) {
+      tipOpsRef.current.hidden = !isOps;
+      tipOpsRef.current.textContent = tip.opsDetail ?? "";
+    }
+    if (tipRiskRef.current) {
+      tipRiskRef.current.hidden = isOps;
+      tipRiskRef.current.textContent = tip.riskLabel;
+    }
+    if (tipFreshRef.current) tipFreshRef.current.hidden = !tip.fresh;
+  };
+
   const showTipOnEnter = (
     assetId: string,
     entry: FloorEntry,
@@ -385,13 +449,12 @@ export const FloorPlan = memo(function FloorPlan({
     target: EventTarget | null,
   ) => {
     if (!(target instanceof SVGGraphicsElement)) return;
-    setHoveredAssetId(assetId);
-    setHoverTip(tipFromTarget(assetId, entry, risk, resolved, fresh, target));
+    paintTip(tipFromTarget(assetId, entry, risk, resolved, fresh, target));
   };
 
   const clearTip = (assetId: string) => {
-    setHoveredAssetId((cur) => (cur === assetId ? null : cur));
-    setHoverTip((cur) => (cur?.assetId === assetId ? null : cur));
+    if (hoveredAssetIdRef.current !== assetId) return;
+    paintTip(null);
   };
 
   const onCanvasPointerDown = (e: PointerEvent) => {
@@ -520,6 +583,10 @@ export const FloorPlan = memo(function FloorPlan({
           return (
             <AssetMarker
               key={assetId}
+              ref={(node) => {
+                if (node) markerEls.current.set(assetId, node);
+                else markerEls.current.delete(assetId);
+              }}
               id={assetId}
               label={entry.label}
               x={entry.x}
@@ -529,7 +596,6 @@ export const FloorPlan = memo(function FloorPlan({
               resolved={resolved}
               fresh={fresh}
               selected={selectedAssetId === assetId}
-              hovered={hoveredAssetId === assetId}
               onSelect={onSelectAsset}
             />
           );
@@ -553,10 +619,7 @@ export const FloorPlan = memo(function FloorPlan({
                   assetLabel={entry.label}
                   risk={risk}
                   onSelect={onSelectAsset}
-                  onHover={(tip) => {
-                    setHoveredAssetId(assetId);
-                    setHoverTip(tip);
-                  }}
+                  onHover={paintTip}
                   onLeave={clearTip}
                 />
               );
@@ -567,40 +630,29 @@ export const FloorPlan = memo(function FloorPlan({
       <SpatialLinksLayer links={spatialLinks} />
 
       {mounted &&
-        hoverTip &&
         createPortal(
           <div
+            ref={tipRef}
             className={styles.tooltip}
-            data-risk={hoverTip.opsDetail ? undefined : hoverTip.riskLabel}
-            data-kind={hoverTip.opsDetail ? "ops" : "risk"}
-            data-place={hoverTip.place}
-            data-fresh={hoverTip.fresh ? "true" : undefined}
-            style={{
-              left: Math.min(
-                Math.max(hoverTip.x, 12),
-                typeof window !== "undefined" ? window.innerWidth - 12 : hoverTip.x,
-              ),
-              top: hoverTip.y,
-            }}
+            data-visible="false"
+            style={{ visibility: "hidden", left: 0, top: 0 }}
             role="tooltip"
           >
             <span className={styles.tooltipDot} aria-hidden />
-            <span className={styles.tooltipName}>{hoverTip.label}</span>
-            {hoverTip.opsDetail ? (
-              <>
-                <span className={styles.tooltipSep} aria-hidden>
-                  ·
-                </span>
-                <span className={styles.tooltipOps}>{hoverTip.opsDetail}</span>
-              </>
-            ) : (
-              <span className={styles.tooltipRisk}>{hoverTip.riskLabel}</span>
-            )}
-            {hoverTip.fresh ? (
-              <span className={styles.tooltipFresh} aria-label="New data">
-                New
-              </span>
-            ) : null}
+            <span ref={tipNameRef} className={styles.tooltipName} />
+            <span ref={tipSepRef} className={styles.tooltipSep} aria-hidden hidden>
+              ·
+            </span>
+            <span ref={tipOpsRef} className={styles.tooltipOps} hidden />
+            <span ref={tipRiskRef} className={styles.tooltipRisk} hidden />
+            <span
+              ref={tipFreshRef}
+              className={styles.tooltipFresh}
+              aria-label="New data"
+              hidden
+            >
+              New
+            </span>
           </div>,
           document.body,
         )}

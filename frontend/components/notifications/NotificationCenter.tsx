@@ -13,8 +13,12 @@ import {
   isAlertNotification,
   presentNotification,
 } from "@/lib/notificationPresentation";
+import type { Notification } from "@/shared/schemas";
 import { relativeTime } from "@/lib/relativeTime";
 import styles from "./NotificationCenter.module.css";
+
+const EMPTY_NOTIFICATIONS: Notification[] = [];
+const EMPTY_UNREAD_IDS: string[] = [];
 
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
@@ -22,26 +26,42 @@ export function NotificationCenter() {
   const panelId = useId();
 
   const actor = getActorFromCookie();
+  const actorId = actor?.id ?? null;
 
   const dndEnabled = useDndMode((s) => s.enabled);
   const hydrateDnd = useDndMode((s) => s.hydrate);
   const setDndEnabled = useDndMode((s) => s.setEnabled);
 
-  const notifications = useLiveStore((s) => s.notifications);
-  const unreadIds = useLiveStore((s) => s.unreadNotificationIds);
+  /** Number-stable: re-render only when badge count changes. */
+  const unreadCount = useLiveStore((s) => {
+    if (dndEnabled) return 0;
+    const unread = new Set(s.unreadNotificationIds);
+    let n = 0;
+    for (const notif of s.notifications) {
+      if (!unread.has(notif.id)) continue;
+      if (actorId != null && !notif.recipient_ids.includes(actorId)) continue;
+      if (isAlertNotification(notif)) n += 1;
+    }
+    return n;
+  });
+
+  /** Closed: skip list subscription so WS notification floods don't rebuild the trigger. */
+  const notifications = useLiveStore((s) =>
+    open ? s.notifications : EMPTY_NOTIFICATIONS,
+  );
+  const unreadIds = useLiveStore((s) =>
+    open ? s.unreadNotificationIds : EMPTY_UNREAD_IDS,
+  );
   const markRead = useLiveStore((s) => s.markNotificationsRead);
   const dismissNotification = useLiveStore((s) => s.dismissNotification);
   const clearNotifications = useLiveStore((s) => s.clearNotifications);
 
   const visibleNotifications =
-    actor?.id != null
-      ? notifications.filter((n) => n.recipient_ids.includes(actor.id))
+    actorId != null
+      ? notifications.filter((n) => n.recipient_ids.includes(actorId))
       : notifications;
 
   const alerts = visibleNotifications.filter(isAlertNotification);
-  const unreadCount = dndEnabled
-    ? 0
-    : unreadIds.filter((id) => alerts.some((n) => n.id === id)).length;
 
   useEffect(() => {
     hydrateDnd();

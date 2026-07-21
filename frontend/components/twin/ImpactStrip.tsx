@@ -12,19 +12,9 @@ interface ImpactStripProps {
   shiftForDrawer?: boolean;
 }
 
-function countHazardousWorkers(
-  status: { category: string; label: string }[],
-): number {
-  return status.filter(
-    (s) =>
-      s.category === "worker_location" &&
-      s.label.toLowerCase().includes("hazardous"),
-  ).length;
-}
-
 export function ImpactStrip({ shiftForDrawer = false }: ImpactStripProps) {
   const views = useLiveAssetViews();
-  const telemetryStatus = useLiveStore((s) => s.telemetryStatus);
+  const opsSummary = useLiveStore((s) => s.opsSummary);
 
   const kpis = useMemo(() => {
     const openReviews = views.filter(
@@ -37,7 +27,7 @@ export function ImpactStrip({ shiftForDrawer = false }: ImpactStripProps) {
       if (v.asset.zone) zones.add(v.asset.zone);
     }
 
-    const peopleAtRisk = countHazardousWorkers(telemetryStatus);
+    const peopleAtRisk = opsSummary.peopleAtRisk;
     const blockedWork = views.filter(isBlockedWork).length;
 
     return [
@@ -66,7 +56,7 @@ export function ImpactStrip({ shiftForDrawer = false }: ImpactStripProps) {
         warn: blockedWork > 0,
       },
     ];
-  }, [views, telemetryStatus]);
+  }, [views, opsSummary]);
 
   return (
     <div

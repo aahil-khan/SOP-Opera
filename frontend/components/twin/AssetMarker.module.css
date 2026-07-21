@@ -62,7 +62,10 @@
   fill: var(--status-critical);
 }
 
-.marker.hovered .disk {
+.marker.hovered .disk,
+.marker:focus-visible .disk {
+  stroke: var(--accent-selection);
+  stroke-width: 2;
   /* Pause the idle breathing loop so the hover grow reads as a deliberate response. */
   animation: none;
   transform: scale(1.22);

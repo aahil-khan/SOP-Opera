@@ -16,7 +16,6 @@ import {
   useLiveStore,
 } from "@/lib/liveStore";
 import { columnForView } from "@/lib/openWork";
-import { countAssetsWithOps } from "@/lib/opsChips";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { buildFloorSpatialLinks } from "@/lib/riskHeatmap";
 import { useNewEntries } from "@/lib/useNewEntries";
@@ -109,6 +108,7 @@ export function DigitalTwin() {
   const assetPanelMode = useLiveStore((s) => s.assetPanelMode);
   const selectAsset = useLiveStore((s) => s.selectAsset);
   const opsChipsByAsset = useLiveStore((s) => s.opsChipsByAsset);
+  const opsAssetCount = useLiveStore((s) => s.opsSummary.assetsWithOps);
 
   const mapRef = useRef<MapViewportHandle>(null);
   const floorTablistRef = useRef<HTMLDivElement>(null);
@@ -174,11 +174,6 @@ export function DigitalTwin() {
       return next;
     });
   }, []);
-
-  const opsAssetCount = useMemo(
-    () => countAssetsWithOps(opsChipsByAsset),
-    [opsChipsByAsset],
-  );
 
   const handleStartShift = useCallback(
     (attentionAssetId: string | null) => {
