@@ -7,7 +7,10 @@ from typing import Any
 from app.agents.events import make_step
 from app.agents.state import AgentObservation, AgentState
 
-# Offline / mock fallbacks when retrieval refs are empty (still demo-visible)
+# Offline fallbacks shown when retrieval returns nothing. These are illustrative
+# pattern notes, not retrieved documents, and are labelled as such — they
+# deliberately carry NO similarity score, because a hardcoded score displayed next
+# to hardcoded text reads as a real vector match and is not one.
 FACT_PATTERN_ECHO: dict[str, dict[str, Any]] = {
     "elevated_gas": {
         "title": "VSP-pattern near-miss (gas + work authorization)",
@@ -15,8 +18,7 @@ FACT_PATTERN_ECHO: dict[str, dict[str, Any]] = {
             "Elevated CO on coke oven battery coincided with active hot-work permit — "
             "pattern echoed in Visakhapatnam Steel Plant 2025 investigations."
         ),
-        "retrieval_path": "deterministic",
-        "score": 0.91,
+        "retrieval_path": "illustrative",
         "triggered_by_fact": "elevated_gas",
     },
     "zone_occupied": {
@@ -25,8 +27,7 @@ FACT_PATTERN_ECHO: dict[str, dict[str, Any]] = {
             "Workers remained in hazardous zone during gas alarm; "
             "alarm was ignored for 4 minutes."
         ),
-        "retrieval_path": "deterministic",
-        "score": 0.88,
+        "retrieval_path": "illustrative",
         "triggered_by_fact": "zone_occupied",
     },
     "permit_conflict": {
@@ -35,8 +36,7 @@ FACT_PATTERN_ECHO: dict[str, dict[str, Any]] = {
             "Conflicting permits on the same asset preceded an uncontrolled "
             "interaction between work parties."
         ),
-        "retrieval_path": "deterministic",
-        "score": 0.84,
+        "retrieval_path": "illustrative",
         "triggered_by_fact": "permit_conflict",
     },
     "simultaneous_ops": {
@@ -44,8 +44,7 @@ FACT_PATTERN_ECHO: dict[str, dict[str, Any]] = {
         "snippet": (
             "Simultaneous crane lift and hot work caused sparks to enter a live process area."
         ),
-        "retrieval_path": "deterministic",
-        "score": 0.86,
+        "retrieval_path": "illustrative",
         "triggered_by_fact": "simultaneous_ops",
     },
 }

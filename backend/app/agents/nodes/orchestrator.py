@@ -11,6 +11,7 @@ from app.agents.llm import get_chat_model, model_label, provider_label, usage_re
 from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
+from app.assessment.citations import check_citations, strip_unsupported
 from app.assessment.providers.mock import FACT_RECOMMENDATIONS
 from app.reviews.concerns import SUPERVISOR_FACT_TYPES
 from app.risk import policy as risk_policy
@@ -439,6 +440,29 @@ async def orchestrator_agent(
                     },
                 ).model_dump()
             )
+
+    # A summary may only cite references that were actually retrieved. Anything
+    # else is an invented attribution — strip it and record the discrepancy rather
+    # than persisting a clause the evidence panel does not contain.
+    citation_check = check_citations(summary, list(state.get("retrieved_references") or []))
+    if not citation_check.ok:
+        summary = strip_unsupported(summary, citation_check.unsupported)
+        fallback_steps.append(
+            make_step(
+                "orchestrator",
+                "error",
+                (
+                    "Removed unsupported citation(s) from the summary: "
+                    + ", ".join(citation_check.unsupported)
+                ),
+                review_id=review_id,
+                assessment_id=assessment_id,
+                detail={
+                    "unsupported_citations": list(citation_check.unsupported),
+                    "supported_citations": list(citation_check.supported),
+                },
+            ).model_dump()
+        )
 
     recs = _recommendations(
         grounded,
