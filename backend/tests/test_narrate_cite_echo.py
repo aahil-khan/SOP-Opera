@@ -179,6 +179,66 @@ def test_build_summary_prompt_includes_refs_and_fuse_instruction():
     assert "scada: SCADA: elevated gas." in prompt.lower() or "scada:" in prompt.lower()
 
 
+def test_build_summary_prompt_supervisor_only_uses_tight_prompt():
+    state = _base_state(
+        fact_types=["supervisor_safety_hazard"],
+        asset_name="Gas Cleaning Plant",
+        context_entries=[
+            {
+                "category": "supervisor_report",
+                "payload": {
+                    "description": "one of the valves is leaking",
+                    "reported_by": "Asha Rao",
+                    "concern_type": "safety_hazard",
+                },
+                "valid_from": "2026-01-01T00:00:00Z",
+            }
+        ],
+        observations=[],
+    )
+    prompt = _build_summary_prompt(
+        state, ["supervisor_safety_hazard"], "blocking", []
+    )
+    assert "synthesize the compound risk in 3-5 sentences" not in prompt.lower()
+    assert "do not invent" in prompt.lower()
+    assert "one of the valves is leaking" in prompt
+    assert "Asha Rao" in prompt
+
+
+def test_build_summary_prompt_mixed_facts_keeps_compound_mode():
+    state = _base_state(
+        fact_types=["supervisor_safety_hazard", "elevated_gas"],
+        context_entries=[
+            {
+                "category": "supervisor_report",
+                "payload": {
+                    "description": "one of the valves is leaking",
+                    "reported_by": "Asha Rao",
+                    "concern_type": "safety_hazard",
+                },
+                "valid_from": "2026-01-01T00:00:00Z",
+            }
+        ],
+        observations=[
+            {
+                "agent": "scada",
+                "observation": "Gas reading exceeds action threshold.",
+                "local_risk": "elevated",
+                "fact_types": ["elevated_gas"],
+                "detail": {},
+            }
+        ],
+    )
+    prompt = _build_summary_prompt(
+        state,
+        ["supervisor_safety_hazard", "elevated_gas"],
+        "blocking",
+        state["observations"],
+    )
+    assert "synthesize the compound risk in 3-5 sentences" in prompt.lower()
+    assert "do not invent additional causes" in prompt.lower()
+
+
 def test_mock_summary_appends_incident_title():
     state = _base_state(
         retrieved_references=[

@@ -9,7 +9,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context.derived_facts import compute_and_persist
 from app.context.schemas import ContextIn, ContextIngestResult
-from app.reviews.service import handle_context_change
+from app.reviews.ownership import resolve_worker_names
 from shared.python.schemas import Asset, Context
 
 
@@ -17,6 +17,30 @@ class AssetNotFoundError(Exception):
     def __init__(self, asset_id: UUID) -> None:
         self.asset_id = asset_id
         super().__init__(f"Asset {asset_id} not found")
+
+
+async def _enrich_worker_names(
+    session: AsyncSession, entries: list[Context]
+) -> list[Context]:
+    worker_ids = [
+        str(e.payload.get("worker_id"))
+        for e in entries
+        if e.category in ("worker_location", "certification")
+        and isinstance(e.payload, dict)
+        and e.payload.get("worker_id")
+    ]
+    name_map = await resolve_worker_names(session, worker_ids)
+    if not name_map:
+        return entries
+
+    enriched: list[Context] = []
+    for e in entries:
+        payload = dict(e.payload)
+        wid = payload.get("worker_id")
+        if wid and str(wid) in name_map:
+            payload["worker_name"] = name_map[str(wid)]
+        enriched.append(e.model_copy(update={"payload": payload}))
+    return enriched
 
 
 async def asset_exists(session: AsyncSession, asset_id: UUID) -> bool:
@@ -83,10 +107,14 @@ async def ingest_context(
         valid_until=m["valid_until"],
         confidence=float(m["confidence"]),
     )
+    context = (await _enrich_worker_names(session, [context]))[0]
 
     facts, changed = await compute_and_persist(
         session, body.asset_id, now=now
     )
+    # Deferred to avoid circular import with reviews → decisions → simulator → context.
+    from app.reviews.service import handle_context_change
+
     review = await handle_context_change(
         session, body.asset_id, changed, facts, actor=f"provider:{body.provider}"
     )
@@ -175,4 +203,4 @@ async def list_asset_context(
                 confidence=float(m["confidence"]),
             )
         )
-    return out
+    return await _enrich_worker_names(session, out)

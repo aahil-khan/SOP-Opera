@@ -17,6 +17,24 @@ FLOOR_ORDER = {"ground": 0, "first": 1, "second": 2}
 FLOOR_PLAN_PATH = Path(__file__).resolve().parent / "floor_plan_map.json"
 
 
+def resolve_relation_for_focus(
+    relation: str,
+    *,
+    focus_floor: str,
+    other_floor: str,
+) -> str:
+    """Turn undirected vertical adjacency into NEAR | ABOVE | BELOW from focus."""
+    if relation != "ABOVE":
+        return relation
+    focus_idx = FLOOR_ORDER.get(str(focus_floor), 0)
+    other_idx = FLOOR_ORDER.get(str(other_floor), 0)
+    if focus_idx == other_idx:
+        return "NEAR"
+    if focus_idx < other_idx:
+        return "ABOVE"
+    return "BELOW"
+
+
 @dataclass(frozen=True)
 class SpatialLink:
     """A proximity / vertical adjacency finding between two assets."""
@@ -147,13 +165,19 @@ def neighbors_within_radius(
         nd = g.nodes[nbr]
         if nd.get("kind") != "asset":
             continue
+        other_floor = str(nd.get("floor") or "ground")
+        focus_floor = str(g.nodes[node].get("floor") or "ground")
         out.append(
             {
                 "asset_id": nd["asset_id"],
                 "label": nd.get("label"),
                 "zone": nd.get("zone"),
-                "floor": nd.get("floor"),
-                "relation": rel,
+                "floor": other_floor,
+                "relation": resolve_relation_for_focus(
+                    str(rel),
+                    focus_floor=focus_floor,
+                    other_floor=other_floor,
+                ),
                 "distance_m": dist,
                 "floors_apart": int(edata.get("floors_apart") or 0),
             }
@@ -220,6 +244,15 @@ def find_spatial_cooccurrences(
             if key in seen:
                 continue
             seen.add(key)
+            gas_node = graph.nodes[asset_node(gas_id)]
+            hot_node = graph.nodes[asset_node(other)]
+            gas_floor = str(gas_node.get("floor") or "ground")
+            hot_floor = str(hot_node.get("floor") or "ground")
+            vertical = resolve_relation_for_focus(
+                str(nbr["relation"]),
+                focus_floor=hot_floor,
+                other_floor=gas_floor,
+            )
             links.append(
                 SpatialLink(
                     from_asset_id=gas_id,
@@ -232,7 +265,7 @@ def find_spatial_cooccurrences(
                     reason=(
                         f"Hot work at {label_of(other)} is {nbr['distance_m']:.1f}m "
                         f"from gas spike at {label_of(gas_id)} "
-                        f"({nbr['relation']}, floors_apart={nbr['floors_apart']})"
+                        f"({vertical}, floors_apart={nbr['floors_apart']})"
                     ),
                 )
             )
@@ -250,6 +283,15 @@ def find_spatial_cooccurrences(
                 if key in seen:
                     continue
                 seen.add(key)
+                focus_node = graph.nodes[asset_node(focus_asset_id)]
+                gas_node = graph.nodes[asset_node(gas_id)]
+                focus_floor = str(focus_node.get("floor") or "ground")
+                gas_floor = str(gas_node.get("floor") or "ground")
+                vertical = resolve_relation_for_focus(
+                    str(nbr["relation"]),
+                    focus_floor=focus_floor,
+                    other_floor=gas_floor,
+                )
                 links.append(
                     SpatialLink(
                         from_asset_id=gas_id,
@@ -261,7 +303,8 @@ def find_spatial_cooccurrences(
                         floors_apart=int(nbr["floors_apart"]),
                         reason=(
                             f"Focus asset hot work within {nbr['distance_m']:.1f}m "
-                            f"of gas at {label_of(gas_id)}"
+                            f"of gas at {label_of(gas_id)} ({vertical}, "
+                            f"floors_apart={nbr['floors_apart']})"
                         ),
                     )
                 )

@@ -406,6 +406,34 @@ def rule_lifting_operation_conflict(
     )
 
 
+def rule_supervisor_floor_report(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+) -> DerivedFact | None:
+    hits = [
+        e
+        for e in entries
+        if e.category == "supervisor_report"
+        and isinstance(e.payload.get("description"), str)
+        and e.payload.get("description", "").strip()
+    ]
+    if not hits:
+        return None
+    latest = max(hits, key=lambda e: e.valid_from)
+    from app.reviews.concerns import fact_type_for_concern, normalize_concern_type
+
+    concern = normalize_concern_type(latest.payload.get("concern_type"))
+    fact_type = fact_type_for_concern(concern)
+    return _fact(
+        latest.asset_id,
+        fact_type,
+        True,
+        [latest.id],
+        now,
+    )
+
+
 def rule_weather_hold(
     entries: list[ContextEntryView],
     *,
@@ -502,6 +530,7 @@ DERIVED_FACT_RULES: list[tuple[str, RuleFn]] = [
     ("ppe_noncompliance", rule_ppe_noncompliance),
     ("lifting_operation_conflict", rule_lifting_operation_conflict),
     ("weather_hold", rule_weather_hold),
+    ("supervisor_floor_report", rule_supervisor_floor_report),
 ]
 
 
@@ -656,9 +685,10 @@ async def compute_and_persist(
 
     import json
 
-    for fact_type, fact in evaluations.items():
+    for rule_name, fact in evaluations.items():
+        resolved_type = fact.fact_type if fact is not None else rule_name
         new_value = True if fact is not None else False
-        previous = await _latest_fact_value(session, asset_id, fact_type)
+        previous = await _latest_fact_value(session, asset_id, resolved_type)
 
         if previous is None and not new_value:
             # Never seen + still false → nothing material happened.
@@ -685,7 +715,7 @@ async def compute_and_persist(
                 ),
                 {
                     "asset_id": str(asset_id),
-                    "fact_type": fact_type,
+                    "fact_type": resolved_type,
                     "value": json.dumps(new_value),
                     "computed_at": now,
                     "source_ids": [str(i) for i in source_ids],
@@ -701,7 +731,7 @@ async def compute_and_persist(
                 computed_at=m["computed_at"],
                 source_context_ids=list(m["source_context_ids"] or []),
             )
-            changed.append(fact_type)
+            changed.append(resolved_type)
             if new_value:
                 current.append(stored)
         elif new_value and fact is not None:
@@ -717,7 +747,7 @@ async def compute_and_persist(
                     LIMIT 1
                     """
                 ),
-                {"asset_id": str(asset_id), "fact_type": fact_type},
+                {"asset_id": str(asset_id), "fact_type": resolved_type},
             )
             r = prev_row.one()
             m = r._mapping

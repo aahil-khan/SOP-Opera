@@ -12,6 +12,7 @@ from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
 from app.assessment.providers.mock import COMPOUND_TRIO, CRITICAL_SENSOR_FACTS, FACT_RECOMMENDATIONS
+from app.reviews.concerns import BLOCKING_SUPERVISOR_FACTS, SUPERVISOR_FACT_TYPES
 from app.assessment.schemas import AssessmentResult
 from app.core.config import get_settings
 from app.context.lead_time import compute_lead_time_for_verdict
@@ -27,6 +28,10 @@ def _fuse_risk(grounded: list[str], observations: list[dict[str, Any]]) -> str:
     )
     if rule_facts & CRITICAL_SENSOR_FACTS:
         return "blocking"
+    if rule_facts & BLOCKING_SUPERVISOR_FACTS:
+        return "blocking"
+    if rule_facts & SUPERVISOR_FACT_TYPES:
+        return "elevated"
     if COMPOUND_TRIO.issubset(rule_facts) or len(rule_facts) >= 3:
         return "blocking"
     # Spatial hot-work near gas + at least one grounded process/people fact → block
@@ -169,6 +174,54 @@ def _format_ref_line(r: dict[str, Any]) -> str:
     return " | ".join(bits)
 
 
+def _supervisor_only_grounded(grounded: list[str]) -> bool:
+    """True when every grounded fact came from a supervisor floor report."""
+    rule_facts = [f for f in grounded if f != "spatial_cooccurrence"]
+    return bool(rule_facts) and all(f in SUPERVISOR_FACT_TYPES for f in rule_facts)
+
+
+def _supervisor_report_anchor(state: AgentState, grounded: list[str]) -> str | None:
+    from app.assessment.reasoning import format_fact_detail
+
+    asset = str(state.get("asset_name") or "this asset")
+    entries = list(state.get("context_entries") or [])
+    supervisor_facts = sorted(f for f in grounded if f in SUPERVISOR_FACT_TYPES)
+    if not supervisor_facts:
+        return None
+    return format_fact_detail(supervisor_facts[0], entries, asset_name=asset)
+
+
+def _build_supervisor_summary_prompt(
+    state: AgentState,
+    grounded: list[str],
+    risk: str,
+    report_anchor: str,
+) -> str:
+    citations = _pick_citation_refs(list(state.get("retrieved_references") or []))
+    if citations:
+        ref_block = "Retrieved context (cite at most one title/code only if directly relevant):\n" + "\n".join(
+            f"- {_format_ref_line(r)}" for r in citations
+        )
+    else:
+        ref_block = "Retrieved context: (none)"
+
+    return (
+        "You are an industrial safety orchestrator.\n"
+        "A floor supervisor filed the report below. Write 1-2 plain sentences for the operator.\n"
+        "Rules:\n"
+        "- Restate only what is in the supervisor report and grounded facts.\n"
+        "- Do NOT invent causes, root causes, workflow impacts, communication gaps, "
+        "or 'compounded risk' language.\n"
+        "- Do NOT speculate about accidents, inefficiencies, or missing protocols.\n"
+        "- Never invent references or facts not listed.\n\n"
+        f"Asset: {state.get('asset_name')} zone={state.get('asset_zone')}\n"
+        f"Grounded facts: {grounded}\n"
+        f"Fused risk: {risk}\n"
+        f"Supervisor report: {report_anchor}\n\n"
+        f"{ref_block}\n"
+    )
+
+
 def _build_summary_prompt(
     state: AgentState,
     grounded: list[str],
@@ -176,6 +229,11 @@ def _build_summary_prompt(
     observations: list[dict[str, Any]],
 ) -> str:
     """Compose orch LLM prompt: fuse domain narratives; cite retrieved refs."""
+    if _supervisor_only_grounded(grounded):
+        anchor = _supervisor_report_anchor(state, grounded)
+        if anchor:
+            return _build_supervisor_summary_prompt(state, grounded, risk, anchor)
+
     obs_lines = "\n".join(
         f"- {o.get('agent')}: {o.get('observation')}" for o in observations
     )
@@ -187,11 +245,20 @@ def _build_summary_prompt(
     else:
         ref_block = "Retrieved context: (none)"
 
+    supervisor_facts = [f for f in grounded if f in SUPERVISOR_FACT_TYPES]
+    supervisor_guard = ""
+    if supervisor_facts:
+        supervisor_guard = (
+            "When supervisor_report facts are present, quote the supervisor's observation; "
+            "do not invent additional causes beyond the listed observations and facts.\n"
+        )
+
     return (
         "You are an industrial safety orchestrator.\n"
         "Domain observations below are already domain-specific narratives — "
         "synthesize the compound risk in 3-5 sentences. "
         "Do not paste domain observations back verbatim. "
+        f"{supervisor_guard}"
         "Cite at most the retrieved titles/codes when relevant; "
         "never invent references or facts not listed.\n\n"
         f"Asset: {state.get('asset_name')} zone={state.get('asset_zone')}\n"

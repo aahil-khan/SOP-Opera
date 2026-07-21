@@ -184,3 +184,15 @@ def test_forecast_alarm_fires_on_rising_subcritical_signal():
         _gas_entry(37.0, offset_seconds=120),
     ]
     assert forecast_alarm(entries) is True
+
+
+def test_build_eval_summary_matches_report_headlines():
+    from app.eval.service import build_eval_summary
+
+    summary = build_eval_summary()
+    assert summary.fn_reduction_pct == 100.0
+    assert summary.compound.false_negative_rate == 0.0
+    assert summary.single_sensor.false_negative_rate > 0.5
+    assert summary.hero_lead_time_seconds == 18.0
+    assert summary.case_count > 0
+    assert summary.compound_only_catch_count > 0

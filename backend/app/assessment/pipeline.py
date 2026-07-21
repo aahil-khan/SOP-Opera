@@ -354,7 +354,10 @@ async def _persist_metadata(
 
 
 async def run_assessment_job(
-    assessment_id: UUID, *, provider_name: str | None = None
+    assessment_id: UUID,
+    *,
+    provider_name: str | None = None,
+    preclaimed: bool = False,
 ) -> None:
     settings = get_settings()
     async with SessionLocal() as session:
@@ -373,23 +376,48 @@ async def run_assessment_job(
             logger.warning("assessment %s not found", assessment_id)
             return
         am = assessment._mapping
-        if am["status"] not in ("pending", "generating"):
+        status = am["status"]
+        if status not in ("pending", "generating"):
             logger.info(
-                "skip assessment %s — status=%s", assessment_id, am["status"]
+                "skip assessment %s — status=%s", assessment_id, status
             )
             return
 
-        review_id = am["review_id"]
-        await session.execute(
-            text(
-                """
-                UPDATE assessments SET status = 'generating'
-                WHERE id = CAST(:id AS uuid)
-                """
-            ),
-            {"id": str(assessment_id)},
-        )
-        await session.commit()
+        if preclaimed:
+            if status != "generating":
+                logger.info(
+                    "skip assessment %s — preclaimed but status=%s",
+                    assessment_id,
+                    status,
+                )
+                return
+            review_id = am["review_id"]
+        else:
+            # Durable claim — only one worker wins (pending → generating).
+            claimed = await session.execute(
+                text(
+                    """
+                    UPDATE assessments SET status = 'generating'
+                    WHERE id = (
+                        SELECT id FROM assessments
+                        WHERE id = CAST(:id AS uuid)
+                          AND status = 'pending'
+                        FOR UPDATE SKIP LOCKED
+                    )
+                    RETURNING id, review_id
+                    """
+                ),
+                {"id": str(assessment_id)},
+            )
+            claim_row = claimed.first()
+            if claim_row is None:
+                logger.info(
+                    "skip assessment %s — already claimed or not pending",
+                    assessment_id,
+                )
+                return
+            await session.commit()
+            review_id = claim_row._mapping["review_id"]
 
         review = await get_review(session, review_id)
         if review is None:

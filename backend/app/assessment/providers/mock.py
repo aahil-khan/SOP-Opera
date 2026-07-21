@@ -8,6 +8,8 @@ from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedRefere
 
 from app.assessment.schemas import AssessmentResult, ProviderGeneration
 
+from app.reviews.concerns import BLOCKING_SUPERVISOR_FACTS, SUPERVISOR_FACT_TYPES
+
 COMPOUND_TRIO = frozenset({"elevated_gas", "permit_conflict", "zone_occupied"})
 CRITICAL_SENSOR_FACTS = frozenset({"critical_gas", "critical_temperature"})
 
@@ -76,12 +78,40 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
         "Increase monitoring and pre-stage isolation before thresholds are crossed.",
         "OLS trend projects a threshold crossing inside the forecast window.",
     ),
+    "supervisor_safety_hazard": (
+        "Treat as an active safety hazard — verify controls and hold work until the operator decides.",
+        "A supervisor reported an immediate safety concern from the floor.",
+    ),
+    "supervisor_equipment_issue": (
+        "Inspect the reported equipment and confirm readings before authorizing continued operation.",
+        "A supervisor reported abnormal equipment behavior from the floor.",
+    ),
+    "supervisor_permit_issue": (
+        "Review permits and isolation status against the supervisor's report before restart.",
+        "A supervisor reported a permit or isolation concern from the floor.",
+    ),
+    "supervisor_environmental_issue": (
+        "Contain and verify environmental controls before resuming affected work.",
+        "A supervisor reported an environmental concern from the floor.",
+    ),
+    "supervisor_personnel_issue": (
+        "Verify crew compliance and re-brief personnel before continuing work in the zone.",
+        "A supervisor reported a personnel concern from the floor.",
+    ),
+    "supervisor_floor_report": (
+        "Review the supervisor's floor report and decide whether work can continue.",
+        "A supervisor flagged an issue that needs operator review.",
+    ),
 }
 
 
 def _risk_level(fact_types: set[str]) -> str:
     if fact_types & CRITICAL_SENSOR_FACTS:
         return "blocking"
+    if fact_types & BLOCKING_SUPERVISOR_FACTS:
+        return "blocking"
+    if fact_types & SUPERVISOR_FACT_TYPES:
+        return "elevated"
     if COMPOUND_TRIO.issubset(fact_types) or len(fact_types) >= 3:
         return "blocking"
     if len(fact_types) >= 1:

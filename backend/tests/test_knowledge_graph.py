@@ -19,6 +19,8 @@ from shared.python.schemas import DerivedFact
 
 VESSEL_A = "11111111-1111-1111-1111-111111111111"
 WALKWAY_3 = "22222222-2222-2222-2222-222222222222"
+COMPRESSOR_B = "33333333-3333-3333-3333-333333333333"
+FIRE_WATER = "77777777-7777-7777-7777-777777777709"
 
 
 @pytest.fixture(autouse=True)
@@ -40,6 +42,18 @@ def test_kg_builds_assets_and_near_edges():
     # Walkway 3 should be within radius at default scale 0.04
     ids = {n["asset_id"] for n in near}
     assert WALKWAY_3 in ids
+
+
+def test_neighbors_resolve_vertical_direction():
+    g = build_knowledge_graph()
+    from_fire = {
+        n["asset_id"]: n for n in neighbors_within_radius(g, FIRE_WATER)
+    }
+    assert from_fire[COMPRESSOR_B]["relation"] == "BELOW"
+    from_compressor = {
+        n["asset_id"]: n for n in neighbors_within_radius(g, COMPRESSOR_B)
+    }
+    assert from_compressor[FIRE_WATER]["relation"] == "ABOVE"
 
 
 def test_spatial_cooccurrence_same_asset():

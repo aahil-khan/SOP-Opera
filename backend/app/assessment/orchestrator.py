@@ -1,4 +1,4 @@
-"""Assessment Orchestrator — owns pending jobs + the in-process worker loop."""
+"""Assessment Orchestrator — durable Postgres-backed job queue + worker pool."""
 
 from __future__ import annotations
 
@@ -9,21 +9,30 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.core.config import get_settings
 from app.db.session import SessionLocal
 from shared.python.schemas import Review
 
 logger = logging.getLogger(__name__)
 
 PROMPT_VERSION = "assessment-v2-langgraph"
+POLL_INTERVAL_SECONDS = 0.75
 
 
 class AssessmentOrchestrator:
-    """Singleton-ish coordinator: enqueue pending assessment rows and drain them."""
+    """
+    Coordinator: enqueue pending assessment rows and drain them with N workers.
+
+    Wake path: in-memory asyncio.Queue (low latency after ingest).
+    Durable path: workers also poll `assessments` with FOR UPDATE SKIP LOCKED
+    so jobs survive restarts and concurrent workers do not double-run.
+    """
 
     def __init__(self) -> None:
-        self._queue: asyncio.Queue[UUID] = asyncio.Queue()
-        self._worker_task: asyncio.Task | None = None
+        self._queue: asyncio.Queue[UUID | None] = asyncio.Queue()
+        self._worker_tasks: list[asyncio.Task] = []
         self._provider_override: dict[UUID, str] = {}
+        self._wake = asyncio.Event()
 
     def set_provider_override(self, assessment_id: UUID, provider: str) -> None:
         self._provider_override[assessment_id] = provider
@@ -33,14 +42,13 @@ class AssessmentOrchestrator:
 
     def enqueue(self, assessment_id: UUID) -> None:
         self._queue.put_nowait(assessment_id)
+        self._wake.set()
 
     async def recover_pending(self) -> int:
         """
         Re-queue assessments stuck in pending OR generating (crash/restart recovery).
         A 'generating' row means a previous worker claimed it and died mid-job;
-        reset it to pending so run_assessment_job's own claim step re-claims it
-        cleanly instead of leaving it permanently stuck (which would also block
-        enqueue_for_review's pending/generating idempotency guard forever).
+        reset it to pending so SKIP LOCKED claim can re-take it.
         """
         async with SessionLocal() as session:
             await session.execute(
@@ -68,38 +76,137 @@ class AssessmentOrchestrator:
             logger.info("recovered %d pending/generating assessment job(s)", len(ids))
         return len(ids)
 
-    async def worker_loop(self) -> None:
+    async def claim_next_pending(self) -> UUID | None:
+        """Atomically claim the oldest pending assessment (multi-worker safe)."""
+        async with SessionLocal() as session:
+            result = await session.execute(
+                text(
+                    """
+                    UPDATE assessments SET status = 'generating'
+                    WHERE id = (
+                        SELECT id FROM assessments
+                        WHERE status = 'pending'
+                        ORDER BY created_at ASC
+                        FOR UPDATE SKIP LOCKED
+                        LIMIT 1
+                    )
+                    RETURNING id
+                    """
+                )
+            )
+            row = result.first()
+            await session.commit()
+            if row is None:
+                return None
+            return row._mapping["id"]
+
+    async def queue_snapshot(self) -> dict:
+        async with SessionLocal() as session:
+            result = await session.execute(
+                text(
+                    """
+                    SELECT status, COUNT(*)::int AS n
+                    FROM assessments
+                    WHERE status IN ('pending', 'generating')
+                    GROUP BY status
+                    """
+                )
+            )
+            counts = {row._mapping["status"]: row._mapping["n"] for row in result.fetchall()}
+            pending_rows = await session.execute(
+                text(
+                    """
+                    SELECT id, review_id, created_at
+                    FROM assessments
+                    WHERE status IN ('pending', 'generating')
+                    ORDER BY created_at ASC
+                    LIMIT 20
+                    """
+                )
+            )
+            jobs = [
+                {
+                    "assessment_id": str(m["id"]),
+                    "review_id": str(m["review_id"]),
+                    "created_at": m["created_at"].isoformat()
+                    if hasattr(m["created_at"], "isoformat")
+                    else str(m["created_at"]),
+                }
+                for m in (r._mapping for r in pending_rows.fetchall())
+            ]
+        return {
+            "pending": counts.get("pending", 0),
+            "generating": counts.get("generating", 0),
+            "workers": len([t for t in self._worker_tasks if not t.done()]),
+            "memory_queue_size": self._queue.qsize(),
+            "jobs": jobs,
+        }
+
+    async def worker_loop(self, worker_id: int) -> None:
         from app.assessment.pipeline import run_assessment_job
 
-        await self.recover_pending()
-        logger.info("assessment worker started")
+        logger.info("assessment worker-%d started", worker_id)
         while True:
-            assessment_id = await self._queue.get()
+            preclaimed = False
+            try:
+                assessment_id = await asyncio.wait_for(
+                    self._queue.get(), timeout=POLL_INTERVAL_SECONDS
+                )
+            except TimeoutError:
+                assessment_id = await self.claim_next_pending()
+                preclaimed = assessment_id is not None
+            if assessment_id is None:
+                continue
             try:
                 override = self.pop_provider_override(assessment_id)
-                await run_assessment_job(assessment_id, provider_name=override)
+                await run_assessment_job(
+                    assessment_id,
+                    provider_name=override,
+                    preclaimed=preclaimed,
+                )
             except Exception:  # noqa: BLE001 — never kill the worker
                 logger.exception(
-                    "assessment job %s crashed; leaving row for retry/manual",
+                    "worker-%d assessment job %s crashed; leaving row for retry/manual",
+                    worker_id,
                     assessment_id,
                 )
             finally:
-                self._queue.task_done()
+                if not preclaimed:
+                    try:
+                        self._queue.task_done()
+                    except ValueError:
+                        pass
 
     def start(self) -> asyncio.Task:
         # pytest-asyncio creates a fresh loop per test; queues/tasks are loop-bound.
-        if self._worker_task is not None and not self._worker_task.done():
-            self._worker_task.cancel()
+        self.stop()
         self._queue = asyncio.Queue()
-        self._worker_task = asyncio.create_task(
-            self.worker_loop(), name="assessment-worker"
-        )
-        return self._worker_task
+        self._wake = asyncio.Event()
+        n = max(1, int(get_settings().assessment_worker_count))
+
+        async def _boot() -> None:
+            await self.recover_pending()
+            self._worker_tasks = [
+                asyncio.create_task(
+                    self.worker_loop(i), name=f"assessment-worker-{i}"
+                )
+                for i in range(n)
+            ]
+            logger.info("assessment worker pool running (%d workers)", n)
+            await asyncio.gather(*self._worker_tasks)
+
+        self._boot_task = asyncio.create_task(_boot(), name="assessment-worker-pool")
+        return self._boot_task
 
     def stop(self) -> None:
-        if self._worker_task and not self._worker_task.done():
-            self._worker_task.cancel()
-            self._worker_task = None
+        for task in self._worker_tasks:
+            if not task.done():
+                task.cancel()
+        self._worker_tasks = []
+        boot = getattr(self, "_boot_task", None)
+        if boot is not None and not boot.done():
+            boot.cancel()
+        self._boot_task = None
 
     def drain(self) -> None:
         """Empty the queue and pending provider overrides (used by Demo reset)."""

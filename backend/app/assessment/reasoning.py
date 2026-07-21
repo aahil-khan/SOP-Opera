@@ -29,6 +29,12 @@ FACT_HEADLINES: dict[str, str] = {
     "lifting_operation_conflict": "Lifting operation conflict",
     "weather_hold": "Weather hold",
     "predicted_trend_risk": "Rising sensor trend",
+    "supervisor_safety_hazard": "Supervisor safety report",
+    "supervisor_equipment_issue": "Supervisor equipment report",
+    "supervisor_permit_issue": "Supervisor permit report",
+    "supervisor_environmental_issue": "Supervisor environmental report",
+    "supervisor_personnel_issue": "Supervisor personnel report",
+    "supervisor_floor_report": "Supervisor floor report",
 }
 
 # Metric facts that should always prefer reading-vs-limit copy.
@@ -528,7 +534,40 @@ def format_fact_detail(
         return _cert_detail(context_entries, asset_name)
     if fact_type == "predicted_trend_risk":
         return _predicted_trend_detail(asset_name)
+    if fact_type in {
+        "supervisor_safety_hazard",
+        "supervisor_equipment_issue",
+        "supervisor_permit_issue",
+        "supervisor_environmental_issue",
+        "supervisor_personnel_issue",
+        "supervisor_floor_report",
+    }:
+        return _supervisor_report_detail(context_entries, asset_name)
     return _generic_fact_detail(fact_type, headline, asset_name)
+
+
+def _supervisor_report_detail(
+    context_entries: list[dict[str, Any]], asset_name: str
+) -> str:
+    latest: dict[str, Any] | None = None
+    latest_from: str | None = None
+    for entry in context_entries:
+        if entry.get("category") != "supervisor_report":
+            continue
+        payload = entry.get("payload") or {}
+        desc = str(payload.get("description") or "").strip()
+        if not desc:
+            continue
+        valid_from = str(entry.get("valid_from") or "")
+        if latest_from is None or valid_from >= latest_from:
+            latest = payload
+            latest_from = valid_from
+    if latest is None:
+        return f"A supervisor reported a concern on {asset_name}."
+    reporter = str(latest.get("reported_by") or "Supervisor")
+    concern = str(latest.get("concern_type") or "other").replace("_", " ")
+    desc = str(latest.get("description") or "").strip()
+    return f'{reporter} reported ({concern}): "{desc}"'
 
 
 def build_reasoning_factors(
