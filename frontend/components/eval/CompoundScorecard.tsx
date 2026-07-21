@@ -8,9 +8,10 @@ function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
 }
 
-function fmtLead(seconds: number | null | undefined): string {
-  if (seconds == null) return "—";
-  return `${Math.round(seconds)}s`;
+/** Lead time is plant process time, so it reads in minutes. */
+function fmtLead(minutes: number | null | undefined): string {
+  if (minutes == null) return "—";
+  return `${Math.round(minutes)} min`;
 }
 
 /** Full page scorecard for /eval. */
@@ -36,11 +37,11 @@ export function EvalScorecardView() {
     void refresh();
   }, [refresh]);
 
-  const tForecast = summary?.hero_t_forecast_seconds ?? null;
-  const tCompound = summary?.hero_t_compound_seconds ?? null;
-  const tCritical = summary?.hero_t_single_sensor_seconds ?? null;
+  const tForecast = summary?.hero_t_forecast_minutes ?? null;
+  const tCompound = summary?.hero_t_compound_minutes ?? null;
+  const tCritical = summary?.hero_t_single_sensor_minutes ?? null;
   const span =
-    tCritical != null && tCritical > 0 ? tCritical : 26;
+    tCritical != null && tCritical > 0 ? tCritical : 34;
 
   function laneWidth(at: number | null): string {
     if (at == null || span <= 0) return "0%";
@@ -82,7 +83,7 @@ export function EvalScorecardView() {
             </div>
             <div className={styles.heroStat} data-tone="accent">
               <span className={styles.heroValue}>
-                {fmtLead(summary.hero_lead_time_seconds)}
+                {fmtLead(summary.hero_lead_time_minutes)}
               </span>
               <span className={styles.heroLabel}>
                 Lead time before single-sensor critical
@@ -177,7 +178,7 @@ export function EvalScorecardView() {
             </div>
             <p className={styles.caption}>
               Hero case <code>{summary.hero_case_id}</code> · compound leads
-              single-sensor by {fmtLead(summary.hero_lead_time_seconds)} ·{" "}
+              single-sensor by {fmtLead(summary.hero_lead_time_minutes)} ·{" "}
               {summary.case_count} labeled cases
             </p>
           </section>

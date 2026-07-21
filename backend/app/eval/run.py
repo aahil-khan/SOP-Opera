@@ -12,22 +12,18 @@ def main() -> int:
     report = write_report()
     lt = report.hero_lead_time
     summary = {
+        "case_count": report.case_count,
+        "positive_count": report.positive_count,
         "single_sensor_fn_rate": report.single_sensor.false_negative_rate,
         "forecast_fn_rate": report.forecast.false_negative_rate,
         "compound_fn_rate": report.compound.false_negative_rate,
         "fn_reduction_pct": report.fn_reduction_pct,
         "hero_case_id": report.hero_case_id,
-        "hero_lead_time_seconds": (
-            lt.lead_time_seconds if lt is not None else None
-        ),
-        "hero_t_forecast_seconds": (
-            lt.t_forecast_seconds if lt is not None else None
-        ),
-        "hero_t_compound_seconds": (
-            lt.t_compound_seconds if lt is not None else None
-        ),
-        "hero_t_single_sensor_seconds": (
-            lt.t_single_sensor_seconds if lt is not None else None
+        "hero_lead_time_minutes": (lt.lead_time_minutes if lt is not None else None),
+        "hero_t_forecast_minutes": (lt.t_forecast_minutes if lt is not None else None),
+        "hero_t_compound_minutes": (lt.t_compound_minutes if lt is not None else None),
+        "hero_t_single_sensor_minutes": (
+            lt.t_single_sensor_minutes if lt is not None else None
         ),
     }
     print(json.dumps(summary, indent=2))

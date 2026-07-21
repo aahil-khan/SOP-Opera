@@ -1,21 +1,72 @@
 # Compound vs Single-Sensor Evaluation
 
-Headline metric for the VSP coke-oven story: **false-negative rate** on
-ground-truth dangerous cases (blocking intervention warranted).
+Headline metric: **false-negative rate** on cases where a statutory
+stop-work provision applies.
+
+## How cases are labeled
+
+Ground truth comes from `app/eval/hazard_ground_truth.py`, which reads raw
+context payloads against stop-work criteria drawn from the applicable
+provisions (Factories Act 1948 s.37(1), s.41H and s.36(2), and the
+OISD-STD-105 work permit system). Each carries a clause reference and a
+primary-source URL.
+It does **not** import or call the risk policy it scores — enforced by
+`tests/test_eval_independence.py`.
+
+This replaces the previous labeling function, which defined a case as
+dangerous exactly when the compound engine fired, making a 0% false-negative
+rate true by construction.
+
+**Dataset:** 377 cases — 257 requiring stop-work (68%), 120 safe (32%). Cases come from a parameter sweep over
+atmosphere level and trajectory, permit/isolation state, concurrent
+operations, personnel presence and process temperature, plus scripted
+scenario timelines.
 
 ## Summary
 
 | Detector | Accuracy | Recall | FN rate | Precision |
 | --- | ---: | ---: | ---: | ---: |
-| Single-sensor baseline | 76.5% | 33.3% | 66.7% | 100.0% |
-| Predictive forecast (ML trend) | 82.4% | 83.3% | 16.7% | 71.4% |
-| Compound engine | 94.1% | 100.0% | 0.0% | 85.7% |
+| Single-sensor baseline | 76.9% | 66.1% | 33.9% | 100.0% |
+| Predictive forecast (ML trend) | 65.0% | 64.2% | 35.8% | 80.5% |
+| Compound engine | 97.9% | 100.0% | 0.0% | 97.0% |
 
 **FN reduction (compound vs single-sensor):** 100.0%
 
+### What this measures, and what it does not
+
+This is a **criterion-coverage** measurement: of the plant states where a
+regulation requires stopping work, how many does each detector catch? The
+compound engine implements those provisions, so high recall is expected —
+the meaningful comparison is against the single-sensor baseline scored on
+the *same* labels, which is how a conventional SCADA threshold alarm
+performs: it misses 87 of 257 stop-work cases.
+
+It is **not** a claim about generalizing to unseen real-world incidents.
+The 8 compound false positives are cases where the engine
+is deliberately more conservative than the statutory minimum (for example,
+hot work with unverified isolation and personnel present, at a clean gas
+reading). For a stop-work system that is a defensible bias, not a defect.
+
 ## Prediction lead time (hero scenario)
 
-VSP coke-oven timeline: forecast alarm at **4s**, compound alarm at **8s**, single-sensor critical at **26s** → **18s lead time** before incident threshold.
+Measured in **plant process time** from each scenario step's
+`t_offset_minutes` — not the simulator's playback pacing.
+
+VSP coke-oven timeline: forecast alarm at **t+6 min**, compound alarm at **t+6 min**, single-sensor critical at **t+34 min** → **28 minutes of lead time** before the incident threshold.
+
+## Regulatory coverage
+
+Of the cases where the rules engine derives at least one fact, how many
+have a regulation the deterministic retriever can cite for that fact?
+
+- Cases with derived facts: **360**
+- With a citable regulation: **100.0%**
+- With an Indian statutory provision: **91.1%**
+
+| Standard | Citations available |
+| --- | ---: |
+| Factories Act 1948 | 479 |
+| OISD | 70 |
 
 ## Hero checkpoint
 
@@ -24,7 +75,9 @@ single-sensor critical threshold.
 
 ## Per-case detail
 
-| Case | Dangerous | Single | Compound | Compound-only catch |
+Scenario and named cases; the parameter sweep is omitted for length.
+
+| Case | Stop-work required | Single | Compound | Compound-only catch |
 | --- | --- | --- | --- | --- |
 | nominal_safe | False | False | False | False |
 | elevated_gas_only | False | False | False | False |
@@ -32,13 +85,13 @@ single-sensor critical threshold.
 | vsp_pattern_subcritical | True | False | True | True |
 | permit_conflict_only | False | False | False | False |
 | vsp_coke_oven_step0 | False | False | False | False |
-| vsp_coke_oven_step1 | False | False | False | False |
+| vsp_coke_oven_step1 | True | False | True | True |
 | vsp_coke_oven_step2 | True | False | True | True |
 | vsp_coke_oven_step3 | True | False | True | True |
 | vsp_coke_oven_step4 | True | True | True | False |
 | compound_risk_step0 | False | False | False | False |
-| compound_risk_step1 | False | False | False | False |
-| compound_risk_step2 | False | False | True | False |
+| compound_risk_step1 | True | False | True | True |
+| compound_risk_step2 | True | False | True | True |
 | compound_risk_step3 | True | False | True | True |
 | gas_leak_step0 | False | False | False | False |
 | permit_conflict_step0 | False | False | False | False |

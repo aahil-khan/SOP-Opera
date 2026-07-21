@@ -26,22 +26,26 @@ def build_eval_summary(report: EvalReport | None = None) -> EvalSummaryOut:
     return EvalSummaryOut(
         fn_reduction_pct=report.fn_reduction_pct,
         hero_case_id=report.hero_case_id,
-        hero_lead_time_seconds=(
-            lt.lead_time_seconds if lt is not None else None
-        ),
-        hero_t_forecast_seconds=(
-            lt.t_forecast_seconds if lt is not None else None
-        ),
-        hero_t_compound_seconds=(
-            lt.t_compound_seconds if lt is not None else None
-        ),
-        hero_t_single_sensor_seconds=(
-            lt.t_single_sensor_seconds if lt is not None else None
+        hero_lead_time_minutes=(lt.lead_time_minutes if lt is not None else None),
+        hero_t_forecast_minutes=(lt.t_forecast_minutes if lt is not None else None),
+        hero_t_compound_minutes=(lt.t_compound_minutes if lt is not None else None),
+        hero_t_single_sensor_minutes=(
+            lt.t_single_sensor_minutes if lt is not None else None
         ),
         single_sensor=_detector_out(report.single_sensor),
         forecast=_detector_out(report.forecast),
         compound=_detector_out(report.compound),
-        case_count=len(report.case_results),
+        regulation_coverage_pct=(
+            report.coverage.regulation_coverage_pct if report.coverage else 0.0
+        ),
+        statutory_coverage_pct=(
+            report.coverage.statutory_coverage_pct if report.coverage else 0.0
+        ),
+        coverage_by_standard=(
+            dict(report.coverage.per_standard) if report.coverage else {}
+        ),
+        case_count=report.case_count,
+        positive_count=report.positive_count,
         compound_only_catch_count=sum(
             1 for r in report.case_results if r.compound_only_catch
         ),

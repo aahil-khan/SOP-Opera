@@ -77,11 +77,19 @@ def test_vsp_timeline_fn_only_on_subcritical_steps():
     report = run_evaluation()
     by_id = {r.case_id: r for r in report.case_results}
 
-    # Steps 0–1: not yet dangerous (compound hasn't blocked)
+    # Step 0 — elevated gas alone, no work and nobody present: no provision applies.
     assert by_id["vsp_coke_oven_step0"].dangerous is False
-    assert by_id["vsp_coke_oven_step1"].dangerous is False
 
-    # Step 2+: dangerous; compound catches, single-sensor silent until gas critical
+    # Step 1 — hot work opens on an unisolated permit while gas is above the action
+    # level. OISD-STD-105 requires stopping here, before anyone is exposed, and the
+    # compound engine blocks while the single-sensor baseline is still silent.
+    step1 = by_id["vsp_coke_oven_step1"]
+    assert step1.dangerous is True
+    assert step1.compound_alarm is True
+    assert step1.single_alarm is False
+    assert step1.compound_only_catch is True
+
+    # Steps 2–3: still dangerous, single-sensor silent until gas goes critical.
     for step_id in ("vsp_coke_oven_step2", "vsp_coke_oven_step3"):
         r = by_id[step_id]
         assert r.dangerous is True
@@ -105,14 +113,19 @@ def test_dataset_has_expected_cases():
     assert len(cases) >= 10
 
 
-def test_vsp_hero_lead_time_from_scenario_delays():
+def test_vsp_hero_lead_time_is_measured_in_process_minutes():
+    """
+    Lead time comes from the scenario's `t_offset_minutes` (plant process time),
+    not from `delay_seconds` (demo playback pacing). The old harness summed the
+    playback delays and reported an "18 second" lead time.
+    """
     lt = hero_lead_time()
-    assert lt.t_forecast_seconds is not None
-    assert lt.t_forecast_seconds <= lt.t_single_sensor_seconds
-    assert lt.t_forecast_seconds <= lt.t_compound_seconds
-    assert lt.t_compound_seconds == 8.0
-    assert lt.t_single_sensor_seconds == 26.0
-    assert lt.lead_time_seconds == 18.0
+    assert lt.t_forecast_minutes is not None
+    assert lt.t_forecast_minutes <= lt.t_single_sensor_minutes
+    assert lt.t_forecast_minutes <= lt.t_compound_minutes
+    assert lt.t_compound_minutes == 6.0
+    assert lt.t_single_sensor_minutes == 34.0
+    assert lt.lead_time_minutes == 28.0
 
 
 def test_estimate_seconds_until_gas_critical_from_trend():
@@ -170,11 +183,14 @@ def test_compute_lead_time_for_verdict_zero_when_critical():
 def test_report_includes_lead_time_section():
     report = run_evaluation()
     assert report.hero_lead_time is not None
-    assert report.hero_lead_time.lead_time_seconds == 18.0
+    assert report.hero_lead_time.lead_time_minutes == 28.0
     md = report.to_markdown()
     assert "Prediction lead time" in md
     assert "Predictive forecast (ML trend)" in md
-    assert "18s lead time" in md
+    assert "28 minutes of lead time" in md
+    # The report must disclose how cases are labeled and what the number is not.
+    assert "hazard_ground_truth" in md
+    assert "criterion-coverage" in md
 
 
 def test_forecast_alarm_fires_on_rising_subcritical_signal():
@@ -190,9 +206,9 @@ def test_build_eval_summary_matches_report_headlines():
     from app.eval.service import build_eval_summary
 
     summary = build_eval_summary()
-    assert summary.fn_reduction_pct == 100.0
-    assert summary.compound.false_negative_rate == 0.0
-    assert summary.single_sensor.false_negative_rate > 0.5
-    assert summary.hero_lead_time_seconds == 18.0
+    assert summary.compound.false_negative_rate < summary.single_sensor.false_negative_rate
+    assert summary.single_sensor.false_negative_rate > 0.2
+    assert summary.hero_lead_time_minutes == 28.0
     assert summary.case_count > 0
+    assert 0 < summary.positive_count < summary.case_count
     assert summary.compound_only_catch_count > 0

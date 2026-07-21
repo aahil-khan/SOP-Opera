@@ -151,9 +151,9 @@ export function ProofSection() {
       <div className={styles.footRow}>
         <div className={styles.foot}>
           <span className={styles.footValue}>
-            {data?.hero_lead_time_seconds != null ? (
+            {data?.hero_lead_time_minutes != null ? (
               <>
-                <CountUp to={data.hero_lead_time_seconds} decimals={0} />s
+                <CountUp to={data.hero_lead_time_minutes} decimals={0} /> min
               </>
             ) : (
               "—"

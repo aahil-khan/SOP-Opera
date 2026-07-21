@@ -5,6 +5,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.eval.coverage import CoverageReport, compute_coverage
 from app.eval.dataset import EvalCase, build_dataset, hero_checkpoint
 from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
 from app.eval.lead_time import ScenarioLeadTime, compute_scenario_lead_time, hero_lead_time
@@ -58,6 +59,7 @@ class EvalReport:
     fn_reduction_pct: float = 0.0
     hero_case_id: str = "vsp_coke_oven_step2"
     hero_lead_time: ScenarioLeadTime | None = None
+    coverage: CoverageReport | None = None
 
     @property
     def case_count(self) -> int:
@@ -79,7 +81,9 @@ class EvalReport:
             "",
             "Ground truth comes from `app/eval/hazard_ground_truth.py`, which reads raw",
             "context payloads against stop-work criteria drawn from the applicable",
-            "provisions (Factories Act 1948 s.41B/s.41C, OISD-STD-105 including SIMOPS).",
+            "provisions (Factories Act 1948 s.37(1), s.41H and s.36(2), and the",
+            "OISD-STD-105 work permit system). Each carries a clause reference and a",
+            "primary-source URL.",
             "It does **not** import or call the risk policy it scores — enforced by",
             "`tests/test_eval_independence.py`.",
             "",
@@ -147,6 +151,35 @@ class EvalReport:
                     "",
                 ]
             )
+        cov = self.coverage
+        if cov is not None:
+            lines.extend(
+                [
+                    "## Regulatory coverage",
+                    "",
+                    "Of the cases where the rules engine derives at least one fact, how many",
+                    "have a regulation the deterministic retriever can cite for that fact?",
+                    "",
+                    f"- Cases with derived facts: **{cov.cases_with_facts}**",
+                    f"- With a citable regulation: **{cov.regulation_coverage_pct:.1f}%**",
+                    f"- With an Indian statutory provision: **{cov.statutory_coverage_pct:.1f}%**",
+                    "",
+                    "| Standard | Citations available |",
+                    "| --- | ---: |",
+                ]
+            )
+            for family, count in cov.per_standard.items():
+                lines.append(f"| {family} | {count} |")
+            if cov.uncovered_fact_types:
+                lines.extend(
+                    [
+                        "",
+                        "Fact types with no regulation mapped: "
+                        + ", ".join(f"`{f}`" for f in cov.uncovered_fact_types),
+                    ]
+                )
+            lines.append("")
+
         lines.extend(
             [
                 "## Hero checkpoint",
@@ -233,6 +266,7 @@ def run_evaluation(cases: list[EvalCase] | None = None) -> EvalReport:
         fn_reduction_pct=fn_reduction,
         hero_case_id=hero.case_id,
         hero_lead_time=hero_lead_time(),
+        coverage=compute_coverage(cases),
     )
 
 

@@ -448,10 +448,13 @@ export interface DetectorSummary {
 export interface EvalSummary {
   fn_reduction_pct: number;
   hero_case_id: string;
-  hero_lead_time_seconds: number | null;
-  hero_t_forecast_seconds: number | null;
-  hero_t_compound_seconds: number | null;
-  hero_t_single_sensor_seconds: number | null;
+  // Plant process time, not simulator playback pacing.
+  hero_lead_time_minutes: number | null;
+  hero_t_forecast_minutes: number | null;
+  hero_t_compound_minutes: number | null;
+  hero_t_single_sensor_minutes: number | null;
+  positive_count?: number;
+  label_basis?: string;
   single_sensor: DetectorSummary;
   forecast: DetectorSummary;
   compound: DetectorSummary;

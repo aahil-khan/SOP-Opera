@@ -132,19 +132,22 @@ def _criteria() -> tuple[StopWorkCriterion, ...]:
 
     return (
         StopWorkCriterion(
-            code="Factories Act 1948 s.41C",
-            name="Toxic/flammable release above the incident limit",
+            code="Factories Act 1948 s.37(1)(b)",
+            name="Flammable gas accumulation above the incident limit",
             basis=(
-                "Occupier duty to take immediate measures on a hazardous process "
-                "reaching a level dangerous to persons at work."
+                "Where a process produces gas likely to explode on ignition, all "
+                "practicable measures shall be taken to prevent explosion by removal "
+                "or prevention of the accumulation of such gas."
             ),
             applies=lambda st: _gas_at_or_above(st, gas_critical),
         ),
         StopWorkCriterion(
-            code="OISD-STD-105",
-            name="Hot work with an unclear atmosphere or unverified isolation",
+            code="Factories Act 1948 s.37(1)(c)",
+            name="Ignition source not excluded from a flammable atmosphere",
             basis=(
-                "A hot-work permit requires a clear gas test and confirmed "
+                "Explosion shall be prevented by exclusion or effective enclosure of "
+                "all possible sources of ignition; the OISD-STD-105 hot-work permit "
+                "is the control that gives this effect, and it requires confirmed "
                 "isolation before and throughout the work."
             ),
             applies=lambda st: (
@@ -154,29 +157,36 @@ def _criteria() -> tuple[StopWorkCriterion, ...]:
             ),
         ),
         StopWorkCriterion(
-            code="Factories Act 1948 s.41B",
+            code="Factories Act 1948 s.41H",
             name="Personnel exposed to an uncontrolled hazardous atmosphere",
             basis=(
-                "Workers may not remain in a hazardous area while process "
-                "conditions are abnormal."
+                "Where workers in a hazardous process face a likelihood of imminent "
+                "danger to their lives or health, the occupier must take immediate "
+                "remedial action."
             ),
             applies=lambda st: (
                 st.workers_in_hazardous_zone > 0 and _gas_at_or_above(st, gas_action)
             ),
         ),
         StopWorkCriterion(
-            code="OISD-STD-105 (SIMOPS)",
+            code="OISD-STD-105",
             name="Incompatible simultaneous operations",
             basis=(
-                "Hot work may not run concurrently with confined-space entry on "
-                "the same equipment."
+                "The work permit system issues distinct permits for hot work and for "
+                "confined space entry; running both concurrently on the same equipment "
+                "defeats the controls each permit establishes. Confined space entry "
+                "additionally requires a competent person's certificate under "
+                "Factories Act 1948 s.36(2)."
             ),
             applies=lambda st: {HOT_WORK, CONFINED_SPACE} <= st.active_work_types,
         ),
         StopWorkCriterion(
-            code="Factories Act 1948 s.41C",
+            code="Factories Act 1948 s.41H",
             name="Process temperature above the incident limit",
-            basis="Runaway process temperature requires immediate shutdown.",
+            basis=(
+                "A runaway process temperature is an imminent danger to life or "
+                "health requiring immediate remedial action."
+            ),
             applies=lambda st: (
                 st.max_temp is not None and st.max_temp >= temp_critical
             ),
