@@ -8,21 +8,25 @@ reasoning failed route
 
 cctv feeds?
 
-- - AUDIO CHIME ON NEW REVIEW
+- - AUDIO CHIME ON NEW REVIEW — done
 
-- closed menu should show what happende
+- closed menu should show what happend -- do
 
-- ai ops is resetting
+- ai ops is resetting -- done
 
 - what should clicking on closed stuff do
-- update make a decision
-- filter specific types of errors
+- update make a decision -- done
+- filter specific types of errors -- done
 
 - Emergency Response Orchestrator — Autonomous agent that, on confirmed trigger,
 immediately initiates evacuation protocols, alerts response teams across channels,
 preserves sensor evidence, and generates a preliminary regulatory-compliant 
 
 - add option to configure thresholds and rules etc -- done
+
+- manual assesment
+- add comments
+- after decision story
 
 ---
 test this
