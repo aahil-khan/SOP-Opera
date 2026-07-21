@@ -1,31 +1,38 @@
 .nav {
-  position: sticky;
+  position: fixed;
   top: 0;
-  z-index: 40;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  height: var(--nav-height);
-  padding: 0 var(--space-8);
-  background: var(--surface-nav);
-  border-bottom: 1px solid var(--border-muted);
+  left: 0;
+  right: 0;
+  z-index: 50;
+  transition:
+    background var(--duration-normal) var(--ease-out),
+    border-color var(--duration-normal) var(--ease-out),
+    backdrop-filter var(--duration-normal) var(--ease-out);
+  border-bottom: 1px solid transparent;
 }
 
-.left {
+.nav[data-scrolled="true"] {
+  background: color-mix(in srgb, var(--surface-nav) 82%, transparent);
+  backdrop-filter: blur(12px);
+  border-bottom-color: var(--border-muted);
+}
+
+.inner {
+  max-width: 1240px;
+  margin: 0 auto;
+  padding: var(--space-3) var(--space-8);
   display: flex;
   align-items: center;
-  gap: var(--space-3);
+  gap: var(--space-6);
 }
 
 .brand {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
-  font-weight: var(--weight-semibold);
-  font-size: var(--text-sm);
-  letter-spacing: 0.01em;
   color: var(--text-primary);
   text-decoration: none;
+  flex: none;
 }
 
 .brand:hover {
@@ -33,49 +40,69 @@
 }
 
 .brandLogo {
-  width: 1.75rem;
-  height: 1.75rem;
+  width: 22px;
+  height: 22px;
 }
 
-.subtitle {
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  border-left: 1px solid var(--border-muted);
-  padding-left: var(--space-3);
+.brandName {
+  font-family: var(--font-display);
+  font-size: var(--text-md);
+  font-weight: var(--weight-bold);
+  letter-spacing: -0.01em;
 }
 
-.right {
+.links {
   display: flex;
   align-items: center;
-  gap: var(--space-4);
+  gap: var(--space-5);
+  margin-left: var(--space-4);
 }
 
 .link {
   font-size: var(--text-sm);
-  color: var(--text-muted);
+  color: var(--text-secondary);
   text-decoration: none;
   transition: color var(--duration-fast) var(--ease-out);
 }
 
 .link:hover {
-  color: var(--text-secondary);
+  color: var(--text-primary);
   text-decoration: none;
 }
 
-.loginBtn {
-  background: transparent;
-  border-color: var(--border-default);
+.actions {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-left: auto;
+}
+
+.loginLink {
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+  text-decoration: none;
+  padding: 0.4rem 0.5rem;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.loginLink:hover {
+  color: var(--text-primary);
+  text-decoration: none;
 }
 
 @media (max-width: 900px) {
-  .nav {
-    padding: 0 var(--space-4);
+  .links {
+    display: none;
+  }
+}
+
+@media (max-width: 640px) {
+  .inner {
+    padding: var(--space-3) var(--space-5);
   }
 
-  .subtitle,
-  .link {
+  .loginLink {
     display: none;
   }
 }

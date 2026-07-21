@@ -60,6 +60,30 @@
   border-bottom-color: var(--border-selected);
 }
 
+.linkBtn {
+  appearance: none;
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  color: var(--text-muted);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-regular);
+  padding: var(--space-1) 0;
+  transition: color var(--duration-fast) var(--ease-out);
+}
+
+.linkBtn:hover {
+  color: var(--text-secondary);
+}
+
+.linkBtn[data-active="true"] {
+  color: var(--text-primary);
+  font-weight: var(--weight-medium);
+  border-bottom-color: var(--border-selected);
+}
+
 .spacer {
   flex: 1;
 }

@@ -12,7 +12,9 @@ import styles from "./SupervisorNav.module.css";
 
 export function SupervisorNav() {
   const router = useRouter();
-  const [actor, setActor] = useState<Actor | null>(() => getActorFromCookie());
+  // Cookie is only available in the browser — start null so SSR and the
+  // first client render match, then hydrate from the cookie after mount.
+  const [actor, setActor] = useState<Actor | null>(null);
 
   useEffect(() => {
     setActor(getActorFromCookie());

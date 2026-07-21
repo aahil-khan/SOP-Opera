@@ -1,23 +1,49 @@
 "use client";
 
+import Link from "next/link";
 import { Logo } from "@/components/brand/Logo";
 import styles from "./LandingFooter.module.css";
+
+const STACK = [
+  "Next.js",
+  "FastAPI",
+  "PostgreSQL + pgvector",
+  "LangGraph",
+  "WebSockets",
+  "Hybrid RAG",
+];
 
 export function LandingFooter() {
   return (
     <footer className={styles.footer}>
       <div className={styles.container}>
-        <div className={styles.left}>
-          <Logo className={styles.brandLogo} />
-          <span className={styles.brand}>SOP Opera</span>
-          <span className={styles.version}>v0.1.0</span>
+        <div className={styles.brandCol}>
+          <Link href="/" className={styles.brand}>
+            <Logo className={styles.brandLogo} />
+            <span className={styles.brandName}>SOP Opera</span>
+          </Link>
+          <p className={styles.tagline}>
+            Operational safety intelligence for high-risk industrial work.
+          </p>
         </div>
-        <div className={styles.links}>
-          <a href="#how-it-works" className={styles.link}>Documentation</a>
-          <a href="#technology" className={styles.link}>Architecture</a>
-          <a href="#" className={styles.link}>GitHub</a>
-          <a href="#" className={styles.link}>Privacy</a>
+
+        <div className={styles.stackCol}>
+          <span className="section-label">Built with</span>
+          <div className={styles.chips}>
+            {STACK.map((s) => (
+              <span key={s} className={styles.chip}>
+                {s}
+              </span>
+            ))}
+          </div>
         </div>
+      </div>
+
+      <div className={styles.bar}>
+        <span>Demo build — seeded plant, simulated context providers.</span>
+        <Link href="/login" className={styles.barLink}>
+          Launch demo →
+        </Link>
       </div>
     </footer>
   );

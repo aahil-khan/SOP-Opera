@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 
-/** Reviews list now lives in the Digital Twin left panel. */
+/** Reviews list now lives in the operator dashboard's left panel. */
 export default function ReviewsPage() {
-  redirect("/");
+  redirect("/operator");
 }

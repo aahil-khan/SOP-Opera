@@ -57,7 +57,7 @@ export default function ReviewDetailPage({
           return;
         }
         openAssetFullReview(view.asset.id);
-        router.replace("/");
+        router.replace("/operator");
       } catch (err) {
         if (!cancelled) {
           setError(err instanceof Error ? err.message : String(err));
@@ -74,7 +74,7 @@ export default function ReviewDetailPage({
     return (
       <div style={{ padding: "2rem", color: "var(--text-muted)" }}>
         <p>Could not open review: {error}</p>
-        <a href="/">← Back to Digital Twin</a>
+        <a href="/operator">← Back to Operator Dashboard</a>
       </div>
     );
   }

@@ -45,8 +45,9 @@ const plusJakarta = Plus_Jakarta_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "SOP Opera",
-  description: "Operational Review Platform",
+  title: "SOP Opera — Industrial Safety Intelligence",
+  description:
+    "Industrial plants already have the data. SOP Opera fuses sensors, permits, maintenance state and worker movement into one live risk picture — catching the compound conditions no single alarm is built to see.",
   icons: {
     icon: [
       { url: "/favicons/favicon_io/favicon.ico" },

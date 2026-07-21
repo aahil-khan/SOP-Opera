@@ -1,0 +1,11 @@
+.landing {
+  min-height: 100vh;
+  background: var(--surface-app);
+}
+
+/* Anchor targets sit below the fixed nav.
+   (html scroll-behavior lives in styles/base.css — CSS Modules reject
+   pure :global(html) selectors.) */
+.landing :global(section[id]) {
+  scroll-margin-top: calc(var(--nav-height) + var(--space-4));
+}

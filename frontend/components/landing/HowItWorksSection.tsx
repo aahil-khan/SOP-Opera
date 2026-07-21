@@ -1,103 +1,99 @@
 "use client";
 
+import { m, useReducedMotion } from "framer-motion";
+import { SectionShell } from "./SectionShell";
+import { EASE_OUT, viewportOnce } from "@/lib/motion";
 import styles from "./HowItWorksSection.module.css";
 
 const STEPS = [
   {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="3" y="3" width="18" height="18" rx="2" />
-        <path d="M3 9h18M9 3v18" />
-      </svg>
-    ),
-    label: "Upload Floor Plan",
+    n: "01",
+    title: "Context arrives",
+    body: "Sensor readings, permits, isolation state, worker location and shift logs land through one provider interface — the same seam a live SCADA or permit system plugs into.",
+    tag: "POST /context",
   },
   {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <rect x="2" y="6" width="20" height="12" rx="2" />
-        <circle cx="8" cy="12" r="2" />
-        <path d="M14 10h4M14 14h4" />
-      </svg>
-    ),
-    label: "Generate Digital Twin",
+    n: "02",
+    title: "Rules derive facts",
+    body: "Deterministic Python turns raw context into named facts — elevated gas, permit conflict, incomplete isolation, zone occupied. No model decides what is true.",
+    tag: "derived_facts.py",
   },
   {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M8 12h8" />
-        <circle cx="5" cy="12" r="3" />
-        <circle cx="19" cy="12" r="3" />
-      </svg>
-    ),
-    label: "Connect Existing Systems",
+    n: "03",
+    title: "Agents correlate",
+    body: "A multi-agent graph fans out only where the facts warrant: source agents per domain, then spatial and predictive-trend, then incident-pattern and handover on elevated verdicts.",
+    tag: "LangGraph",
   },
   {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-        <polyline points="14 2 14 8 20 8" />
-        <line x1="16" y1="13" x2="8" y2="13" />
-        <line x1="16" y1="17" x2="8" y2="17" />
-      </svg>
-    ),
-    label: "Build Operational Review",
+    n: "04",
+    title: "Retrieval grounds it",
+    body: "Hybrid retrieval pulls regulations, prior incidents and SOPs — vector search first, deterministic SQL as a guaranteed fallback so citations are never empty.",
+    tag: "pgvector + SQL",
   },
   {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M12 2a7 7 0 017 7c0 3-2 5-3.5 7H8.5C7 14 5 12 5 9a7 7 0 017-7z" />
-        <line x1="10" y1="20" x2="14" y2="20" />
-        <line x1="10" y1="23" x2="14" y2="23" />
-      </svg>
-    ),
-    label: "AI Assessment",
+    n: "05",
+    title: "A human decides",
+    body: "The assessment explains what the combination means and recommends. The supervisor approves, conditions or blocks — and that call is the binding act.",
+    tag: "POST /decisions",
   },
   {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
-        <circle cx="12" cy="7" r="4" />
-      </svg>
-    ),
-    label: "Supervisor Decision",
-  },
-  {
-    icon: (
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
-        <path d="M9 11l3 3L22 4" />
-        <path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11" />
-      </svg>
-    ),
-    label: "Audit Trail",
+    n: "06",
+    title: "Evidence freezes",
+    body: "The context and assessment cited at decision time are snapshotted, follow-up tasks are dispatched to the area supervisor, and a report closes the loop.",
+    tag: "Audit trail",
   },
 ];
 
 export function HowItWorksSection() {
+  const reduced = useReducedMotion() ?? false;
+
   return (
-    <section className={styles.section} id="how-it-works">
-      <div className={styles.container}>
-        <span className={styles.label}>How It Works</span>
-        <h2 className={styles.heading}>From floor plan to auditable decision</h2>
-        <div className={styles.steps}>
-          {STEPS.map((step, i) => (
-            <div className={styles.stepWrap} key={step.label}>
-              <div className={styles.step}>
-                <div className={styles.icon}>{step.icon}</div>
-                <span className={styles.stepNum}>{String(i + 1).padStart(2, "0")}</span>
-                <span className={styles.stepLabel}>{step.label}</span>
-              </div>
-              {i < STEPS.length - 1 && (
-                <div className={styles.arrow}>
-                  <svg viewBox="0 0 24 12" fill="none" stroke="currentColor" strokeWidth="1.5">
-                    <path d="M0 6h20M16 1l5 5-5 5" />
-                  </svg>
-                </div>
-              )}
+    <SectionShell
+      id="how"
+      label="How it works"
+      title="Deterministic where it must be. Generative only where it helps."
+      lede="Rules detect. Agents correlate. Retrieval grounds. A human decides. Each stage is separately inspectable, which is what makes the output defensible after an incident."
+    >
+      <ol className={styles.steps}>
+        {STEPS.map((s, i) => (
+          <m.li
+            key={s.n}
+            className={styles.step}
+            initial={reduced ? { opacity: 0 } : { opacity: 0, x: -12 }}
+            whileInView={{ opacity: 1, x: 0 }}
+            viewport={viewportOnce}
+            transition={{
+              duration: 0.4,
+              ease: EASE_OUT,
+              delay: reduced ? 0 : i * 0.07,
+            }}
+          >
+            <div className={styles.marker}>
+              <span className={styles.markerNum}>{s.n}</span>
+              {i < STEPS.length - 1 ? (
+                <m.span
+                  className={styles.markerLine}
+                  initial={{ scaleY: 0 }}
+                  whileInView={{ scaleY: 1 }}
+                  viewport={viewportOnce}
+                  transition={{
+                    duration: reduced ? 0 : 0.5,
+                    ease: EASE_OUT,
+                    delay: reduced ? 0 : 0.15 + i * 0.07,
+                  }}
+                />
+              ) : null}
             </div>
-          ))}
-        </div>
-      </div>
-    </section>
+            <div className={styles.body}>
+              <div className={styles.stepHead}>
+                <h3 className={styles.stepTitle}>{s.title}</h3>
+                <code className={styles.tag}>{s.tag}</code>
+              </div>
+              <p className={styles.stepText}>{s.body}</p>
+            </div>
+          </m.li>
+        ))}
+      </ol>
+    </SectionShell>
   );
 }

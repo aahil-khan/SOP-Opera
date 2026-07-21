@@ -1,0 +1,113 @@
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 0.9fr);
+  gap: var(--space-10);
+  align-items: center;
+}
+
+.diagramWrap {
+  padding: var(--space-5);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-xl);
+  background: var(--surface-canvas);
+}
+
+.diagram {
+  display: block;
+  width: 100%;
+  height: auto;
+}
+
+.diagramNote {
+  margin: var(--space-3) 0 0;
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-align: center;
+}
+
+/* ── Diagram primitives ── */
+
+.edge {
+  fill: none;
+  stroke: var(--border-hover);
+  stroke-width: 1.25;
+}
+
+.node {
+  fill: var(--surface-card);
+  stroke: var(--border-default);
+  stroke-width: 1;
+}
+
+.node[data-kind="analysis"] {
+  stroke: color-mix(in srgb, var(--accent-ai) 50%, transparent);
+}
+
+.nodeLabel {
+  fill: var(--text-secondary);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  text-anchor: middle;
+}
+
+.join {
+  fill: var(--surface-card);
+  stroke: var(--accent-selection);
+  stroke-width: 2;
+}
+
+.verdict {
+  fill: var(--status-blocking-muted);
+  stroke: var(--status-blocking);
+  stroke-width: 1.25;
+}
+
+.verdictLabel {
+  fill: var(--status-blocking);
+  font-family: var(--font-label);
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-anchor: middle;
+}
+
+/* ── Notes ── */
+
+.notes {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-4);
+}
+
+.note {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.noteTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.noteBody {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1000px) {
+  .layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .notes {
+    grid-template-columns: 1fr;
+  }
+}
