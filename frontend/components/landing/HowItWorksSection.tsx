@@ -21,7 +21,7 @@ const STEPS = [
   {
     n: "03",
     title: "Agents correlate",
-    body: "A multi-agent graph fans out only where the facts warrant: source agents per domain, then spatial and predictive-trend, then incident-pattern and handover on elevated verdicts.",
+    body: "A multi-agent graph fans out only where the facts warrant: source agents per domain, then spatial, predictive-trend, and shift-handover carry-forward, then incident-pattern on elevated verdicts.",
     tag: "LangGraph",
   },
   {

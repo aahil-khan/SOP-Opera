@@ -30,6 +30,17 @@ export const REST_GROUPS = {
   ],
   reports: ["GET /reviews/{id}/reports", "GET /reports/{id}"],
   notifications: ["GET /notifications"],
+  handover: [
+    "GET /handover/current",
+    "GET /handover/gaps",
+    "GET /handover/metrics",
+    "POST /handover/draft",
+    "POST /handover/{id}/notes",
+    "DELETE /handover/{id}/items/{itemId}",
+    "POST /handover/{id}/issue",
+    "POST /handover/{id}/items/{itemId}/ack",
+    "POST /handover/{id}/accept",
+  ],
   aiOps: ["GET /ai-ops/summary"],
   demo: [
     "POST /demo/scenarios/{name}/start",
@@ -52,6 +63,9 @@ export const WS_EVENTS = [
   "task.completed",
   "task.cancelled",
   "notification.created",
+  "handover.issued",
+  "handover.item_acknowledged",
+  "handover.accepted",
   "echo",
 ] as const;
 

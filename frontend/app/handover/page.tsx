@@ -1,7 +1,7 @@
 "use client";
 
-import { ShiftHandoverView } from "@/components/handover/ShiftHandoverView";
+import { HandoverView } from "@/components/handover/HandoverView";
 
-export default function ShiftHandoverPage() {
-  return <ShiftHandoverView />;
+export default function HandoverPage() {
+  return <HandoverView />;
 }

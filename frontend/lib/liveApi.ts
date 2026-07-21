@@ -9,6 +9,10 @@ import type {
   Context,
   Decision,
   DerivedFact,
+  Handover,
+  HandoverAckState,
+  HandoverGap,
+  HandoverMetrics,
   ManualAssessmentIn,
   Notification,
   ReasoningFactor,
@@ -157,27 +161,6 @@ export interface AiOpsSummary {
   langsmith_enabled: boolean;
   langsmith_project: string;
   langsmith_url: string | null;
-}
-
-export interface ShiftHandoverOpenReview {
-  review_id: string;
-  asset_id: string;
-  asset_name: string;
-  state: string;
-  risk_level: string;
-  label?: string;
-}
-
-export interface ShiftHandoverBrief {
-  brief: string;
-  window_hours: number;
-  provider: string;
-  model: string;
-  active_facts: string[];
-  open_reviews: Array<ShiftHandoverOpenReview | string>;
-  attention_asset_id?: string | null;
-  signal_count: number;
-  generated_at: string;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -473,9 +456,70 @@ export function fetchEvalSummary(): Promise<EvalSummary> {
   return request<EvalSummary>("/api/eval/summary");
 }
 
-export function fetchShiftHandover(windowHours = 12): Promise<ShiftHandoverBrief> {
-  return request<ShiftHandoverBrief>(
-    `/agents/shift-handover?window_hours=${windowHours}`,
-    { method: "POST" },
-  );
+// --- Shift handover ---------------------------------------------------------
+// Shapes come from @/shared/schemas rather than being redeclared here; the old
+// brief type was hand-duplicated and drifted from an untyped backend response.
+
+export function fetchCurrentHandover(): Promise<Handover | null> {
+  return request<Handover | null>("/handover/current");
+}
+
+export function fetchHandoverGaps(): Promise<HandoverGap[]> {
+  return request<HandoverGap[]>("/handover/gaps");
+}
+
+export function fetchHandoverMetrics(): Promise<HandoverMetrics> {
+  return request<HandoverMetrics>("/handover/metrics");
+}
+
+export function draftHandover(
+  incomingActorId: string,
+  windowHours = 12,
+): Promise<Handover> {
+  return request<Handover>("/handover/draft", {
+    method: "POST",
+    body: JSON.stringify({
+      incoming_actor_id: incomingActorId,
+      window_hours: windowHours,
+    }),
+  });
+}
+
+export function addHandoverNote(
+  handoverId: string,
+  note: { title: string; detail?: string | null; requires_ack: boolean },
+): Promise<Handover> {
+  return request<Handover>(`/handover/${handoverId}/notes`, {
+    method: "POST",
+    body: JSON.stringify(note),
+  });
+}
+
+export function removeHandoverItem(
+  handoverId: string,
+  itemId: string,
+): Promise<Handover> {
+  return request<Handover>(`/handover/${handoverId}/items/${itemId}`, {
+    method: "DELETE",
+  });
+}
+
+export function issueHandover(handoverId: string): Promise<Handover> {
+  return request<Handover>(`/handover/${handoverId}/issue`, { method: "POST" });
+}
+
+export function acknowledgeHandoverItem(
+  handoverId: string,
+  itemId: string,
+  ackState: HandoverAckState = "acknowledged",
+  note?: string | null,
+): Promise<Handover> {
+  return request<Handover>(`/handover/${handoverId}/items/${itemId}/ack`, {
+    method: "POST",
+    body: JSON.stringify({ ack_state: ackState, note: note ?? null }),
+  });
+}
+
+export function acceptHandover(handoverId: string): Promise<Handover> {
+  return request<Handover>(`/handover/${handoverId}/accept`, { method: "POST" });
 }

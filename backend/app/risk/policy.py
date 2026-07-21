@@ -42,7 +42,7 @@ from typing import Any, Iterable, Literal
 from app.context.derived_facts import DERIVED_FACT_RULES
 from app.reviews.concerns import BLOCKING_SUPERVISOR_FACTS, SUPERVISOR_FACT_TYPES
 
-POLICY_VERSION = "hazard-pathway-1"
+POLICY_VERSION = "hazard-pathway-2"
 
 RiskLevel = Literal["nominal", "elevated", "blocking"]
 
@@ -114,9 +114,19 @@ CRITICAL_SENSOR_FACTS: frozenset[str] = frozenset(
 """The single-sensor incident line — the traditional SCADA alarm baseline."""
 
 NON_GROUNDING_SIGNALS: frozenset[str] = frozenset(
-    {"predicted_trend_risk", "spatial_cooccurrence"}
+    {"predicted_trend_risk", "spatial_cooccurrence", "unacknowledged_handover"}
 )
-"""Signals that may escalate but can never ground a block on their own."""
+"""
+Signals that may escalate but can never ground a block on their own.
+
+`unacknowledged_handover` means this asset carried a high-risk item across a
+shift boundary that the incoming operator never acknowledged. That is a barrier
+failure in the CONTROL_FAILURE sense — the barrier being the handover itself —
+but it is a fact about paperwork, not about the plant. It must not manufacture a
+hazard dimension, or a missed acknowledgement could complete an initiation
+pathway that no sensor supports. So it escalates a nominal asset to elevated and
+is reported alongside a grounded block, and does nothing else.
+"""
 
 BLOCKING_CONTROL_FACTS: frozenset[str] = frozenset({"simultaneous_ops"})
 """
@@ -201,12 +211,15 @@ def classify(
     dims = dimensions_for(rule_facts)
     spatial = _spatial_hit(obs)
     trend = _trend_hit(obs) or "predicted_trend_risk" in supplied
+    handover_gap = "unacknowledged_handover" in supplied
 
     signals: list[str] = []
     if spatial:
         signals.append("spatial_cooccurrence")
     if trend:
         signals.append("predicted_trend_risk")
+    if handover_gap:
+        signals.append("unacknowledged_handover")
 
     level: str = "nominal"
     rule = "no_signal"
@@ -282,6 +295,15 @@ def classify(
                 f"{_fmt(sorted(rule_facts | supervisor_facts))} detected without a "
                 "complete hazard pathway."
             )
+        # Named before the generic agent escalation below, which the handover
+        # agent's own observation would otherwise satisfy first and report as an
+        # anonymous "an agent escalated".
+        elif handover_gap:
+            level, rule = "elevated", "unacknowledged_handover"
+            why = (
+                "A hazard on this asset was carried across a shift boundary and "
+                "never acknowledged by the incoming operator."
+            )
         elif any(o.get("local_risk") in ("elevated", "blocking") for o in obs):
             level, rule = "elevated", "agent_escalation"
             why = "An analysis agent escalated without a deterministic rule fact."
@@ -299,6 +321,12 @@ def classify(
             "Escalation rested only on projected or geometric signals with no "
             "deterministic rule fact; downgraded pending confirmation."
         )
+
+    # A grounded verdict stands on its own facts, but the incoming operator never
+    # having seen this hazard is material to whoever reads the assessment. Runs
+    # last so the downgrade above cannot discard it.
+    if handover_gap and rule != "unacknowledged_handover":
+        why = f"{why} This hazard also crossed a shift boundary unacknowledged."
 
     return RiskVerdict(
         level=level,  # type: ignore[arg-type]

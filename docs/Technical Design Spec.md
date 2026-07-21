@@ -178,7 +178,9 @@ DERIVED_FACT_RULES: list[Callable[[list[ContextRecord]], DerivedFact | None]] = 
 
 Run synchronously whenever Context is ingested for an Asset. Results are stored (`derived_facts` table), not recomputed on the fly at Assessment time — the Assessment Pipeline reads the current derived state, it never re-derives it.
 
-**Backlog (not MVP):** `rule_stale_sensor` (reading older than freshness SLA), `rule_shift_handover_gap` (open hazard with no acknowledging oncoming shift). Documented so a post-hackathon expansion has an obvious next pair.
+**Backlog (not MVP):** `rule_stale_sensor` (reading older than freshness SLA). Documented so a post-hackathon expansion has an obvious next rule.
+
+**Delivered:** the shift-handover gap (open hazard with no acknowledging oncoming shift) shipped not as a derived-fact rule but as the `handover` domain — a two-party custody transfer whose unacknowledged items surface to the assessment as the non-grounding `unacknowledged_handover` signal (see `app/handover/` and `risk/policy.py`).
 
 ### 5.4 Assessment Pipeline — protected subsystem
 

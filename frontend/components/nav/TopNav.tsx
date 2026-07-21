@@ -21,17 +21,36 @@ export function TopNav() {
   const onReports = pathname.startsWith("/reports");
   const onAiOps = pathname.startsWith("/ai-ops");
   const onEval = pathname.startsWith("/eval");
+  const onHandover = pathname.startsWith("/handover");
   const onReviewDetail = pathname.startsWith("/reviews/");
   const selectAsset = useLiveStore((s) => s.selectAsset);
+  const handover = useLiveStore((s) => s.handover);
+  const loadHandover = useLiveStore((s) => s.loadHandover);
 
   // Cookie is only available in the browser — start null so SSR and the
   // first client render match, then hydrate from the cookie after mount.
   const [actor, setActor] = useState<Actor | null>(null);
-  const [handoverOpen, setHandoverOpen] = useState(false);
+  //(Handover id the operator chose to enter past, so the gate does not re-open
+  // on every navigation once they have deliberately deferred it.)
+  const [dismissedHandoverId, setDismissedHandoverId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setActor(getActorFromCookie());
   }, [pathname]);
+
+  useEffect(() => {
+    void loadHandover();
+  }, [loadHandover, actor?.id]);
+
+  // The gate belongs on the twin, where custody actually matters, and only when
+  // a handover is genuinely waiting on this operator.
+  const handoverOpen =
+    onOperator &&
+    handover?.state === "issued" &&
+    handover.viewer_role === "incoming" &&
+    handover.id !== dismissedHandoverId;
 
   async function onLogout() {
     try {
@@ -44,13 +63,13 @@ export function TopNav() {
 
   const handleStartShift = useCallback(
     (attentionAssetId: string | null) => {
-      setHandoverOpen(false);
+      setDismissedHandoverId(handover?.id ?? null);
       if (attentionAssetId) {
         selectAsset(attentionAssetId);
         if (!onOperator) router.push("/operator");
       }
     },
-    [onOperator, router, selectAsset],
+    [handover?.id, onOperator, router, selectAsset],
   );
 
   return (
@@ -74,14 +93,13 @@ export function TopNav() {
           <Link href="/ai-ops" className={styles.tab} data-active={onAiOps}>
             AI Ops
           </Link>
-          <button
-            type="button"
+          <Link
+            href="/handover"
             className={styles.tab}
-            data-active={handoverOpen}
-            onClick={() => setHandoverOpen(true)}
+            data-active={onHandover}
           >
             Shift Handover
-          </button>
+          </Link>
           {onReviewDetail && (
             <span className={styles.tab} data-active="true">
               Review
@@ -113,7 +131,7 @@ export function TopNav() {
       </nav>
       {handoverOpen ? (
         <ShiftGate
-          onClose={() => setHandoverOpen(false)}
+          onClose={() => setDismissedHandoverId(handover?.id ?? null)}
           onStartShift={handleStartShift}
         />
       ) : null}

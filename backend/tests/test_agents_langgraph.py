@@ -70,9 +70,11 @@ async def test_langgraph_compound_risk_blocking():
         "orchestrator",
         "spatial",
         "incident_pattern",
-        "shift_handover",
     } <= agents
     assert "maintenance" not in agents
+    # The handover agent is gated on carry-forward loaded from the DB, not on the
+    # verdict, so a blocking asset with a clean handover does not run it.
+    assert "shift_handover" not in agents
     assert any(s["kind"] == "verdict" for s in trace)
     assert (
         "Multi-agent" in generation.result.summary

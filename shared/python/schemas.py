@@ -181,3 +181,59 @@ class PingResponse(BaseModel):
     ok: Literal[True] = True
     service: str = "sop-opera-api"
     message: str = Field(default="pong")
+
+
+# --- Shift handover ---------------------------------------------------------
+#
+# Mirrors the TypeScript in shared/schemas.ts. These two files are hand-kept in
+# sync, not generated. The endpoint-level shapes live in
+# backend/app/handover/schemas.py; these are the contract types.
+
+HandoverState = Literal["draft", "issued", "accepted", "expired"]
+HandoverItemType = Literal[
+    "open_review", "active_fact", "open_task", "decision_condition", "note"
+]
+HandoverAckState = Literal["pending", "acknowledged", "queried"]
+HandoverNarrationMode = Literal["llm", "deterministic"]
+
+
+class HandoverItem(BaseModel):
+    id: UUID
+    item_type: HandoverItemType
+    position: int
+    review_id: UUID | None = None
+    asset_id: UUID | None = None
+    asset_name: str | None = None
+    task_id: UUID | None = None
+    title: str
+    detail: str | None = None
+    risk_level: str
+    hazard_dimensions: list[str] = Field(default_factory=list)
+    requires_ack: bool
+    ack_state: HandoverAckState
+    ack_note: str | None = None
+    acknowledged_by: UUID | None = None
+    acknowledged_by_name: str | None = None
+    acknowledged_at: datetime | None = None
+    source: Literal["auto", "manual"]
+
+
+class Handover(BaseModel):
+    id: UUID
+    state: HandoverState
+    outgoing_actor_id: UUID
+    outgoing_actor_name: str
+    incoming_actor_id: UUID
+    incoming_actor_name: str
+    window_start: datetime
+    window_end: datetime
+    brief: str | None = None
+    narration_mode: HandoverNarrationMode
+    issued_at: datetime | None = None
+    accepted_at: datetime | None = None
+    created_at: datetime
+    items: list[HandoverItem] = Field(default_factory=list)
+    required_total: int = 0
+    required_cleared: int = 0
+    attention_asset_id: UUID | None = None
+    viewer_role: Literal["outgoing", "incoming", "observer"] = "observer"

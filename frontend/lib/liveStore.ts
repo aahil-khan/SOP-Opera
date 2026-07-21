@@ -6,6 +6,7 @@ import type {
   Assessment,
   Asset,
   Decision,
+  Handover,
   Notification,
   Review,
 } from "@/shared/schemas";
@@ -13,6 +14,7 @@ import type { RiskLevel } from "@/shared/enums";
 import { riskForSupervisorConcern } from "@/lib/supervisorConcern";
 import {
   fetchAssets,
+  fetchCurrentHandover,
   fetchNotifications,
   fetchRecentTelemetry,
   fetchReviewAssessments,
@@ -340,6 +342,15 @@ interface LiveState {
   opsChipsByAsset: Record<string, AssetOpsChips>;
   /** Plant-wide ops KPI counters — patched with opsChipsByAsset. */
   opsSummary: OpsSummary;
+  /**
+   * The handover in flight (or the most recent settled one). Held here rather
+   * than in component state so an acknowledgement by the incoming operator
+   * repaints the outgoing operator's page over the WebSocket.
+   */
+  handover: Handover | null;
+  handoverLoading: boolean;
+  loadHandover: () => Promise<void>;
+  setHandover: (handover: Handover | null) => void;
   bootstrapped: boolean;
   loading: boolean;
   error: string | null;
@@ -642,6 +653,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
     commentEventSeq: 0,
     lastCommentReviewId: null,
   notifications: [],
+  handover: null,
+  handoverLoading: false,
   unreadNotificationIds: [],
   agentStepsByReview: {},
   telemetrySeries: {},
@@ -767,6 +780,20 @@ export const useLiveStore = create<LiveState>((set, get) => {
         loading: false,
         error: err instanceof Error ? err.message : String(err),
       });
+    }
+  },
+
+  setHandover: (handover) => set({ handover }),
+
+  loadHandover: async () => {
+    set({ handoverLoading: true });
+    try {
+      set({ handover: await fetchCurrentHandover() });
+    } catch {
+      // A handover is supplementary context; a failure here must not blank the
+      // twin, so the previous value stands.
+    } finally {
+      set({ handoverLoading: false });
     }
   },
 
@@ -955,6 +982,14 @@ export const useLiveStore = create<LiveState>((set, get) => {
       type === "assessment.failed"
     ) {
       set((state) => ({ boardEventSeq: state.boardEventSeq + 1 }));
+    }
+
+    if (type.startsWith("handover.")) {
+      void get().loadHandover();
+      if (type === "handover.issued") {
+        void get().loadNotifications().catch(() => {});
+      }
+      return;
     }
 
     if (type === "comment.created") {
