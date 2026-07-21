@@ -23,8 +23,15 @@ def _gas_assets(state: AgentState) -> set[str]:
             if aid:
                 assets.add(str(aid))
     for o in state.get("observations") or []:
-        if "elevated_gas" in (o.get("fact_types") or []):
-            assets.add(str(state.get("asset_id")))
+        if "elevated_gas" not in (o.get("fact_types") or []):
+            continue
+        # Attribute the reading to the asset the observation actually described.
+        # This used to add `state["asset_id"]` unconditionally, which pinned every
+        # agent-reported gas fact to the review's own asset — so in a cross-asset
+        # scenario the spatial link would name the wrong location as the source.
+        aid = o.get("asset_id") or state.get("asset_id")
+        if aid:
+            assets.add(str(aid))
     return assets
 
 
@@ -103,12 +110,18 @@ async def spatial_agent(state: AgentState) -> dict[str, Any]:
             "Compound spatial risk — "
             + "; ".join(L.reason for L in links[:3])
         )
-        risk = "blocking" if any(L.distance_m <= settings.agent_spatial_radius_m for L in links) else "elevated"
+        # `find_spatial_cooccurrences` already filters to the configured radius, so
+        # re-testing `distance_m <= radius` here was always true and the "elevated"
+        # branch was unreachable. Grade by proximity instead: a co-occurrence inside
+        # half the radius is materially tighter than one at its edge.
+        closest = min(L.distance_m for L in links)
+        risk = (
+            "blocking"
+            if closest <= settings.agent_spatial_radius_m / 2
+            else "elevated"
+        )
         fact_types = ["spatial_cooccurrence"]
         finding = "risk"
-        if "elevated_gas" in (state.get("fact_types") or []) or gas_ids:
-            # Keep grounding path: spatial escalates but BLOCK still needs rule facts
-            pass
     else:
         observation = (
             "No hot-work / gas co-occurrence within spatial radius."

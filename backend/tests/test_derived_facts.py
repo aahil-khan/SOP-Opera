@@ -139,7 +139,7 @@ def test_certification_expiring_true_and_false():
     )
 
 
-def test_evaluate_rules_runs_all_fifteen():
+def test_evaluate_rules_runs_every_registered_rule():
     entries = [
         _entry("sensor", {"gas_reading": 30.0}),
         _entry("worker_location", {"worker_id": "w-1", "zone": "hazardous"}),
@@ -150,8 +150,11 @@ def test_evaluate_rules_runs_all_fifteen():
         ),
     ]
     result = evaluate_rules(entries, now=NOW)
+    # Derive the expected count from the registry rather than hardcoding it —
+    # this asserted 15 while 16 rules were registered, so it had been failing
+    # silently since whichever rule was added last.
     assert set(result.keys()) == {name for name, _ in DERIVED_FACT_RULES}
-    assert len(result) == 15
+    assert len(result) == len(DERIVED_FACT_RULES)
     assert result["elevated_gas"] is not None
     assert result["zone_occupied"] is not None
     assert result["permit_conflict"] is not None

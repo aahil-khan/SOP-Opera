@@ -31,9 +31,13 @@ def compound_alarm(
     SOP Opera compound engine: derived facts fused to a blocking verdict by the
     same policy the pipeline ships (app/risk/policy.py) — not a reimplementation.
 
-    `observations` carries agent signals (spatial, predictive trend) so the eval
-    can score the pipeline with and without them. Defaults to none, which scores
-    the rules engine alone.
+    `observations` carries agent signals (spatial, predictive trend). The eval
+    harness deliberately passes none, so every reported metric scores the rules
+    engine alone: the stop-work criteria in `hazard_ground_truth.py` are written
+    about plant state, not tag topology, so scoring geometry against them would
+    mean labeling those cases to match our own spatial agent — the circular
+    metric this harness exists to avoid. The parameter is here so a
+    spatially-aware ground truth can be scored later without changing callers.
     """
     grounded = sorted(active_fact_types(entries) - {"spatial_cooccurrence"})
     return classify(grounded, observations or []).is_blocking

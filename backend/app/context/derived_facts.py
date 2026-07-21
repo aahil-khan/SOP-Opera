@@ -111,6 +111,34 @@ def rule_zone_occupied(
     *,
     now: datetime | None = None,
 ) -> DerivedFact | None:
+    """
+    Personnel present in a hazard-classified area on this asset.
+
+    ## The `zone` payload field is a classification, not a plant-zone lookup
+
+    `worker_location.payload["zone"]` is the **hazard classification the workforce
+    system reports for the worker's current position** — the answer to "is this
+    person somewhere classified hazardous right now". It is deliberately *not*
+    compared against `assets.zone`, and the two mean different things despite
+    sharing a name:
+
+    - `assets.zone` is a plant area label (`coke-oven-battery`, `utilities`, …)
+    - this payload is a hazard class (`hazardous` / `safe`)
+
+    So in the VSP scenario a worker reports `zone: "hazardous"` on Vessel A, whose
+    `assets.zone` is `coke-oven-battery`, and this rule fires correctly. A PTW or
+    mustering integration reports exactly this shape, so the contract is real —
+    but the shared field name is a trap and has been read as a bug before.
+
+    ## Consequence, stated plainly
+
+    This is a *reported* classification, not a computed one. We do not derive
+    hazard exposure from geometry: there is no check that the worker is within N
+    metres of the hazard, because `rule_*` functions are pure over
+    `ContextEntryView` and have no access to asset metadata or the knowledge
+    graph. Adding real proximity means threading asset zone/coordinates into the
+    rule layer and giving up that purity — see `docs/audit-2026-07.md`.
+    """
     hits = [
         e
         for e in entries
