@@ -7,6 +7,7 @@ import { Logo } from "@/components/brand/Logo";
 import { ShiftGate } from "@/components/twin/ShiftGate";
 import { DemoMenu } from "./DemoMenu";
 import { SettingsMenu } from "./SettingsMenu";
+import { TourLaunchButton } from "@/components/tour/TourLaunchButton";
 import styles from "./TopNav.module.css";
 import { displayName, initialsFor } from "@/lib/actorDisplay";
 import { getActorFromCookie } from "@/lib/actorCookie";
@@ -110,6 +111,7 @@ export function TopNav() {
         <span className={styles.spacer} />
 
         <div className={styles.toolbar}>
+          <TourLaunchButton />
           <DemoMenu />
           <SettingsMenu />
         </div>

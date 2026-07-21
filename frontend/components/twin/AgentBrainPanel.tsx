@@ -201,7 +201,11 @@ export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
     : "Waiting for domain signals…";
 
   return (
-    <div className={styles.embedded} aria-label="Agent reasoning stream">
+    <div
+      className={styles.embedded}
+      aria-label="Agent reasoning stream"
+      data-tour="brain-panel"
+    >
       <header className={styles.header}>
         <div className={styles.titleBlock}>
           <span className={styles.liveDot} aria-hidden />

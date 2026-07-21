@@ -97,7 +97,7 @@ export function HandoverView() {
   const outstanding = handover.required_total - handover.required_cleared;
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-tour="handover">
       <PageHeader />
       {error && <p className="text-error">{error}</p>}
 

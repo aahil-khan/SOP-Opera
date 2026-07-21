@@ -90,7 +90,7 @@ export function EvalScorecardView() {
   }
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-tour="eval-scorecard">
       <header className={styles.pageHeader}>
         <div className={styles.headerText}>
           <h1 className={styles.pageTitle}>Compound vs single-sensor</h1>

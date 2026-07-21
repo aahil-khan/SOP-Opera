@@ -140,7 +140,7 @@ export function AIOpsDashboard() {
     summary && totalTokens > 0 ? summary.total_input_tokens / totalTokens : 0;
 
   return (
-    <div className={styles.wrap}>
+    <div className={styles.wrap} data-tour="aiops">
       <header className={styles.header}>
         <div className={styles.headerText}>
           <h1 className={styles.title}>AI Ops</h1>

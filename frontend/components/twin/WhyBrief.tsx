@@ -150,7 +150,7 @@ export function WhyBrief({ view, assessment }: WhyBriefProps) {
   }
 
   return (
-    <div className={styles.root}>
+    <div className={styles.root} data-tour="why-brief">
       {notice ? (
         <div className={styles.notice} data-tone={notice.tone}>
           <p className={styles.noticeTitle}>{notice.title}</p>
