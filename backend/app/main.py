@@ -87,7 +87,8 @@ from app.eval.routes import router as eval_router  # noqa: E402
 from app.context.ingest_routes import router as ingest_router  # noqa: E402
 from app.assessment.queue_routes import router as queue_router  # noqa: E402
 from app.auth.routes import router as auth_router  # noqa: E402
-from app.tasks.routes import router as tasks_router  # noqa: E402
+from app.tasks.routes import router as tasks_router
+from app.audit.routes import router as audit_router  # noqa: E402
 
 app.include_router(context_router)
 app.include_router(reviews_router)
@@ -104,6 +105,7 @@ app.include_router(ingest_router)
 app.include_router(queue_router)
 app.include_router(auth_router)
 app.include_router(tasks_router)
+app.include_router(audit_router)
 
 
 @app.get("/health")
