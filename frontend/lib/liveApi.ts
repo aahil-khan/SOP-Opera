@@ -124,15 +124,29 @@ export interface ReviewComment {
   created_at: string;
 }
 
+/** One row of the /reports register. Mirrors `ReportSummaryOut`. */
 export interface ReportSummary {
   id: string;
   review_id: string;
   closure_event_seq: number;
+  version_label: string;
+  report_ref: string;
+  is_current: boolean;
+  packet_version: number;
   generated_at: string;
+  frozen_at: string | null;
+  closed_by: string | null;
   title: string | null;
   asset_name: string | null;
+  asset_zone: string | null;
   outcome: string | null;
+  outcome_label: string | null;
   risk_level: string | null;
+  decided_by_name: string | null;
+  open_tasks: number;
+  citation_count: number;
+  evidence_count: number;
+  content_hash: string | null;
 }
 
 export interface AiOpsSummary {
@@ -296,8 +310,43 @@ export function postManualAssessment(
   });
 }
 
-export function fetchReports(): Promise<ReportSummary[]> {
-  return request<ReportSummary[]>("/reports");
+export interface ReportListParams {
+  review_id?: string;
+  outcome?: string;
+  risk_level?: string;
+  include_superseded?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export function fetchReports(
+  params?: ReportListParams,
+): Promise<ReportSummary[]> {
+  const qs = new URLSearchParams();
+  if (params?.review_id) qs.set("review_id", params.review_id);
+  if (params?.outcome) qs.set("outcome", params.outcome);
+  if (params?.risk_level) qs.set("risk_level", params.risk_level);
+  if (params?.include_superseded) qs.set("include_superseded", "true");
+  if (params?.limit != null) qs.set("limit", String(params.limit));
+  if (params?.offset != null) qs.set("offset", String(params.offset));
+  const suffix = qs.toString() ? `?${qs}` : "";
+  return request<ReportSummary[]>(`/reports${suffix}`);
+}
+
+/* Export links must hit FastAPI directly — Next does not proxy /reports. */
+
+export function reportPdfUrl(id: string): string {
+  return `${API_BASE}/reports/${id}/export.pdf`;
+}
+
+export function reportXlsxUrl(id: string): string {
+  return `${API_BASE}/reports/${id}/export.xlsx`;
+}
+
+export function reportsDatasetXlsxUrl(includeSuperseded = false): string {
+  return `${API_BASE}/reports/export.xlsx${
+    includeSuperseded ? "?include_superseded=true" : ""
+  }`;
 }
 
 export function fetchReport(id: string): Promise<Report> {

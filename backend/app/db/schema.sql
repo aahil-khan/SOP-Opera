@@ -446,3 +446,61 @@ CREATE INDEX IF NOT EXISTS idx_handovers_state ON handovers(state);
 CREATE UNIQUE INDEX IF NOT EXISTS uq_handovers_active
     ON handovers((state IS NOT NULL))
     WHERE state IN ('draft', 'issued');
+-- Reports were rebuilt from LIVE tables at close time, so a report "of" a review
+-- reflected whatever the tables said when the generator ran rather than what the
+-- supervisor actually decided on. They are now built from the evidence.frozen_*
+-- snapshots and are immutable once written; a reopen mints a new version instead
+-- of mutating v1.
+
+-- Fingerprint of `content`, over the same canonical JSON the audit chain uses.
+-- Without it "immutable" is a convention; with it, an edit is detectable.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS content_hash TEXT;
+
+-- Packet shape version. Rows written before the rework carry the v1 shape and are
+-- hydrated through a compatibility path rather than parsed as v2.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS packet_version INT NOT NULL DEFAULT 1;
+
+-- Backward-only supersession link, written once at insert. Deliberately no FK:
+-- `_RESET_DELETE_ORDER` in simulator/engine.py wipes reports in a single
+-- statement, which a self-FK would reject row by row. "Is current" is derived
+-- (max seq per review), never stored, so superseding v1 never writes to v1.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS supersedes_report_id UUID;
+
+-- Who closed the review. The audit chain had it; the packet did not, so a report
+-- could not name the actor whose action froze it.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS closed_by TEXT;
+
+-- Freeze instant, kept distinct from generated_at, which carries a DEFAULT now()
+-- and would drift if a row were ever re-rendered.
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS frozen_at TIMESTAMPTZ;
+
+-- The evidence row this packet was built from, with its snapshot_hash copied
+-- forward so the packet stays verifiable after a demo reset deletes evidence.
+-- No FK for the same reason as above (evidence is deleted before reports).
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS evidence_id UUID;
+ALTER TABLE reports ADD COLUMN IF NOT EXISTS snapshot_hash TEXT;
+
+-- closure_event_seq was COUNT(*)+1 with nothing enforcing it, so a concurrent or
+-- retried close could mint a duplicate, and a demo reset (which deletes reports)
+-- could reuse one. Renumber existing duplicates before constraining: apply_schema
+-- runs this file as one unit, so a failing CREATE UNIQUE INDEX would abort every
+-- statement after it on an existing dev database.
+WITH renumbered AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+               PARTITION BY review_id ORDER BY generated_at, id
+           )::int AS rn
+    FROM reports
+)
+UPDATE reports r
+SET closure_event_seq = renumbered.rn
+FROM renumbered
+WHERE r.id = renumbered.id
+  AND r.closure_event_seq IS DISTINCT FROM renumbered.rn;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_reports_review_seq
+    ON reports(review_id, closure_event_seq);
+
+-- Every report read path filters or orders by review_id; there was no index.
+CREATE INDEX IF NOT EXISTS idx_reports_review
+    ON reports(review_id, closure_event_seq DESC);

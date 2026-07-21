@@ -161,11 +161,30 @@ class Asset(BaseModel):
 
 
 class Report(BaseModel):
+    """
+    Envelope around a frozen closure packet.
+
+    The packet's own shape is defined once, in `backend/app/reports/packet.py`
+    (`ReportPacket`), and mirrored in `shared/schemas.ts`. It is left as a dict
+    here rather than duplicated a third time — the backend already validates it
+    on the way in and on the way out.
+    """
+
     id: UUID
     review_id: UUID
     closure_event_seq: int
-    content: dict[str, Any]
+    version_label: str
+    is_current: bool
+    packet_version: int
+    supersedes_report_id: UUID | None = None
+    superseded_by_report_id: UUID | None = None
     generated_at: datetime
+    frozen_at: datetime | None = None
+    closed_by: str | None = None
+    content_hash: str | None = None
+    content: dict[str, Any]
+    integrity: dict[str, Any] = {}
+    versions: list[dict[str, Any]] = []
 
 
 class Notification(BaseModel):

@@ -28,7 +28,14 @@ export const REST_GROUPS = {
     "POST /tasks/{id}/acknowledge",
     "POST /tasks/{id}/done",
   ],
-  reports: ["GET /reviews/{id}/reports", "GET /reports/{id}"],
+  reports: [
+    "GET /reports",
+    "GET /reports/export.xlsx",
+    "GET /reviews/{id}/reports",
+    "GET /reports/{id}",
+    "GET /reports/{id}/export.pdf",
+    "GET /reports/{id}/export.xlsx",
+  ],
   notifications: ["GET /notifications"],
   handover: [
     "GET /handover/current",
