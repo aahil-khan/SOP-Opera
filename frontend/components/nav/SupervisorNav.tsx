@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
+import { displayName, initialsFor } from "@/lib/actorDisplay";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import { logout } from "@/lib/authApi";
 import type { Actor } from "@/lib/authTypes";
@@ -33,23 +34,31 @@ export function SupervisorNav() {
     <nav className={styles.nav} aria-label="Supervisor">
       <Link href="/supervisor" className={styles.brand}>
         <Logo className={styles.brandLogo} />
-        <span>SOP Opera</span>
+        <span className={styles.brandName}>SOP Opera</span>
       </Link>
-      <span className={styles.divider} aria-hidden="true" />
-      <span className={styles.viewLabel}>Supervisor</span>
+
+      <div className={styles.tabs} role="tablist">
+        <span className={styles.tab} data-active="true">
+          Supervisor
+        </span>
+      </div>
+
       <span className={styles.spacer} />
-      <NotificationCenter />
+
+      <div className={styles.toolbar}>
+        <NotificationCenter />
+      </div>
+
       {actor ? (
-        <div className={styles.identityWrap}>
+        <div className={styles.account}>
+          <span className={styles.avatar} aria-hidden="true">
+            {initialsFor(actor.name)}
+          </span>
           <div className={styles.identity}>
-            <span className={styles.identityName}>{actor.name}</span>
+            <span className={styles.identityName}>{displayName(actor.name)}</span>
             <span className={styles.identityRole}>{actor.role}</span>
           </div>
-          <button
-            type="button"
-            className={styles.logoutBtn}
-            onClick={() => void onLogout()}
-          >
+          <button type="button" className={styles.logoutBtn} onClick={() => void onLogout()}>
             Logout
           </button>
         </div>

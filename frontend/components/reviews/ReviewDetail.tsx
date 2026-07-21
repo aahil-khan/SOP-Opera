@@ -281,6 +281,7 @@ export function ReviewDetail({
             assessment={latest}
             existing={detail.decision}
             areaOwner={detail.area_owner}
+            taskSummary={detail.task_summary}
           />
         </DecisionCard>
       )}

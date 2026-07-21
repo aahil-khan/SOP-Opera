@@ -11,6 +11,7 @@ import { WhyBrief } from "./WhyBrief";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
 import type { AreaOwner } from "@/shared/schemas";
+import type { TaskSummary } from "@/lib/liveApi";
 import {
   AssessingBanner,
   priorSettledAssessment,
@@ -69,6 +70,7 @@ function QuickDecisionSection({
   existing,
   bodyRef,
   areaOwner,
+  taskSummary,
 }: {
   open: boolean;
   onClose: () => void;
@@ -78,6 +80,7 @@ function QuickDecisionSection({
   existing: NonNullable<LiveAssetView["detail"]>["decision"] | null;
   bodyRef: RefObject<HTMLDivElement | null>;
   areaOwner: AreaOwner | null;
+  taskSummary?: TaskSummary | null;
 }) {
   const [rendered, setRendered] = useState(open);
   const [closing, setClosing] = useState(false);
@@ -136,6 +139,7 @@ function QuickDecisionSection({
         assessment={assessment}
         existing={existing}
         areaOwner={areaOwner}
+        taskSummary={taskSummary}
       />
     </DecisionCard>
   );
@@ -476,6 +480,7 @@ export function AssetPanel({
             assessment={assessment}
             existing={decision}
             areaOwner={detail?.area_owner ?? null}
+            taskSummary={detail?.task_summary ?? null}
             bodyRef={bodyRef}
           />
         )}
