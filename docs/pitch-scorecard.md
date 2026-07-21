@@ -7,22 +7,23 @@ stopping — with a human decision and a full audit trail.
 
 ## Headline numbers
 
-From `app/eval/` — 377 labeled cases. Regenerate with `python -m app.eval.run`.
+From `app/eval/` — 593 labeled cases (393 requiring stop-work, 200 safe).
+Regenerate with `python -m app.eval.run`.
 
 | Detector | Accuracy | FN rate | Precision |
 | --- | ---: | ---: | ---: |
-| Single-sensor (critical OR) | 76.9% | **33.9%** | 100.0% |
-| Predictive forecast (trend) | 65.0% | 35.8% | 80.5% |
-| **Compound engine** | **97.9%** | **0.0%** | 97.0% |
+| Single-sensor (critical OR) | 70.5% | **44.5%** | 100.0% |
+| Predictive forecast (trend) | 66.3% | 31.8% | 78.1% |
+| **Compound engine** | **98.0%** | **0.0%** | 97.0% |
 
-**The line to say out loud:** *a conventional SCADA threshold alarm misses 87 of
-257 plant states where a regulation requires stopping work. We miss zero.*
+**The line to say out loud:** *a conventional SCADA threshold alarm misses 175 of
+393 plant states where a regulation requires stopping work. We miss zero.*
 
 - **VSP lead time: 28 minutes** of plant process time (compound blocks at
   t+6 min; single-sensor critical at t+34 min). This is process time, not demo
   playback — the scenario replays in ~26 seconds but spans 34 minutes of plant time.
 - **Regulatory coverage:** 100% of fact-bearing cases have a citable regulation;
-  91.1% cite an Indian statutory provision.
+  91.7% cite an Indian statutory provision.
 
 ### If a judge pushes on the numbers
 
@@ -30,14 +31,19 @@ Answer directly — the honesty is the strongest card we have.
 
 - *"0% false negatives sounds too good."* It is **criterion coverage**, not a
   generalization claim: we implement the provisions, so we catch them. The
-  meaningful number is the baseline scored on the *same* labels — 33.9% FN.
+  meaningful number is the baseline scored on the *same* labels — 44.5% FN.
 - *"Who wrote the labels?"* `app/eval/hazard_ground_truth.py`, from statutory
   stop-work criteria over raw sensor/permit payloads. It cannot import the risk
   policy it scores — `tests/test_eval_independence.py` fails the build if it does,
   and also fails if labels and detector ever agree on *every* case.
-- *"What about your 8 false positives?"* Cases where we stop work and the statute
+- *"What about your 12 false positives?"* Cases where we stop work and the statute
   does not strictly require it — hot work with unverified isolation and personnel
   present at a clean gas reading. For a stop-work system that bias is deliberate.
+- *"How do you know the sweep isn't cherry-picked?"* It samples **exactly on** each
+  threshold, not just comfortably past it. That is how we found a real defect: the
+  elevated-gas rule used `>` while the statutory criteria used `>=`, so a reading
+  sitting on the action level with personnel present was a silent miss. Fixed, and
+  `tests/test_risk_policy.py` now fails if any band drifts back off `>=`.
 
 ## The risk model
 

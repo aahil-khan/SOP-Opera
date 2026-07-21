@@ -17,7 +17,7 @@ This replaces the previous labeling function, which defined a case as
 dangerous exactly when the compound engine fired, making a 0% false-negative
 rate true by construction.
 
-**Dataset:** 377 cases — 257 requiring stop-work (68%), 120 safe (32%). Cases come from a parameter sweep over
+**Dataset:** 593 cases — 393 requiring stop-work (66%), 200 safe (34%). Cases come from a parameter sweep over
 atmosphere level and trajectory, permit/isolation state, concurrent
 operations, personnel presence and process temperature, plus scripted
 scenario timelines.
@@ -26,9 +26,9 @@ scenario timelines.
 
 | Detector | Accuracy | Recall | FN rate | Precision |
 | --- | ---: | ---: | ---: | ---: |
-| Single-sensor baseline | 76.9% | 66.1% | 33.9% | 100.0% |
-| Predictive forecast (ML trend) | 65.0% | 64.2% | 35.8% | 80.5% |
-| Compound engine | 97.9% | 100.0% | 0.0% | 97.0% |
+| Single-sensor baseline | 70.5% | 55.5% | 44.5% | 100.0% |
+| Predictive forecast (ML trend) | 66.3% | 68.2% | 31.8% | 78.1% |
+| Compound engine | 98.0% | 100.0% | 0.0% | 97.0% |
 
 **FN reduction (compound vs single-sensor):** 100.0%
 
@@ -39,10 +39,10 @@ regulation requires stopping work, how many does each detector catch? The
 compound engine implements those provisions, so high recall is expected —
 the meaningful comparison is against the single-sensor baseline scored on
 the *same* labels, which is how a conventional SCADA threshold alarm
-performs: it misses 87 of 257 stop-work cases.
+performs: it misses 175 of 393 stop-work cases.
 
 It is **not** a claim about generalizing to unseen real-world incidents.
-The 8 compound false positives are cases where the engine
+The 12 compound false positives are cases where the engine
 is deliberately more conservative than the statutory minimum (for example,
 hot work with unverified isolation and personnel present, at a clean gas
 reading). For a stop-work system that is a defensible bias, not a defect.
@@ -59,14 +59,14 @@ VSP coke-oven timeline: forecast alarm at **t+6 min**, compound alarm at **t+6 m
 Of the cases where the rules engine derives at least one fact, how many
 have a regulation the deterministic retriever can cite for that fact?
 
-- Cases with derived facts: **360**
+- Cases with derived facts: **576**
 - With a citable regulation: **100.0%**
-- With an Indian statutory provision: **91.1%**
+- With an Indian statutory provision: **91.7%**
 
 | Standard | Citations available |
 | --- | ---: |
-| Factories Act 1948 | 479 |
-| OISD | 70 |
+| Factories Act 1948 | 791 |
+| OISD | 106 |
 
 ## Hero checkpoint
 
