@@ -2,8 +2,12 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAssetView } from "@/lib/liveStore";
-import { useLiveStore } from "@/lib/liveStore";
+import { useAssetTelemetrySlice, useLiveStore } from "@/lib/liveStore";
 import { fetchAssetOwner } from "@/lib/liveApi";
+import {
+  fetchGraphNeighbors,
+  peekGraphNeighborCount,
+} from "@/lib/graphNeighborsCache";
 import type { AreaOwner } from "@/shared/schemas";
 import {
   DOMAINS,
@@ -14,7 +18,6 @@ import {
 } from "@/lib/domains";
 import { DomainDetailFlyout } from "./DomainDetailFlyout";
 import styles from "./DomainRadar.module.css";
-import { API_BASE } from "@/lib/api";
 
 const SIZE = 300;
 const CX = SIZE / 2;
@@ -98,42 +101,31 @@ export function DomainRadar({ view }: DomainRadarProps) {
   const assetId = view.asset.id;
   const detailOwner = view.detail?.area_owner ?? null;
 
-  const gasSeries = useLiveStore(
-    (s) => s.telemetrySeries[`${assetId}::gas_reading`],
-  );
-  const temp = useLiveStore(
-    (s) => s.telemetrySeries[`${assetId}::temp_reading`],
-  );
-  const vibe = useLiveStore(
-    (s) => s.telemetrySeries[`${assetId}::vibration_mm_s`],
-  );
-  const level = useLiveStore(
-    (s) => s.telemetrySeries[`${assetId}::level_pct`],
-  );
-  const ph = useLiveStore((s) => s.telemetrySeries[`${assetId}::ph`]);
-  const wind = useLiveStore((s) => s.telemetrySeries[`${assetId}::wind_ms`]);
-  const latest = useLiveStore((s) => s.telemetryLatest[assetId]);
+  const { series, latest } = useAssetTelemetrySlice(assetId);
+  const gasSeries = series.gas_reading;
+  const temp = series.temp_reading;
+  const vibe = series.vibration_mm_s;
+  const level = series.level_pct;
+  const ph = series.ph;
+  const wind = series.wind_ms;
 
-  const [neighborCount, setNeighborCount] = useState<number | null>(null);
+  const [neighborCount, setNeighborCount] = useState<number | null>(() =>
+    peekGraphNeighborCount(assetId),
+  );
   const [fetchedOwner, setFetchedOwner] = useState<AreaOwner | null>(null);
 
   useEffect(() => {
     let cancelled = false;
-    setNeighborCount(null);
-    (async () => {
-      try {
-        const res = await fetch(`${API_BASE}/graph/neighbors/${assetId}`);
-        if (!res.ok) throw new Error(`${res.status}`);
-        const data = (await res.json()) as { neighbors?: unknown[] };
-        if (!cancelled) {
-          setNeighborCount(
-            Array.isArray(data.neighbors) ? data.neighbors.length : 0,
-          );
-        }
-      } catch {
+    const cached = peekGraphNeighborCount(assetId);
+    if (cached != null) setNeighborCount(cached);
+    else setNeighborCount(null);
+    void fetchGraphNeighbors(assetId)
+      .then((result) => {
+        if (!cancelled) setNeighborCount(result.count);
+      })
+      .catch(() => {
         if (!cancelled) setNeighborCount(0);
-      }
-    })();
+      });
     return () => {
       cancelled = true;
     };

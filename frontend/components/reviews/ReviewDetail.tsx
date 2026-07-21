@@ -15,6 +15,7 @@ import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
 import { AgentTracePanel } from "@/components/trace/AgentTracePanel";
 import { IssueReport } from "@/components/reviews/IssueReport";
+import { ReviewThread } from "@/components/thread/ReviewThread";
 import { nextActionForView, ownerNameForView } from "@/lib/openWork";
 import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 import actionStyles from "@/components/decision/RecommendedAction.module.css";
@@ -129,6 +130,14 @@ export function ReviewDetail({
             <p className={styles.subtitle}>
               Triggered by {review.triggered_by.replaceAll("_", " ")} · created{" "}
               {new Date(review.created_at).toLocaleString()}
+              {review.origin === "supervisor" ? (
+                <>
+                  {" "}
+                  · <span className="badge">
+                    Supervisor raised · {detail.raised_by_worker_name ?? "Unknown"}
+                  </span>
+                </>
+              ) : null}
               {detail.area_owner
                 ? ` · Area owner ${detail.area_owner.name}`
                 : ""}
@@ -258,9 +267,12 @@ export function ReviewDetail({
             reviewState={review.state}
             assessment={latest}
             existing={detail.decision}
+            areaOwner={detail.area_owner}
           />
         </DecisionCard>
       )}
+
+      <ReviewThread reviewId={review.id} />
     </div>
   );
 }

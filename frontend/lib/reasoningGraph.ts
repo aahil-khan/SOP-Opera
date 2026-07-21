@@ -459,12 +459,16 @@ export function buildReasoningGraph(
 
   if (decision) {
     const did = `decision:${decision.id ?? "outcome"}`;
+    const detailParts = [
+      decision.conditions ? `Conditions: ${decision.conditions}` : null,
+      decision.comments ? `Comments: ${decision.comments}` : null,
+    ].filter(Boolean);
     addNode({
       id: did,
       label: decision.outcome.replaceAll("_", " "),
       kind: "decision",
       domain: "core",
-      detail: decision.conditions ?? "No conditions",
+      detail: detailParts.length > 0 ? detailParts.join("\n") : "No conditions or comments",
       weight: 11,
       stage: STAGE_DECISION,
       band: "decision",

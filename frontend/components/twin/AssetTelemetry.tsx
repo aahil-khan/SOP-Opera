@@ -2,6 +2,7 @@
 
 import { useCallback, useId, useMemo, useRef, useState } from "react";
 import {
+  useAssetTelemetrySlice,
   useLiveStore,
   type TelemetryMetricKey,
   type TelemetryPoint,
@@ -182,165 +183,179 @@ function MiniChart({
       data-risk={critical ? "critical" : elevated ? "elevated" : "nominal"}
       data-hovering={hover ? "true" : undefined}
     >
-      <div className={styles.chartPlotWrap}>
-        <svg
-          ref={svgRef}
-          className={styles.chart}
-          viewBox={`0 0 ${CHART_W} ${CHART_H}`}
-          role="img"
-          aria-label="Telemetry trend"
-          preserveAspectRatio="none"
-          onMouseMove={(e) => {
-            const idx = pickIndex(e.clientX);
-            if (idx != null) setHoverIdx(idx);
-          }}
-          onMouseLeave={() => setHoverIdx(null)}
-        >
-          <defs>
-            <linearGradient id={`fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
-              <stop
-                offset="0%"
-                stopColor="currentColor"
-                stopOpacity={elevated ? 0.35 : 0.28}
-              />
-              <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
-            </linearGradient>
-          </defs>
+      <div className={styles.chartRow}>
+        <div className={styles.chartPlotWrap}>
+          <svg
+            ref={svgRef}
+            className={styles.chart}
+            viewBox={`0 0 ${CHART_W} ${CHART_H}`}
+            role="img"
+            aria-label="Telemetry trend"
+            preserveAspectRatio="none"
+            onMouseMove={(e) => {
+              const idx = pickIndex(e.clientX);
+              if (idx != null) setHoverIdx(idx);
+            }}
+            onMouseLeave={() => setHoverIdx(null)}
+          >
+            <defs>
+              <linearGradient id={`fill-${gradId}`} x1="0" y1="0" x2="0" y2="1">
+                <stop
+                  offset="0%"
+                  stopColor="currentColor"
+                  stopOpacity={elevated ? 0.35 : 0.28}
+                />
+                <stop offset="100%" stopColor="currentColor" stopOpacity="0.02" />
+              </linearGradient>
+            </defs>
 
-          {/* Plot background */}
-          <rect
-            x={PAD.left}
-            y={PAD.top}
-            width={plotW}
-            height={plotH}
-            className={styles.chartPlot}
-          />
-
-          {/* Horizontal grid */}
-          {gridYs.map((y) => (
-            <line
-              key={y}
-              x1={PAD.left}
-              y1={y}
-              x2={PAD.left + plotW}
-              y2={y}
-              className={styles.chartGrid}
+            {/* Plot background */}
+            <rect
+              x={PAD.left}
+              y={PAD.top}
+              width={plotW}
+              height={plotH}
+              className={styles.chartPlot}
             />
-          ))}
 
-          {/* Warn threshold */}
-          {warnInView && (
-            <g>
+            {/* Horizontal grid */}
+            {gridYs.map((y) => (
               <line
+                key={y}
                 x1={PAD.left}
-                y1={warnY}
+                y1={y}
                 x2={PAD.left + plotW}
-                y2={warnY}
-                className={styles.chartWarn}
+                y2={y}
+                className={styles.chartGrid}
               />
-            </g>
-          )}
+            ))}
 
-          <path d={areaD} fill={`url(#fill-${gradId})`} />
-          <path
-            d={lineD}
-            fill="none"
-            stroke="currentColor"
-            strokeWidth="2"
-            strokeLinejoin="round"
-            strokeLinecap="round"
-          />
+            {/* Warn threshold */}
+            {warnInView && (
+              <g>
+                <line
+                  x1={PAD.left}
+                  y1={warnY}
+                  x2={PAD.left + plotW}
+                  y2={warnY}
+                  className={styles.chartWarn}
+                />
+              </g>
+            )}
 
-          {/* Latest sample marker — hide when scrubbing so hover point is clear */}
-          {!hover && (
-            <>
-              <circle
-                cx={last.x}
-                cy={last.y}
-                r="3.5"
-                className={styles.chartDot}
-                fill="currentColor"
-              />
-              <circle
-                cx={last.x}
-                cy={last.y}
-                r="6"
-                fill="currentColor"
-                opacity="0.2"
-              />
-            </>
-          )}
-
-          {projection && (
-            <line
-              x1={projection.fromX}
-              y1={projection.fromY}
-              x2={projection.targetX}
-              y2={projection.targetY}
-              className={styles.chartProjection}
+            <path d={areaD} fill={`url(#fill-${gradId})`} />
+            <path
+              d={lineD}
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+              strokeLinecap="round"
             />
-          )}
+
+            {/* Latest sample marker — hide when scrubbing so hover point is clear */}
+            {!hover && (
+              <>
+                <circle
+                  cx={last.x}
+                  cy={last.y}
+                  r="3.5"
+                  className={styles.chartDot}
+                  fill="currentColor"
+                />
+                <circle
+                  cx={last.x}
+                  cy={last.y}
+                  r="6"
+                  fill="currentColor"
+                  opacity="0.2"
+                />
+              </>
+            )}
+
+            {projection && (
+              <line
+                x1={projection.fromX}
+                y1={projection.fromY}
+                x2={projection.targetX}
+                y2={projection.targetY}
+                className={styles.chartProjection}
+              />
+            )}
+
+            {hover && (
+              <g className={styles.chartScrub} pointerEvents="none">
+                <line
+                  x1={hover.x}
+                  y1={PAD.top}
+                  x2={hover.x}
+                  y2={PAD.top + plotH}
+                  className={styles.chartScrubLine}
+                />
+                <circle
+                  cx={hover.x}
+                  cy={hover.y}
+                  r="5"
+                  className={styles.chartDot}
+                  fill="currentColor"
+                />
+                <circle
+                  cx={hover.x}
+                  cy={hover.y}
+                  r="8"
+                  fill="currentColor"
+                  opacity="0.22"
+                />
+              </g>
+            )}
+
+            {/* Invisible hit surface so the whole plot is scrubbable */}
+            <rect
+              x={PAD.left}
+              y={PAD.top}
+              width={plotW}
+              height={plotH}
+              fill="transparent"
+              className={styles.chartHit}
+            />
+          </svg>
 
           {hover && (
-            <g className={styles.chartScrub} pointerEvents="none">
-              <line
-                x1={hover.x}
-                y1={PAD.top}
-                x2={hover.x}
-                y2={PAD.top + plotH}
-                className={styles.chartScrubLine}
-              />
-              <circle
-                cx={hover.x}
-                cy={hover.y}
-                r="5"
-                className={styles.chartDot}
-                fill="currentColor"
-              />
-              <circle
-                cx={hover.x}
-                cy={hover.y}
-                r="8"
-                fill="currentColor"
-                opacity="0.22"
-              />
-            </g>
+            <div
+              className={styles.chartTip}
+              style={{ left: `${tipLeftPct}%` }}
+              role="status"
+            >
+              <strong>
+                {formatValue(metricKey, hover.v)}
+                {unit ? ` ${unit}` : ""}
+              </strong>
+              <span>{formatSampleTime(hover.t)}</span>
+            </div>
           )}
-
-          {/* Invisible hit surface so the whole plot is scrubbable */}
-          <rect
-            x={PAD.left}
-            y={PAD.top}
-            width={plotW}
-            height={plotH}
-            fill="transparent"
-            className={styles.chartHit}
-          />
-        </svg>
-
-        {hover && (
-          <div
-            className={styles.chartTip}
-            style={{ left: `${tipLeftPct}%` }}
-            role="status"
-          >
+        </div>
+        <div className={styles.chartAxis} aria-hidden="true">
+          <span>{yMax.toFixed(yMax >= 100 ? 0 : 1)}</span>
+          <span>{yMin.toFixed(yMin >= 100 ? 0 : 1)}</span>
+        </div>
+      </div>
+      {projection ? (
+        <div className={styles.mlForecast} role="status">
+          <span className={styles.mlBadge}>ML forecast</span>
+          <p className={styles.mlCopy}>
             <strong>
-              {formatValue(metricKey, hover.v)}
-              {unit ? ` ${unit}` : ""}
+              +{projection.slopePerMin.toFixed(1)}/min
             </strong>
-            <span>{formatSampleTime(hover.t)}</span>
-          </div>
-        )}
-      </div>
-      <div className={styles.chartAxis}>
-        <span>{yMax.toFixed(yMax >= 100 ? 0 : 1)}</span>
-        <span className={styles.chartAxisMid}>
-          {projection
-            ? `+${projection.slopePerMin.toFixed(1)}/min → critical ${formatEtaSeconds(projection.etaSeconds)}`
-            : "trend"}
-        </span>
-        <span>{yMin.toFixed(yMin >= 100 ? 0 : 1)}</span>
-      </div>
+            <span className={styles.mlArrow} aria-hidden="true">
+              →
+            </span>
+            <span>
+              critical{" "}
+              <strong>{formatEtaSeconds(projection.etaSeconds)}</strong>
+            </span>
+          </p>
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -356,26 +371,13 @@ export function AssetTelemetry({
   embedded = false,
 }: AssetTelemetryProps) {
   const thresholdsConfig = useLiveStore((s) => s.thresholdsConfig);
-  const gas = useLiveStore((s) => s.telemetrySeries[`${assetId}::gas_reading`]);
-  const temp = useLiveStore((s) => s.telemetrySeries[`${assetId}::temp_reading`]);
-  const vibe = useLiveStore(
-    (s) => s.telemetrySeries[`${assetId}::vibration_mm_s`],
-  );
-  const level = useLiveStore((s) => s.telemetrySeries[`${assetId}::level_pct`]);
-  const ph = useLiveStore((s) => s.telemetrySeries[`${assetId}::ph`]);
-  const wind = useLiveStore((s) => s.telemetrySeries[`${assetId}::wind_ms`]);
-  const assetStatusSig = useLiveStore((s) =>
-    s.telemetryStatus
-      .filter((c) => c.asset_id === assetId)
-      .map((c) => `${c.category}:${c.label}:${c.ts}`)
-      .join("|"),
-  );
-  const assetStatus = useMemo(() => {
-    void assetStatusSig;
-    return useLiveStore
-      .getState()
-      .telemetryStatus.filter((c) => c.asset_id === assetId);
-  }, [assetId, assetStatusSig]);
+  const { series, status: assetStatus } = useAssetTelemetrySlice(assetId);
+  const gas = series.gas_reading;
+  const temp = series.temp_reading;
+  const vibe = series.vibration_mm_s;
+  const level = series.level_pct;
+  const ph = series.ph;
+  const wind = series.wind_ms;
 
   const seriesMap: Record<string, TelemetryPoint[] | undefined> = {
     gas_reading: gas,
@@ -448,11 +450,21 @@ export function AssetTelemetry({
                     ) : null}
                   </span>
                   <span className={styles.gaugeMeta}>
-                    {g.points.length} samples · warn ≥ {formatValue(g.key, g.warnAt)}
-                    {g.criticalAt != null
-                      ? ` · critical ≥ ${formatValue(g.key, g.criticalAt)}`
-                      : ""}
-                    {g.unit ? ` ${g.unit}` : ""}
+                    {g.points.length} samples
+                    {" · "}
+                    <span className={styles.gaugeMetaChunk}>
+                      warn ≥ {formatValue(g.key, g.warnAt)}
+                      {g.unit ? ` ${g.unit}` : ""}
+                    </span>
+                    {g.criticalAt != null ? (
+                      <>
+                        {" · "}
+                        <span className={styles.gaugeMetaChunk}>
+                          critical ≥ {formatValue(g.key, g.criticalAt)}
+                          {g.unit ? ` ${g.unit}` : ""}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
                 </div>
                 <div className={styles.gaugeValue}>

@@ -64,4 +64,8 @@
   --scrollbar-track: transparent;
   --scrollbar-thumb: color-mix(in srgb, var(--text-muted) 45%, transparent);
   --scrollbar-thumb-hover: color-mix(in srgb, var(--text-muted) 70%, transparent);
+
+  /* Brand logo — ink follows text via currentColor on the SVG */
+  --logo-ink: var(--text-primary);
+  --logo-face: var(--text-primary);
 }

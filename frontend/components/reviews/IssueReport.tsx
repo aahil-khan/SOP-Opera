@@ -3,6 +3,7 @@
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import type { LiveAssetView } from "@/lib/liveStore";
 import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
+import { labelSupervisorConcern } from "@/lib/supervisorConcern";
 import type { ReasoningFactor, RetrievedReference } from "@/shared/schemas";
 import styles from "./IssueReport.module.css";
 
@@ -182,6 +183,7 @@ export function IssueReport({
     ? new Date(review.created_at).toLocaleString()
     : null;
   const ownerName = view.detail?.area_owner?.name ?? null;
+  const supervisorReport = view.detail?.supervisor_report ?? null;
 
   const metaLine = (
     <>
@@ -197,7 +199,35 @@ export function IssueReport({
   );
 
   const hasNarrative =
-    Boolean(rawSummary) || why.length > 0 || refs.length > 0;
+    Boolean(supervisorReport) ||
+    Boolean(rawSummary) ||
+    why.length > 0 ||
+    refs.length > 0;
+
+  const supervisorSection = supervisorReport ? (
+    <section
+      className={styles.supervisorSection}
+      aria-labelledby="issue-supervisor-heading"
+    >
+      <h3 id="issue-supervisor-heading" className={styles.sectionTitle}>
+        Supervisor report
+      </h3>
+      <p className={styles.supervisorMeta}>
+        <span className="badge" data-risk={openWorkDisplayRisk(
+          supervisorReport.concern_type === "safety_hazard"
+            ? "blocking"
+            : "elevated",
+          view.sensor_critical,
+        )}>
+          {labelSupervisorConcern(supervisorReport.concern_type)}
+        </span>
+        · Reported by {supervisorReport.reported_by_name}
+      </p>
+      <blockquote className={styles.supervisorQuote}>
+        {supervisorReport.description}
+      </blockquote>
+    </section>
+  ) : null;
 
   if (inProgress && !hasNarrative) {
     return (
@@ -218,6 +248,7 @@ export function IssueReport({
           </h2>
           {metaLine}
         </header>
+        {supervisorSection}
         <p className={styles.placeholder}>
           Investigation in progress — the full write-up will appear here when
           the assessment settles.
@@ -244,6 +275,7 @@ export function IssueReport({
           </h2>
           {metaLine}
         </header>
+        {supervisorSection}
         <p className={styles.placeholder}>
           No assessment write-up yet — waiting for the pipeline or a manual
           assessment.
@@ -269,6 +301,8 @@ export function IssueReport({
         </h2>
         {metaLine}
       </header>
+
+      {supervisorSection}
 
       {summaryParts ? (
         <section className={styles.section} aria-labelledby="issue-summary-heading">

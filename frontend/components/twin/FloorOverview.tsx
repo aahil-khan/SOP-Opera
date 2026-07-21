@@ -19,6 +19,8 @@ type FloorEntry = {
 interface FloorOverviewProps {
   riskByAsset: Record<string, RiskLevel>;
   activityByFloor: Record<PlantFloor, number>;
+  /** Floors with freshly ingested telemetry (optional visual cue). */
+  freshByFloor?: Partial<Record<PlantFloor, boolean>>;
   onSelectFloor: (floor: PlantFloor) => void;
   exiting?: boolean;
 }
@@ -29,11 +31,13 @@ function FloorThumb({
   floor,
   riskByAsset,
   activity,
+  fresh,
   onSelect,
 }: {
   floor: PlantFloor;
   riskByAsset: Record<string, RiskLevel>;
   activity: number;
+  fresh: boolean;
   onSelect: () => void;
 }) {
   const [schematic, setSchematic] = useState("");
@@ -63,7 +67,7 @@ function FloorThumb({
       type="button"
       className={styles.card}
       onClick={onSelect}
-      aria-label={`Open ${FLOOR_LABELS[floor]} floor`}
+      aria-label={`Open ${FLOOR_LABELS[floor]} floor${fresh ? ", new data" : ""}`}
     >
       <div className={styles.preview}>
         <svg
@@ -99,7 +103,10 @@ function FloorThumb({
         <span className={styles.hoverHint}>Click to zoom in</span>
       </div>
       <div className={styles.meta}>
-        <span className={styles.floorName}>{FLOOR_LABELS[floor]}</span>
+        <span className={styles.floorName}>
+          {fresh ? <span className={styles.freshDot} aria-label="New data" /> : null}
+          {FLOOR_LABELS[floor]}
+        </span>
         <span className={styles.metaRight}>
           {hotCount > 0 ? (
             <span className={styles.riskHint}>{hotCount} elevated</span>
@@ -116,6 +123,7 @@ function FloorThumb({
 export function FloorOverview({
   riskByAsset,
   activityByFloor,
+  freshByFloor = {},
   onSelectFloor,
   exiting = false,
 }: FloorOverviewProps) {
@@ -137,6 +145,7 @@ export function FloorOverview({
             floor={floor}
             riskByAsset={riskByAsset}
             activity={activityByFloor[floor]}
+            fresh={Boolean(freshByFloor[floor])}
             onSelect={() => onSelectFloor(floor)}
           />
         </div>

@@ -10,6 +10,7 @@ import { TrendForecastCard } from "./TrendForecastCard";
 import { WhyBrief } from "./WhyBrief";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
+import type { AreaOwner } from "@/shared/schemas";
 import {
   AssessingBanner,
   priorSettledAssessment,
@@ -67,6 +68,7 @@ function QuickDecisionSection({
   assessment,
   existing,
   bodyRef,
+  areaOwner,
 }: {
   open: boolean;
   onClose: () => void;
@@ -75,6 +77,7 @@ function QuickDecisionSection({
   assessment: LiveAssetView["assessment"];
   existing: NonNullable<LiveAssetView["detail"]>["decision"] | null;
   bodyRef: RefObject<HTMLDivElement | null>;
+  areaOwner: AreaOwner | null;
 }) {
   const [rendered, setRendered] = useState(open);
   const [closing, setClosing] = useState(false);
@@ -132,6 +135,7 @@ function QuickDecisionSection({
         reviewState={reviewState}
         assessment={assessment}
         existing={existing}
+        areaOwner={areaOwner}
       />
     </DecisionCard>
   );
@@ -196,14 +200,8 @@ export function AssetPanel({
   const reviewClosed = review?.state === "closed";
   const workStatus = workStatusForView(view);
 
-  /** Healthy asset — no open incident work. Keep domains for live context. */
-  const isHappy =
-    !assessmentInProgress &&
-    !openReview &&
-    (!review ||
-      (reviewClosed &&
-        workStatus.kind === "closed" &&
-        workStatus.badgeRisk === "nominal"));
+  /** Healthy asset — no review at all. Closed incidents keep their story. */
+  const isHappy = !assessmentInProgress && !openReview && !review;
 
   const otherRecommendations = recommendations.slice(1);
 
@@ -224,6 +222,13 @@ export function AssetPanel({
     if (!quickDecisionOpen || !review) return;
     void loadReviewDetail(review.id);
   }, [quickDecisionOpen, review, loadReviewDetail]);
+
+  // Closed reviews are skipped at bootstrap — load decision + assessment on select.
+  useEffect(() => {
+    if (!review || review.state !== "closed") return;
+    if (detail != null) return;
+    void loadReviewDetail(review.id);
+  }, [review, detail, loadReviewDetail]);
 
   return (
     <aside
@@ -261,8 +266,13 @@ export function AssetPanel({
               </span>
             )}
           </p>
-          {review && !isHappy && !isFullReview && !reviewClosed && (
+          {review && !isHappy && !isFullReview && (
             <p className={styles.trigger} data-risk={risk_level}>
+              {review.origin === "supervisor" ? (
+                <span className="badge">
+                  Supervisor raised · {detail?.raised_by_worker_name ?? "Unknown"}
+                </span>
+              ) : null}
               <span className={styles.triggerLabel}>Triggered by</span>
               <span className={styles.triggerValue}>
                 {review.triggered_by.replaceAll("_", " ")}
@@ -335,7 +345,7 @@ export function AssetPanel({
                 aria-labelledby="why-heading"
               >
                 <h3 id="why-heading" className={styles.sectionTitle}>
-                  {reviewClosed ? "Status" : "Why"}
+                  {reviewClosed ? "What happened" : "Why"}
                 </h3>
                 {assessmentInProgress && review ? (
                   <>
@@ -347,7 +357,26 @@ export function AssetPanel({
                     <AgentBrainPanel reviewId={review.id} />
                   </>
                 ) : (
-                  <WhyBrief view={view} assessment={assessment} />
+                  <>
+                    <WhyBrief view={view} assessment={assessment} />
+                    {reviewClosed && decision ? (
+                      <p className={actionStyles.decisionLine}>
+                        <span
+                          className="badge"
+                          data-risk={
+                            decision.outcome === "blocked"
+                              ? "blocking"
+                              : decision.outcome === "approved_with_conditions"
+                                ? "elevated"
+                                : "nominal"
+                          }
+                        >
+                          {decision.outcome.replaceAll("_", " ")}
+                        </span>
+                        {decision.conditions ? ` — ${decision.conditions}` : ""}
+                      </p>
+                    ) : null}
+                  </>
                 )}
               </section>
             )}
@@ -446,6 +475,7 @@ export function AssetPanel({
             reviewState={review.state}
             assessment={assessment}
             existing={decision}
+            areaOwner={detail?.area_owner ?? null}
             bodyRef={bodyRef}
           />
         )}

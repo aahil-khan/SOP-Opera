@@ -104,6 +104,24 @@
   animation: pulse-ring-critical 1.4s var(--ease-out) infinite;
 }
 
+/* Matches ReviewSidebar / OverviewPanel green "new" pip. */
+.freshDot {
+  fill: var(--accent-ok, #2f9e6a);
+  stroke: var(--surface-panel);
+  stroke-width: 1.75;
+  pointer-events: none;
+}
+
+.freshRing {
+  fill: none;
+  stroke: var(--accent-ok, #2f9e6a);
+  stroke-width: 1.5;
+  pointer-events: none;
+  /* Base opacity 0 so the ring does not stick after the ping ends. */
+  opacity: 0;
+  animation: fresh-ping 1.4s var(--ease-out) 2;
+}
+
 .selected .hit {
   stroke: var(--accent-selection);
   stroke-width: 2.5;
@@ -151,11 +169,27 @@
   }
 }
 
+@keyframes fresh-ping {
+  0% {
+    r: 12;
+    opacity: 0.55;
+  }
+  100% {
+    r: 24;
+    opacity: 0;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .disk[data-risk="blocking"],
   .disk[data-sensor-critical="true"],
   .pulse[data-active="true"][data-risk="blocking"],
-  .pulse[data-active="true"][data-sensor-critical="true"] {
+  .pulse[data-active="true"][data-sensor-critical="true"],
+  .freshRing {
     animation: none;
+  }
+
+  .freshRing {
+    opacity: 0;
   }
 }

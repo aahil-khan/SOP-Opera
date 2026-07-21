@@ -13,4 +13,4 @@ export function relativeTime(iso: string, now = Date.now()): string {
   return new Date(t).toLocaleDateString();
 }
 
-export const NEW_ENTRY_MS = 2 * 60_000;
+export const NEW_ENTRY_MS = 30_000;

@@ -147,6 +147,112 @@
   }
 }
 
+/* Zone risk halo — fine dotted ring, light wash; reads apart from solid hit fills */
+.zoneHalo {
+  fill: transparent;
+  stroke-width: 1.75;
+  stroke-dasharray: 3 7;
+  stroke-linecap: round;
+  pointer-events: none;
+}
+
+.zoneHalo[data-severity="elevated"] {
+  fill: color-mix(in srgb, var(--status-elevated) 6%, transparent);
+  stroke: color-mix(in srgb, var(--status-elevated) 55%, transparent);
+}
+
+.zoneHalo[data-severity="blocking"] {
+  fill: color-mix(in srgb, var(--status-blocking) 7%, transparent);
+  stroke: color-mix(in srgb, var(--status-blocking) 65%, transparent);
+  animation: breathe-opacity-halo 3.6s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+.zoneHalo[data-severity="critical"] {
+  fill: color-mix(in srgb, var(--status-critical) 7%, transparent);
+  stroke: color-mix(in srgb, var(--status-critical) 70%, transparent);
+  animation: breathe-opacity-halo 3.2s cubic-bezier(0.45, 0, 0.55, 1) infinite;
+}
+
+@keyframes breathe-opacity-halo {
+  0%,
+  100% {
+    opacity: 0.65;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .zoneHalo[data-severity="blocking"],
+  .zoneHalo[data-severity="critical"] {
+    animation: none;
+  }
+}
+
+/* Ops chips — circular badges matching AssetMarker language */
+.opsChipRow {
+  pointer-events: auto;
+}
+
+.opsChip {
+  cursor: pointer;
+  outline: none;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.opsChipBg {
+  fill: var(--surface-panel);
+  stroke: color-mix(in srgb, var(--border-default) 80%, transparent);
+  stroke-width: 1.5;
+  transition:
+    fill var(--duration-fast) var(--ease-out),
+    stroke var(--duration-fast) var(--ease-out);
+}
+
+.opsChipIcon {
+  stroke: var(--text-muted);
+  fill: none;
+  pointer-events: none;
+  transition: stroke var(--duration-fast) var(--ease-out);
+}
+
+.opsChipIcon path {
+  stroke: inherit;
+}
+
+.opsChip:hover .opsChipBg,
+.opsChip:focus-within .opsChipBg {
+  stroke: var(--accent-selection);
+  fill: color-mix(in srgb, var(--accent-selection) 10%, var(--surface-panel));
+}
+
+.opsChip:hover .opsChipIcon,
+.opsChip:focus-within .opsChipIcon {
+  stroke: var(--accent-selection);
+}
+
+.opsChip[data-warn="true"] .opsChipBg {
+  fill: color-mix(in srgb, var(--status-elevated) 16%, var(--surface-panel));
+  stroke: color-mix(in srgb, var(--status-elevated) 75%, transparent);
+}
+
+.opsChip[data-warn="true"] .opsChipIcon {
+  stroke: var(--status-elevated);
+}
+
+.opsChip[data-warn="true"]:hover .opsChipBg,
+.opsChip[data-warn="true"]:focus-within .opsChipBg {
+  fill: color-mix(in srgb, var(--status-elevated) 24%, var(--surface-panel));
+  stroke: var(--status-elevated);
+}
+
+.opsChip[data-warn="true"]:hover .opsChipIcon,
+.opsChip[data-warn="true"]:focus-within .opsChipIcon {
+  stroke: var(--status-elevated);
+}
+
 .tooltip {
   position: fixed;
   z-index: 40;
@@ -163,6 +269,7 @@
   transform: translate(-50%, calc(-100% - 10px));
   animation: tooltip-in 140ms var(--ease-out);
   font-family: var(--font-sans);
+  line-height: 1;
   white-space: nowrap;
 }
 
@@ -215,24 +322,93 @@
 }
 
 .tooltipName {
+  display: inline-flex;
+  align-items: center;
   font-size: var(--text-sm);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
-  line-height: 1.2;
+  line-height: 1.15;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-.tooltipRisk {
+.tooltipRisk,
+.tooltipOps {
   flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  line-height: 1;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  padding: 3px 7px;
+  border-radius: 999px;
+  white-space: nowrap;
+}
+
+.tooltipRisk {
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+}
+
+.tooltip[data-kind="ops"] {
+  gap: 6px;
+  padding: 5px 10px;
+}
+
+.tooltip[data-kind="ops"] .tooltipDot {
+  display: none;
+}
+
+.tooltipSep {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  font-size: var(--text-sm);
+  line-height: 1;
+  opacity: 0.55;
+  user-select: none;
+}
+
+.tooltipOps {
+  letter-spacing: 0.02em;
+  text-transform: none;
+  color: var(--text-secondary);
+  background: color-mix(in srgb, var(--border-muted) 35%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border-default) 65%, transparent);
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tooltipFresh {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 20px;
+  gap: 0.35rem;
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  color: var(--text-muted);
-  padding: 2px 6px;
+  line-height: 1;
+  color: var(--accent-ok, #2f9e6a);
+  padding: 3px 7px;
   border-radius: 999px;
-  background: color-mix(in srgb, var(--text-muted) 12%, transparent);
+  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 14%, transparent);
+  border: 1px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 42%, transparent);
+}
+
+.tooltipFresh::before {
+  content: "";
+  width: 0.35rem;
+  height: 0.35rem;
+  border-radius: 50%;
+  background: var(--accent-ok, #2f9e6a);
+  box-shadow: 0 0 5px color-mix(in srgb, var(--accent-ok, #2f9e6a) 55%, transparent);
 }
 
 .tooltip[data-risk="nominal"] .tooltipRisk {

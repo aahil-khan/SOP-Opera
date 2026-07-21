@@ -154,6 +154,9 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
             {decision.conditions ? (
               <p>Conditions: {String(decision.conditions)}</p>
             ) : null}
+            {decision.comments ? (
+              <p>Comments: {String(decision.comments)}</p>
+            ) : null}
             <p className={styles.meta}>
               Submitted {String(decision.submitted_at ?? "—")}
             </p>

@@ -12,6 +12,8 @@ interface AssetMarkerProps {
   risk: RiskLevel;
   sensorCritical?: boolean;
   resolved?: boolean;
+  /** Same green "new" cue as the open-work list. */
+  fresh?: boolean;
   selected: boolean;
   hovered?: boolean;
   onSelect: (id: string) => void;
@@ -25,6 +27,7 @@ export const AssetMarker = memo(function AssetMarker({
   risk,
   sensorCritical = false,
   resolved = false,
+  fresh = false,
   selected,
   hovered = false,
   onSelect,
@@ -41,14 +44,14 @@ export const AssetMarker = memo(function AssetMarker({
         // Avoid focus scrollIntoView fighting the pan/zoom transform.
         e.preventDefault();
       }}
-              onClick={(e) => {
-                e.stopPropagation();
-                onSelect(id);
-              }}
+      onClick={(e) => {
+        e.stopPropagation();
+        onSelect(id);
+      }}
       role="button"
       tabIndex={-1}
       data-map-marker=""
-      aria-label={`${label}, ${resolved ? "work halted" : `risk ${risk}`}${sensorCritical ? ", sensor critical" : ""}`}
+      aria-label={`${label}, ${resolved ? "work halted" : `risk ${risk}`}${sensorCritical ? ", sensor critical" : ""}${fresh ? ", new data" : ""}`}
     >
       <circle className={styles.hit} r={22} />
       <circle
@@ -66,6 +69,12 @@ export const AssetMarker = memo(function AssetMarker({
         data-resolved={resolved ? "true" : undefined}
         r={10}
       />
+      {fresh ? (
+        <>
+          <circle className={styles.freshRing} r={14} aria-hidden />
+          <circle className={styles.freshDot} cx={8} cy={-8} r={3} aria-hidden />
+        </>
+      ) : null}
     </g>
   );
 });

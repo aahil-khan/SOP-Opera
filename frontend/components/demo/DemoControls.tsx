@@ -61,7 +61,11 @@ const FLOOR_OPTIONS: { id: PlantFloor; label: string }[] = [
   { id: "second", label: "2" },
 ];
 
-export function DemoControls() {
+interface DemoControlsProps {
+  variant?: "panel";
+}
+
+export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   const bootstrap = useLiveStore((s) => s.bootstrap);
   const refreshOverview = useLiveStore((s) => s.refreshOverview);
   const clearAgentSteps = useLiveStore((s) => s.clearAgentSteps);
@@ -108,7 +112,6 @@ export function DemoControls() {
   }, [refreshStatus]);
 
   useEffect(() => {
-    // Poll ambient even when demo is idle so Live indicator stays accurate
     const id = setInterval(() => {
       void refreshStatus();
     }, status?.running ? 1500 : 8000);
@@ -196,12 +199,8 @@ export function DemoControls() {
       const path = status?.ambient_running
         ? "/demo/ambient/stop"
         : "/demo/ambient/start";
-      const st = await demoRequest<DemoStatus>(path, { method: "POST" });
-      // Ambient endpoints return ambient status shape; refresh full demo status
+      await demoRequest<DemoStatus>(path, { method: "POST" });
       void refreshStatus();
-      if (!status?.ambient_running && "running" in st) {
-        /* started */
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -215,158 +214,205 @@ export function DemoControls() {
     ? error
     : running
       ? status?.mode === "random"
-        ? `random #${status?.issues_spawned ?? 0} · open ${status?.active_issue_count ?? "?"}`
-        : `${status?.scenario ?? "…"} ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`
+        ? `Random · ${status?.issues_spawned ?? 0} spawned · ${status?.active_issue_count ?? "?"} open`
+        : `${status?.scenario ?? "…"} · step ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`
       : ambientOn
-        ? "Live plant"
+        ? "Live plant feed active"
         : "Idle";
 
+  const statusTone = error
+    ? "error"
+    : running
+      ? "running"
+      : ambientOn
+        ? "live"
+        : "idle";
+
   return (
-    <div className={styles.controls} role="group" aria-label="Demo Mode">
-      <span className={styles.label}>Demo</span>
-      <button
-        type="button"
-        className={styles.ambientBtn}
-        data-on={ambientOn ? "true" : undefined}
-        disabled={ambientBusy || busy}
-        onClick={() => void onToggleAmbient()}
-        title={
-          ambientOn
-            ? "Ambient live feed on (rare coincidence failures possible)"
-            : "Start ambient live plant feed"
-        }
-      >
-        {ambientBusy ? "…" : ambientOn ? "Live on" : "Live off"}
-      </button>
-      <select
-        className={styles.select}
-        aria-label="Demo mode"
-        value={mode}
-        disabled={running || busy}
-        onChange={(e) => setMode(e.target.value as DemoModeKind)}
-      >
-        <option value="scripted">Scripted</option>
-        <option value="random">Random</option>
-      </select>
+    <div
+      className={styles.panel}
+      role="group"
+      aria-label="Demo controls"
+      data-variant={variant}
+    >
+      <header className={styles.header}>
+        <div className={styles.headerCopy}>
+          <h2 className={styles.title}>Demo</h2>
+          <p className={styles.subtitle}>
+            Scripted scenarios, random issues, and ambient plant feed.
+          </p>
+        </div>
+        <span
+          className={styles.statusBadge}
+          data-tone={statusTone}
+          title={statusText}
+        >
+          {statusText}
+        </span>
+      </header>
+
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Ambient feed</h3>
+        <button
+          type="button"
+          className={styles.liveToggle}
+          data-on={ambientOn ? "true" : undefined}
+          disabled={ambientBusy || busy}
+          onClick={() => void onToggleAmbient()}
+        >
+          {ambientBusy ? "Updating…" : ambientOn ? "Live feed on" : "Live feed off"}
+        </button>
+      </section>
+
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Playback mode</h3>
+        <div className={styles.segmented} role="group" aria-label="Demo mode">
+          <button
+            type="button"
+            className={styles.segment}
+            data-active={mode === "scripted" ? "true" : undefined}
+            disabled={running || busy}
+            onClick={() => setMode("scripted")}
+          >
+            Scripted
+          </button>
+          <button
+            type="button"
+            className={styles.segment}
+            data-active={mode === "random" ? "true" : undefined}
+            disabled={running || busy}
+            onClick={() => setMode("random")}
+          >
+            Random
+          </button>
+        </div>
+      </section>
 
       {mode === "scripted" ? (
-        <select
-          className={styles.select}
-          aria-label="Scenario"
-          value={scenario}
-          disabled={running || busy || scenarios.length === 0}
-          onChange={(e) => setScenario(e.target.value)}
-          title={
-            scenarios.find((s) => s.name === scenario)?.description ?? "Scenario"
-          }
-        >
-          {scenarios.length === 0 ? (
-            <option value={scenario}>…</option>
-          ) : (
-            scenarios.map((s) => (
-              <option key={s.name} value={s.name}>
-                {s.label}
-              </option>
-            ))
-          )}
-        </select>
+        <section className={styles.section}>
+          <label className={styles.fieldBlock}>
+            <span className={styles.fieldLabel}>Scenario</span>
+            <select
+              className={styles.select}
+              aria-label="Scenario"
+              value={scenario}
+              disabled={running || busy || scenarios.length === 0}
+              onChange={(e) => setScenario(e.target.value)}
+            >
+              {scenarios.length === 0 ? (
+                <option value={scenario}>Loading…</option>
+              ) : (
+                scenarios.map((s) => (
+                  <option key={s.name} value={s.name}>
+                    {s.label}
+                  </option>
+                ))
+              )}
+            </select>
+          </label>
+          {scenarios.find((s) => s.name === scenario)?.description ? (
+            <p className={styles.fieldHint}>
+              {scenarios.find((s) => s.name === scenario)?.description}
+            </p>
+          ) : null}
+        </section>
       ) : (
-        <>
-          <label className={styles.field} title="Max concurrent open reviews">
-            <span>n</span>
-            <input
-              className={styles.input}
-              type="number"
-              min={1}
-              max={40}
-              value={maxIssues}
-              disabled={running || busy}
-              onChange={(e) => setMaxIssues(e.target.value)}
-              aria-label="Max concurrent issues"
-            />
-          </label>
-          <label className={styles.field} title="Spawn interval seconds (min–max)">
-            <span>pace</span>
-            <input
-              className={styles.inputNarrow}
-              type="number"
-              min={0.5}
-              step={0.5}
-              value={paceMin}
-              disabled={running || busy}
-              onChange={(e) => setPaceMin(e.target.value)}
-              aria-label="Min spawn interval seconds"
-            />
-            <span>–</span>
-            <input
-              className={styles.inputNarrow}
-              type="number"
-              min={0.5}
-              step={0.5}
-              value={paceMax}
-              disabled={running || busy}
-              onChange={(e) => setPaceMax(e.target.value)}
-              aria-label="Max spawn interval seconds"
-            />
-          </label>
-          <label className={styles.field} title="Optional seed for reproducibility">
-            <span>seed</span>
-            <input
-              className={styles.input}
-              type="text"
-              inputMode="numeric"
-              placeholder="rand"
-              value={seed}
-              disabled={running || busy}
-              onChange={(e) => setSeed(e.target.value)}
-              aria-label="Random seed"
-            />
-          </label>
-          <div className={styles.floorPool} role="group" aria-label="Floor pool">
-            {FLOOR_OPTIONS.map((f) => (
-              <button
-                key={f.id}
-                type="button"
-                className={styles.floorChip}
-                data-on={floors.includes(f.id) ? "true" : undefined}
+        <section className={styles.section}>
+          <div className={styles.randomGrid}>
+            <label className={styles.fieldBlock}>
+              <span className={styles.fieldLabel}>Max concurrent issues</span>
+              <input
+                className={styles.input}
+                type="number"
+                min={1}
+                max={40}
+                value={maxIssues}
                 disabled={running || busy}
-                onClick={() => toggleFloor(f.id)}
-                title={`Include ${f.id} floor`}
-              >
-                {f.label}
-              </button>
-            ))}
+                onChange={(e) => setMaxIssues(e.target.value)}
+              />
+            </label>
+            <label className={styles.fieldBlock}>
+              <span className={styles.fieldLabel}>Seed (optional)</span>
+              <input
+                className={styles.input}
+                type="text"
+                inputMode="numeric"
+                placeholder="Random"
+                value={seed}
+                disabled={running || busy}
+                onChange={(e) => setSeed(e.target.value)}
+              />
+            </label>
+            <label className={styles.fieldBlockWide}>
+              <span className={styles.fieldLabel}>Spawn interval (seconds)</span>
+              <div className={styles.rangeRow}>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={paceMin}
+                  disabled={running || busy}
+                  onChange={(e) => setPaceMin(e.target.value)}
+                  aria-label="Min spawn interval"
+                />
+                <span className={styles.rangeSep}>to</span>
+                <input
+                  className={styles.input}
+                  type="number"
+                  min={0.5}
+                  step={0.5}
+                  value={paceMax}
+                  disabled={running || busy}
+                  onChange={(e) => setPaceMax(e.target.value)}
+                  aria-label="Max spawn interval"
+                />
+              </div>
+            </label>
           </div>
-        </>
+          <div className={styles.floorBlock}>
+            <span className={styles.fieldLabel}>Floor pool</span>
+            <div className={styles.floorPool} role="group" aria-label="Floor pool">
+              {FLOOR_OPTIONS.map((f) => (
+                <button
+                  key={f.id}
+                  type="button"
+                  className={styles.floorChip}
+                  data-on={floors.includes(f.id) ? "true" : undefined}
+                  disabled={running || busy}
+                  onClick={() => toggleFloor(f.id)}
+                  title={`Include ${f.id} floor`}
+                >
+                  {f.label}
+                </button>
+              ))}
+            </div>
+          </div>
+        </section>
       )}
 
-      <button
-        type="button"
-        className={`btn btn-primary ${styles.btn}`}
-        disabled={
-          running ||
-          busy ||
-          (mode === "scripted" && scenarios.length === 0)
-        }
-        onClick={() => void onStart()}
-      >
-        {busy && !running ? "…" : "Start"}
-      </button>
-      <button
-        type="button"
-        className={`btn ${styles.btn}`}
-        disabled={busy}
-        onClick={() => void onReset()}
-      >
-        Reset
-      </button>
-      <span
-        className={styles.status}
-        data-error={error ? "true" : undefined}
-        title={statusText}
-      >
-        {statusText}
-      </span>
+      <footer className={styles.footer}>
+        <button
+          type="button"
+          className={`btn btn-primary ${styles.actionBtn}`}
+          disabled={
+            running ||
+            busy ||
+            (mode === "scripted" && scenarios.length === 0)
+          }
+          onClick={() => void onStart()}
+        >
+          {busy && !running ? "Starting…" : "Start demo"}
+        </button>
+        <button
+          type="button"
+          className={`btn ${styles.actionBtn}`}
+          disabled={busy}
+          onClick={() => void onReset()}
+        >
+          Reset
+        </button>
+      </footer>
     </div>
   );
 }

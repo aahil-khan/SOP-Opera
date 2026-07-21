@@ -5,19 +5,28 @@ import {
   useCallback,
   useEffect,
   useRef,
-  useState,
   type CSSProperties,
 } from "react";
 import type { SpatialLinkLine } from "@/lib/riskHeatmap";
 import { linkEndpoints } from "@/lib/riskHeatmap";
 import { useLiveStore } from "@/lib/liveStore";
+import {
+  otherAssetIdInLink,
+  relationRelativeToFocus,
+} from "@/lib/spatialRelation";
+import type { PlantFloor } from "@/shared/enums";
 import { MAP_WORLD } from "./MapViewport";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import styles from "./SpatialLinksLayer.module.css";
 
 const MAP = floorPlanMap as Record<
   string,
-  { x: number; y: number; hit?: { x: number; y: number; w: number; h: number } }
+  {
+    x: number;
+    y: number;
+    floor?: PlantFloor;
+    hit?: { x: number; y: number; w: number; h: number };
+  }
 >;
 
 const WORLD_W = MAP_WORLD.width;
@@ -80,6 +89,14 @@ function distToSegment(
   return Math.hypot(px - (x1 + t * dx), py - (y1 + t * dy));
 }
 
+function pointInHitBox(
+  px: number,
+  py: number,
+  hit: { x: number; y: number; w: number; h: number },
+): boolean {
+  return px >= hit.x && px <= hit.x + hit.w && py >= hit.y && py <= hit.y + hit.h;
+}
+
 function buildSimNodes(links: SpatialLinkLine[]): SimNode[] {
   const nodes: SimNode[] = [];
   let i = 0;
@@ -96,8 +113,16 @@ function buildSimNodes(links: SpatialLinkLine[]): SimNode[] {
     const mx = (pts.x1 + pts.x2) / 2;
     const my = (pts.y1 + pts.y2) / 2;
     const reviewAssetId = link.sourceAssetId ?? link.from_asset_id;
+    const focusFloor = MAP[reviewAssetId]?.floor ?? "ground";
+    const otherId = otherAssetIdInLink(reviewAssetId, link);
+    const otherFloor = MAP[otherId]?.floor ?? "ground";
+    const relation = relationRelativeToFocus(
+      link.relation,
+      focusFloor,
+      otherFloor,
+    );
     const midLabel = `${link.from_label} ↔ ${link.to_label}`;
-    const midMeta = `${link.distance_m.toFixed(0)}m ${link.relation}`;
+    const midMeta = `${link.distance_m.toFixed(0)}m ${relation}`;
 
     const specs: Array<{
       role: NodeRole;
@@ -163,6 +188,12 @@ function nearestTarget(
   let bestDist = MID_HIT_RADIUS;
 
   for (const n of sim) {
+    if (n.role === "from" || n.role === "to") {
+      const entry = MAP[n.assetId];
+      if (entry?.hit && pointInHitBox(x, y, entry.hit)) {
+        return { nodeId: n.id, linkKey: n.key };
+      }
+    }
     const radius = n.role === "mid" ? MID_HIT_RADIUS : ANCHOR_HIT_RADIUS;
     const d = Math.hypot(x - n.x, y - n.y);
     if (d < radius && d < bestDist) {
@@ -212,7 +243,23 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
   const t0Ref = useRef(performance.now());
   const runningRef = useRef(false);
   const visibleRef = useRef(true);
-  const [focusedLinkKey, setFocusedLinkKey] = useState<string | null>(null);
+
+  const applyFocusStyle = useCallback((linkKey: string | null) => {
+    for (const [edgeId, line] of edgeEls.current) {
+      if (linkKey && edgeId.startsWith(linkKey)) {
+        line.setAttribute("data-focused", "true");
+      } else {
+        line.removeAttribute("data-focused");
+      }
+    }
+    for (const n of simRef.current) {
+      if (n.role !== "mid") continue;
+      const el = bubbleEls.current.get(n.id);
+      if (!el) continue;
+      if (linkKey && n.key === linkKey) el.setAttribute("data-active", "true");
+      else el.removeAttribute("data-active");
+    }
+  }, []);
 
   const structureKey = links
     .map(
@@ -282,9 +329,10 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
           }
         : n;
     });
-    setFocusedLinkKey(null);
+    hoverRef.current = null;
+    applyFocusStyle(null);
     requestAnimationFrame(() => paint());
-  }, [structureKey, links, paint]);
+  }, [structureKey, links, paint, applyFocusStyle]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -404,7 +452,7 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
       n.vx = 0;
       n.vy = 0;
       hoverRef.current = n.key;
-      setFocusedLinkKey(n.key);
+      applyFocusStyle(n.key);
       if (n.role === "mid") setDraggingAttr(hit.nodeId);
     };
 
@@ -446,7 +494,7 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
       const linkKey = hit?.linkKey ?? null;
       if (linkKey !== hoverRef.current) {
         hoverRef.current = linkKey;
-        setFocusedLinkKey(linkKey);
+        applyFocusStyle(linkKey);
       }
       host.style.cursor = hit ? "grab" : "";
     };
@@ -480,6 +528,7 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
     paint,
     activateNode,
     setDraggingAttr,
+    applyFocusStyle,
   ]);
 
   const sim =
@@ -507,11 +556,6 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
             key={edgeId}
             ref={(el) => setEdgeRef(edgeId, el)}
             className={styles.edge}
-            data-focused={
-              focusedLinkKey && edgeId.startsWith(focusedLinkKey)
-                ? "true"
-                : undefined
-            }
             x1={0}
             y1={0}
             x2={0}
@@ -520,14 +564,11 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
         ))}
       </svg>
 
-      {midNodes.map((n) => {
-        const active = focusedLinkKey === n.key;
-        return (
+      {midNodes.map((n) => (
           <div
             key={n.id}
             ref={(el) => setBubbleRef(n.id, el)}
             className={styles.tag}
-            data-active={active ? "true" : undefined}
             style={
               {
                 left: n.x,
@@ -539,8 +580,7 @@ export const SpatialLinksLayer = memo(function SpatialLinksLayer({
             <span className={styles.tagEyebrow}>Spatial link</span>
             <span className={styles.tagText}>{n.label}</span>
           </div>
-        );
-      })}
+        ))}
     </div>
   );
 });

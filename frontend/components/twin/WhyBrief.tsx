@@ -1,9 +1,7 @@
 "use client";
 
-import { useState } from "react";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import type { LiveAssetView } from "@/lib/liveStore";
-import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 import type { ReasoningFactor } from "@/shared/schemas";
 import styles from "./WhyBrief.module.css";
 
@@ -77,13 +75,21 @@ function itemsFrom(
   });
 }
 
+/** First paragraph / line of the assessment write-up for the summary panel. */
+function summaryLead(assessment: AssessmentHistoryItem | null): string | null {
+  const raw = assessment?.summary?.trim();
+  if (!raw) return null;
+  const firstLine = raw.split(/\n+/).map((l) => l.trim()).find(Boolean);
+  return firstLine || null;
+}
+
 interface WhyBriefProps {
   view: LiveAssetView;
   assessment: AssessmentHistoryItem | null;
 }
 
 function residualNotice(view: LiveAssetView): {
-  tone: "blocking" | "critical";
+  tone: "blocking" | "critical" | "nominal";
   title: string;
   body: string;
 } | null {
@@ -119,32 +125,23 @@ function residualNotice(view: LiveAssetView): {
     };
   }
 
+  if (outcome === "approved") {
+    return {
+      tone: "nominal",
+      title: "Review closed · approved",
+      body: "The incident was reviewed and cleared. Details below record what triggered the review.",
+    };
+  }
+
   return null;
-}
-
-function headlineClause(item: WhyItem): string {
-  return (item.body || item.title).trim().replace(/\.$/, "");
-}
-
-function buildHeadline(items: WhyItem[]): string {
-  if (items.length === 0) return "";
-  if (items.length === 1) return headlineClause(items[0]!);
-  return items.map(headlineClause).join("; ");
 }
 
 export function WhyBrief({ view, assessment }: WhyBriefProps) {
   const items = itemsFrom(view, assessment);
-  const displayRisk = openWorkDisplayRisk(
-    assessment?.risk_level ?? view.risk_level,
-    view.sensor_critical,
-  );
   const notice = residualNotice(view);
-  const [open, setOpen] = useState(false);
-  const headlineText = buildHeadline(items);
-  // Expand only when multiple factors — the one-liner already carries each detail.
-  const showToggle = items.length > 1;
+  const lead = summaryLead(assessment);
 
-  if (items.length === 0 && !notice) {
+  if (items.length === 0 && !notice && !lead) {
     return (
       <p className={styles.empty}>
         No structured reasoning yet for this assessment.
@@ -161,34 +158,9 @@ export function WhyBrief({ view, assessment }: WhyBriefProps) {
         </div>
       ) : null}
 
-      {items.length === 0 || notice ? null : (
-        <p className={styles.headline}>
-          <span className={styles.riskWord} data-risk={displayRisk}>
-            {displayRisk}
-          </span>
-          <span className={styles.headlineSep}>:</span>{" "}
-          <span className={styles.headlineBody}>{headlineText}</span>
-        </p>
-      )}
+      {lead ? <p className={styles.summary}>{lead}</p> : null}
 
-      {showToggle ? (
-        <button
-          type="button"
-          className={styles.toggle}
-          aria-expanded={open}
-          onClick={() => setOpen((v) => !v)}
-        >
-          {open ? "Hide factors" : "Show factors"}
-          <span
-            className={styles.toggleIcon}
-            data-open={open ? "true" : undefined}
-          >
-            ⌄
-          </span>
-        </button>
-      ) : null}
-
-      {open && showToggle ? (
+      {items.length > 0 ? (
         <ul className={styles.detailList}>
           {items.map((item) => (
             <li key={item.id} className={styles.detailItem}>

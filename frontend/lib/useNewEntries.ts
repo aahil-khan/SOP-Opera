@@ -5,17 +5,20 @@ import { NEW_ENTRY_MS } from "./relativeTime";
 
 type Listener = () => void;
 
-/** Single shared 15s clock for relative-time / "new" badges across twin panels. */
+/** Single shared clock for relative-time / "new" badges across twin panels. */
 let sharedNow = Date.now();
 const listeners = new Set<Listener>();
 let intervalId: ReturnType<typeof setInterval> | null = null;
+
+/** Tick often enough that a 30s "new" window clears promptly. */
+const SHARED_CLOCK_MS = 5_000;
 
 function ensureSharedClock() {
   if (intervalId != null) return;
   intervalId = setInterval(() => {
     sharedNow = Date.now();
     for (const listener of listeners) listener();
-  }, 15_000);
+  }, SHARED_CLOCK_MS);
 }
 
 function stopSharedClock() {
@@ -38,7 +41,7 @@ function subscribeSharedNow(listener: Listener): () => void {
  * primed as already-seen (not highlighted). Keys that appear later stay "new"
  * for NEW_ENTRY_MS.
  *
- * All call sites share one 15s wall clock (no duplicate intervals). The clock
+ * All call sites share one wall clock (no duplicate intervals). The clock
  * stops entirely when nothing mounts this hook.
  */
 export function useNewEntries(ids: string[]): {
