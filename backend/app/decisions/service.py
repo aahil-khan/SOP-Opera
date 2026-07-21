@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import logging
 from typing import Literal
 from uuid import UUID
@@ -9,7 +10,9 @@ from uuid import UUID
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.audit.chain import canonical_payload
 from app.audit.service import record_audit
+from app.auth.schemas import ActorMeOut
 from app.context.derived_facts import load_valid_context
 from app.core.config import get_settings
 from app.decisions.schemas import DecisionIn
@@ -30,6 +33,45 @@ class DecisionError(Exception):
     def __init__(self, message: str, *, status_code: int = 409) -> None:
         self.status_code = status_code
         super().__init__(message)
+
+
+def hash_snapshot(context_snapshot: list[dict], assessment_snapshot: dict) -> str:
+    """
+    Fingerprint the frozen evidence so a later edit to it is detectable.
+
+    Uses the same canonical JSON form as the audit chain, so the two agree on what
+    "unchanged" means.
+    """
+    import hashlib
+
+    material = canonical_payload(
+        {"context": context_snapshot, "assessment": assessment_snapshot}
+    )
+    return hashlib.sha256(material.encode("utf-8")).hexdigest()
+
+
+async def _load_assessment_snapshot(
+    session: AsyncSession, assessment_id: UUID
+) -> dict:
+    """The assessment content as it stood when the decision was recorded."""
+    result = await session.execute(
+        text(
+            """
+            SELECT a.id, a.review_id, a.version, a.status, a.summary,
+                   a.risk_level, a.assessment_type, a.derived_fact_ids, a.created_at,
+                   m.provider, m.model, m.confidence,
+                   m.retrieved_references, m.reasoning_factors, m.failure_reason
+            FROM assessments a
+            LEFT JOIN assessment_metadata m ON m.assessment_id = a.id
+            WHERE a.id = CAST(:aid AS uuid)
+            """
+        ),
+        {"aid": str(assessment_id)},
+    )
+    row = result.first()
+    if row is None:
+        return {}
+    return {k: v for k, v in dict(row._mapping).items()}
 
 
 async def _load_complete_assessment(
@@ -118,13 +160,37 @@ async def get_decision_for_review(
     )
 
 
+def _decision_thread_body(
+    *,
+    outcome: str,
+    comments: str | None,
+    conditions: str | None,
+) -> str | None:
+    """Build a thread note when the decision carries a rationale or conditions."""
+    if not comments and not conditions:
+        return None
+    outcome_label = outcome.replace("_", " ")
+    lines = [f"Decision recorded · {outcome_label}"]
+    if comments:
+        lines.append(comments)
+    if conditions:
+        lines.append(f"Conditions: {conditions}")
+    return "\n".join(lines)
+
+
 async def submit_decision(
     session: AsyncSession,
     review_id: UUID,
     body: DecisionIn,
     *,
-    actor: str = "api:decision",
+    actor: str | ActorMeOut = "api:decision",
 ) -> Decision:
+    actor_label = (
+        f"{actor.kind}:{actor.id}" if isinstance(actor, ActorMeOut) else str(actor)
+    )
+    thread_author: ActorMeOut | None = (
+        actor if isinstance(actor, ActorMeOut) else None
+    )
     review = await get_review(session, review_id)
     if review is None:
         raise LookupError(f"Review {review_id} not found")
@@ -214,17 +280,41 @@ async def submit_decision(
 
     valid_ctx = await load_valid_context(session, review.asset_id)
     frozen_ids = [str(e.id) for e in valid_ctx]
+
+    # Freeze the *content*, not just the ids. Storing ids alone meant a later edit
+    # to a context row silently changed what a recorded decision appeared to rest
+    # on, and a demo reset left the evidence dangling entirely.
+    context_snapshot = [
+        {
+            "id": str(e.id),
+            "asset_id": str(e.asset_id),
+            "category": e.category,
+            "payload": e.payload,
+            "provider": e.provider,
+            "valid_from": e.valid_from.isoformat() if e.valid_from else None,
+            "valid_until": e.valid_until.isoformat() if e.valid_until else None,
+            "confidence": e.confidence,
+        }
+        for e in valid_ctx
+    ]
+    assessment_snapshot = await _load_assessment_snapshot(session, assessment_id)
+    snapshot_hash = hash_snapshot(context_snapshot, assessment_snapshot)
+
     evidence_result = await session.execute(
         text(
             """
             INSERT INTO evidence (
-                review_id, decision_id, frozen_context_ids, frozen_assessment_id
+                review_id, decision_id, frozen_context_ids, frozen_assessment_id,
+                frozen_context_snapshot, frozen_assessment_snapshot, snapshot_hash
             )
             VALUES (
                 CAST(:review_id AS uuid),
                 CAST(:decision_id AS uuid),
                 CAST(:ctx AS uuid[]),
-                CAST(:assessment_id AS uuid)
+                CAST(:assessment_id AS uuid),
+                CAST(:ctx_snapshot AS jsonb),
+                CAST(:assessment_snapshot AS jsonb),
+                :snapshot_hash
             )
             RETURNING id
             """
@@ -234,6 +324,9 @@ async def submit_decision(
             "decision_id": str(decision_id),
             "ctx": frozen_ids,
             "assessment_id": str(assessment_id),
+            "ctx_snapshot": json.dumps(context_snapshot, default=str),
+            "assessment_snapshot": json.dumps(assessment_snapshot, default=str),
+            "snapshot_hash": snapshot_hash,
         },
     )
     evidence_id = evidence_result.scalar_one()
@@ -243,7 +336,7 @@ async def submit_decision(
         entity_type="decision",
         entity_id=decision_id,
         event_type="decision.submitted",
-        actor=actor,
+        actor=actor_label,
         payload={
             "review_id": str(review_id),
             "assessment_id": str(assessment_id),
@@ -257,7 +350,7 @@ async def submit_decision(
         entity_type="evidence",
         entity_id=evidence_id,
         event_type="evidence.captured",
-        actor=actor,
+        actor=actor_label,
         payload={
             "review_id": str(review_id),
             "decision_id": str(decision_id),
@@ -272,7 +365,7 @@ async def submit_decision(
             session,
             review_id,
             ReviewEvent.SUBMIT_DECISION,
-            actor,
+            actor_label,
             extra_payload={
                 "decision_id": str(decision_id),
                 "assessment_id": str(assessment_id),
@@ -307,7 +400,7 @@ async def submit_decision(
         decision_id=decision_id,
         assigned_worker_ids=assigned_worker_ids,
         outcome=str(body.outcome),
-        actor=actor,
+        actor=actor_label,
     )
 
     # Replace the old random unblock timer with a real HITL unlock action.
@@ -317,6 +410,23 @@ async def submit_decision(
         demo_controller.lock_asset_inactive(asset_id=review.asset_id, review_id=review_id)
     else:
         demo_controller.clear_inactive_lock_for_review(review_id)
+
+    thread_body = _decision_thread_body(
+        outcome=str(body.outcome),
+        comments=comments,
+        conditions=conditions,
+    )
+    if thread_body and thread_author is not None:
+        from app.reviews.comments_service import create_review_comment
+
+        # Tagged workers get a mention on the decision note (tasks still created above).
+        await create_review_comment(
+            session,
+            review_id=review_id,
+            author=thread_author,
+            body=thread_body,
+            mentioned_worker_ids=list(body.tagged_worker_ids or []),
+        )
 
     await manager.broadcast(
         "decision.submitted",

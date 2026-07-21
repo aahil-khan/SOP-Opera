@@ -5,7 +5,7 @@ import Link from "next/link";
 import type { Decision } from "@/shared/schemas";
 import type { Report } from "@/shared/schemas";
 import type { DecisionOutcome } from "@/shared/enums";
-import type { AssessmentHistoryItem } from "@/lib/liveApi";
+import type { AssessmentHistoryItem, TaskSummary } from "@/lib/liveApi";
 import { fetchReviewReports } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
 import type { AreaOwner } from "@/shared/schemas";
@@ -19,6 +19,7 @@ interface DecisionPanelProps {
   assessment: AssessmentHistoryItem | null;
   existing: Decision | null;
   areaOwner?: AreaOwner | null;
+  taskSummary?: TaskSummary | null;
 }
 
 const OUTCOMES: {
@@ -63,6 +64,7 @@ function DecisionForm({
     : OUTCOMES;
   const [outcome, setOutcome] = useState<DecisionOutcome | null>(null);
   const [conditions, setConditions] = useState("");
+  const [comments, setComments] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -123,6 +125,7 @@ function DecisionForm({
         outcome,
         recommendation_dispositions: dispositions,
         conditions: needsConditions ? conditions.trim() : null,
+        comments: comments.trim() ? comments.trim() : null,
         tagged_worker_ids: Array.from(taggedWorkerIds),
       });
     } catch (err) {
@@ -196,12 +199,13 @@ function DecisionForm({
       {workers.length > 0 ? (
         <section className={styles.section} aria-labelledby="decision-tag-heading">
           <p id="decision-tag-heading" className={styles.label}>
-            Notify people
+            Assign follow-up
           </p>
           <p className={styles.sectionHint}>
-            The zone supervisor is always included.
+            Selected people get a follow-up task. A rationale note (below) is
+            also posted to the review thread and mentions them.
           </p>
-          <div className={styles.tagList} role="list" aria-label="Notification recipients">
+          <div className={styles.tagList} role="list" aria-label="Task assignees">
             {workers.map((w) => {
               const locked = zoneOwnerId ? w.id === zoneOwnerId : false;
               const checked = taggedWorkerIds.has(w.id);
@@ -307,6 +311,24 @@ function DecisionForm({
         </div>
       </section>
 
+      <section className={styles.section} aria-labelledby="decision-note-heading">
+        <p id="decision-note-heading" className={styles.label}>
+          Rationale / note
+        </p>
+        <p className={styles.sectionHint}>
+          Optional. Posted to the review thread so the floor team sees why you
+          decided this way.
+        </p>
+        <textarea
+          id="decision-comments"
+          className={styles.textarea}
+          value={comments}
+          onChange={(e) => setComments(e.target.value)}
+          rows={3}
+          placeholder="e.g. Blocking until LEL clears and hot-work permit is suspended…"
+        />
+      </section>
+
       <button
         type="button"
         className={`btn btn-primary ${styles.submit}`}
@@ -389,6 +411,7 @@ export function DecisionPanel({
   assessment,
   existing,
   areaOwner,
+  taskSummary,
 }: DecisionPanelProps) {
   const closeReview = useLiveStore((s) => s.closeReview);
   const reopenReview = useLiveStore((s) => s.reopenReview);
@@ -404,6 +427,11 @@ export function DecisionPanel({
     Boolean(existing) &&
     Boolean(assessment) &&
     existing!.assessment_id !== assessment!.id;
+
+  const openTasks =
+    taskSummary != null
+      ? taskSummary.open + taskSummary.acknowledged
+      : 0;
 
   if (reviewState === "closed") {
     return (
@@ -427,6 +455,9 @@ export function DecisionPanel({
           Submitted · <strong>{existing.outcome.replaceAll("_", " ")}</strong>
           {existing.conditions ? ` — ${existing.conditions}` : ""}
         </p>
+        {existing.comments ? (
+          <p className={styles.hint}>{existing.comments}</p>
+        ) : null}
         <p className={styles.hint}>
           Evidence frozen at {new Date(existing.submitted_at).toLocaleString()}.
         </p>
@@ -465,6 +496,12 @@ export function DecisionPanel({
             Machine is inactive in simulator until the lock window ends and the review is closed.
           </p>
         ) : null}
+        {openTasks > 0 ? (
+          <p className={styles.warning}>
+            {openTasks} follow-up task{openTasks === 1 ? "" : "s"} still open.
+            You can still close, but the floor team may not be done.
+          </p>
+        ) : null}
         <div className={styles.actionRow}>
           <button
             type="button"
@@ -480,7 +517,11 @@ export function DecisionPanel({
                 .finally(() => setClosing(false));
             }}
           >
-            {closing ? "Closing…" : "Close Review"}
+            {closing
+              ? "Closing…"
+              : openTasks > 0
+                ? "Close anyway"
+                : "Close Review"}
           </button>
           <button
             type="button"
@@ -514,6 +555,9 @@ export function DecisionPanel({
           Submitted · <strong>{existing.outcome.replaceAll("_", " ")}</strong>
           {existing.conditions ? ` — ${existing.conditions}` : ""}
         </p>
+        {existing.comments ? (
+          <p className={styles.hint}>{existing.comments}</p>
+        ) : null}
         <p className={styles.hint}>
           Evidence frozen at {new Date(existing.submitted_at).toLocaleString()}.
         </p>

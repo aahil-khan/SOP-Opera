@@ -98,6 +98,24 @@
   white-space: pre-wrap;
 }
 
+.mentionTags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1);
+  margin-top: var(--space-2);
+}
+
+.mentionTag {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.1rem 0.45rem;
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--status-info) 12%, transparent);
+  color: var(--status-info);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-medium);
+}
+
 .composer {
   display: flex;
   flex-direction: column;

@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { fetchRoster } from "@/lib/authApi";
 import type { RosterEntry } from "@/lib/authTypes";
+import { getActorFromCookie } from "@/lib/actorCookie";
 import {
   fetchReviewComments,
   postReviewComment,
@@ -25,9 +26,11 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
   );
   const [busy, setBusy] = useState(false);
 
+  const actorId = getActorFromCookie()?.id ?? null;
+
   const mentionedWorkerOptions = useMemo(
-    () => workerRoster,
-    [workerRoster],
+    () => workerRoster.filter((w) => w.id !== actorId),
+    [workerRoster, actorId],
   );
 
   async function refresh() {
@@ -106,20 +109,34 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
             <p className={styles.empty}>No comments yet.</p>
           ) : null}
 
-          {comments.map((c) => (
-            <article key={c.id} className={styles.comment}>
-              <div className={styles.commentHeader}>
-                <div className={styles.author}>
-                  {c.author_name}{" "}
-                  <span className={styles.authorKind}>({c.author_kind})</span>
+          {comments.map((c) => {
+            const mentionNames = (c.mentioned_worker_ids ?? [])
+              .map((id) => workerRoster.find((w) => w.id === id)?.name)
+              .filter((name): name is string => Boolean(name));
+            return (
+              <article key={c.id} className={styles.comment}>
+                <div className={styles.commentHeader}>
+                  <div className={styles.author}>
+                    {c.author_name}{" "}
+                    <span className={styles.authorKind}>({c.author_kind})</span>
+                  </div>
+                  <div className={styles.when}>
+                    {new Date(c.created_at).toLocaleString()}
+                  </div>
                 </div>
-                <div className={styles.when}>
-                  {new Date(c.created_at).toLocaleString()}
-                </div>
-              </div>
-              <p className={styles.body}>{c.body}</p>
-            </article>
-          ))}
+                <p className={styles.body}>{c.body}</p>
+                {mentionNames.length > 0 ? (
+                  <div className={styles.mentionTags}>
+                    {mentionNames.map((name) => (
+                      <span key={name} className={styles.mentionTag}>
+                        @{name}
+                      </span>
+                    ))}
+                  </div>
+                ) : null}
+              </article>
+            );
+          })}
         </div>
       </div>
 
@@ -131,7 +148,7 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={3}
-            placeholder="Write a note, and optionally mention supervisors/workers."
+            placeholder="Write a note, and optionally mention workers."
           />
         </label>
 

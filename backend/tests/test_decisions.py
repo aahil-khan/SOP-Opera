@@ -16,6 +16,28 @@ from tests.test_assessment_pipeline import _cleanup_vessel, _wait_for_assessment
 VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 
+async def _seeded_actor_cookie() -> str:
+    """Encode a seeded user the way POST /auth/login does."""
+    import json
+    from urllib.parse import quote
+
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as s:
+        row = (
+            await s.execute(text("SELECT id, name, role FROM users LIMIT 1"))
+        ).first()
+    m = row._mapping
+    actor = {
+        "id": str(m["id"]),
+        "kind": "user",
+        "name": m["name"],
+        "role": m["role"],
+        "owned_zones": [],
+    }
+    return quote(json.dumps(actor, separators=(",", ":")), safe="")
+
+
 @pytest_asyncio.fixture
 async def client():
     from app.core.config import get_settings
@@ -51,8 +73,17 @@ async def client():
     orchestrator.start()
     demo_controller.clear_locks()
 
+    # Endpoints that record who acted (e.g. POST /tasks/{id}/done) require the
+    # actor cookie the real UI carries. Without it those calls 401, and the
+    # assertions after them were unreachable.
+    actor_cookie = await _seeded_actor_cookie()
+
     transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+    async with AsyncClient(
+        transport=transport,
+        base_url="http://test",
+        cookies={"sop_actor": actor_cookie},
+    ) as ac:
         yield ac
     await close_vector_pool()
     await engine.dispose()
@@ -229,7 +260,49 @@ async def test_decision_rejected_without_complete_assessment(client: AsyncClient
 
 @pytest.mark.asyncio
 async def test_blocking_assessment_rejects_approved_outcome(client: AsyncClient):
-    review_id, assessments = await _bring_to_pending_decision(client)
+    # Build the blocking state explicitly rather than relying on context left
+    # behind by earlier tests. Under the hazard-pathway policy a blocking verdict
+    # needs a pathway, not merely three unrelated facts: elevated gas
+    # (atmosphere) + a hot-work permit with no confirmed isolation
+    # (ignition + control failure).
+    now = datetime.now(timezone.utc)
+    until = (now + timedelta(hours=4)).isoformat()
+    frm = now.isoformat()
+
+    gas = await client.post(
+        "/context",
+        json={
+            "asset_id": str(VESSEL_A),
+            "category": "sensor",
+            "payload": {"gas_reading": 28.0, "unit": "ppm"},
+            "provider": "simulator",
+            "valid_from": frm,
+            "valid_until": until,
+        },
+    )
+    assert gas.status_code == 200, gas.text
+    review_id = gas.json()["review"]["id"]
+
+    permit = await client.post(
+        "/context",
+        json={
+            "asset_id": str(VESSEL_A),
+            "category": "permit",
+            "payload": {
+                "permit_id": "p-blocking-test",
+                "status": "active",
+                "work_type": "hot_work",
+            },
+            "provider": "simulator",
+            "valid_from": frm,
+            "valid_until": until,
+        },
+    )
+    assert permit.status_code == 200, permit.text
+
+    assessments = await _wait_for_assessment(
+        client, review_id, require_pending_decision=True
+    )
     complete = next(a for a in assessments if a["status"] == "complete")
     rec_id = complete["recommendations"][0]["id"]
     assert complete["risk_level"] == "blocking"
@@ -269,6 +342,9 @@ async def test_decision_persists_optional_comments(client: AsyncClient):
     detail = await client.get(f"/reviews/{review_id}")
     assert detail.status_code == 200
     assert detail.json()["decision"]["comments"] == note
+
+    comments = (await client.get(f"/reviews/{review_id}/comments")).json()
+    assert any(note in c["body"] and "Decision recorded" in c["body"] for c in comments)
 
 
 @pytest.mark.asyncio
@@ -312,6 +388,12 @@ async def test_blocked_decision_locks_asset_until_unblock_task_completion(
     ]
     assert unblock_tasks, "expected at least one unblock task"
     unblock_task_id = unblock_tasks[0]["id"]
+
+    # /tasks/{id}/done requires an authenticated actor cookie.
+    login = await client.post(
+        "/auth/login", json={"actor_id": str(unblock_assignee)}
+    )
+    assert login.status_code == 200, login.text
 
     done_resp = await client.post(
         f"/tasks/{unblock_task_id}/done",
