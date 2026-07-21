@@ -59,12 +59,39 @@ class EvalReport:
     hero_case_id: str = "vsp_coke_oven_step2"
     hero_lead_time: ScenarioLeadTime | None = None
 
+    @property
+    def case_count(self) -> int:
+        return len(self.case_results)
+
+    @property
+    def positive_count(self) -> int:
+        return sum(1 for r in self.case_results if r.dangerous)
+
     def to_markdown(self) -> str:
+        n, pos = self.case_count, self.positive_count
         lines = [
             "# Compound vs Single-Sensor Evaluation",
             "",
-            "Headline metric for the VSP coke-oven story: **false-negative rate** on",
-            "ground-truth dangerous cases (blocking intervention warranted).",
+            "Headline metric: **false-negative rate** on cases where a statutory",
+            "stop-work provision applies.",
+            "",
+            "## How cases are labeled",
+            "",
+            "Ground truth comes from `app/eval/hazard_ground_truth.py`, which reads raw",
+            "context payloads against stop-work criteria drawn from the applicable",
+            "provisions (Factories Act 1948 s.41B/s.41C, OISD-STD-105 including SIMOPS).",
+            "It does **not** import or call the risk policy it scores — enforced by",
+            "`tests/test_eval_independence.py`.",
+            "",
+            "This replaces the previous labeling function, which defined a case as",
+            "dangerous exactly when the compound engine fired, making a 0% false-negative",
+            "rate true by construction.",
+            "",
+            f"**Dataset:** {n} cases — {pos} requiring stop-work ({pos / n:.0%}), "
+            f"{n - pos} safe ({(n - pos) / n:.0%}). Cases come from a parameter sweep over",
+            "atmosphere level and trajectory, permit/isolation state, concurrent",
+            "operations, personnel presence and process temperature, plus scripted",
+            "scenario timelines.",
             "",
             "## Summary",
             "",
@@ -81,22 +108,42 @@ class EvalReport:
                 "",
                 f"**FN reduction (compound vs single-sensor):** {self.fn_reduction_pct:.1f}%",
                 "",
+                "### What this measures, and what it does not",
+                "",
+                "This is a **criterion-coverage** measurement: of the plant states where a",
+                "regulation requires stopping work, how many does each detector catch? The",
+                "compound engine implements those provisions, so high recall is expected —",
+                "the meaningful comparison is against the single-sensor baseline scored on",
+                "the *same* labels, which is how a conventional SCADA threshold alarm",
+                f"performs: it misses {self.single_sensor.fn:d} of {pos} stop-work cases.",
+                "",
+                "It is **not** a claim about generalizing to unseen real-world incidents.",
+                f"The {self.compound.fp:d} compound false positives are cases where the engine",
+                "is deliberately more conservative than the statutory minimum (for example,",
+                "hot work with unverified isolation and personnel present, at a clean gas",
+                "reading). For a stop-work system that is a defensible bias, not a defect.",
+                "",
             ]
         )
-        if self.hero_lead_time and self.hero_lead_time.lead_time_seconds is not None:
-            lt = self.hero_lead_time
+        lt = self.hero_lead_time
+        if lt and lt.lead_time_minutes is not None:
             forecast_bit = (
-                f"forecast alarm at **{lt.t_forecast_seconds:.0f}s**, "
-                if lt.t_forecast_seconds is not None
+                f"forecast alarm at **t+{lt.t_forecast_minutes:.0f} min**, "
+                if lt.t_forecast_minutes is not None
                 else ""
             )
             lines.extend(
                 [
                     "## Prediction lead time (hero scenario)",
                     "",
-                    f"VSP coke-oven timeline: {forecast_bit}compound alarm at **{lt.t_compound_seconds:.0f}s**, "
-                    f"single-sensor critical at **{lt.t_single_sensor_seconds:.0f}s** → "
-                    f"**{lt.lead_time_seconds:.0f}s lead time** before incident threshold.",
+                    "Measured in **plant process time** from each scenario step's",
+                    "`t_offset_minutes` — not the simulator's playback pacing.",
+                    "",
+                    f"VSP coke-oven timeline: {forecast_bit}compound alarm at "
+                    f"**t+{lt.t_compound_minutes:.0f} min**, single-sensor critical at "
+                    f"**t+{lt.t_single_sensor_minutes:.0f} min** → "
+                    f"**{lt.lead_time_minutes:.0f} minutes of lead time** before the "
+                    "incident threshold.",
                     "",
                 ]
             )
@@ -109,11 +156,15 @@ class EvalReport:
                 "",
                 "## Per-case detail",
                 "",
-                "| Case | Dangerous | Single | Compound | Compound-only catch |",
+                "Scenario and named cases; the parameter sweep is omitted for length.",
+                "",
+                "| Case | Stop-work required | Single | Compound | Compound-only catch |",
                 "| --- | --- | --- | --- | --- |",
             ]
         )
         for r in self.case_results:
+            if r.case_id.startswith("sweep_"):
+                continue
             lines.append(
                 f"| {r.case_id} | {r.dangerous} | {r.single_alarm} | "
                 f"{r.compound_alarm} | {r.compound_only_catch} |"

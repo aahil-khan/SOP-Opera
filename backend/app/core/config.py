@@ -77,7 +77,7 @@ class Settings(BaseSettings):
     predictive_trend_min_r2: float = 0.55
     predictive_trend_min_samples: int = 2
 
-    # Always-on ambient plant telemetry (tuned for low WS/UI load)
+    # Live feed (ambient plant telemetry) — startup default; Demo UI can toggle
     ambient_enabled: bool = True
     ambient_tick_seconds: float = 3.0
     ambient_coincidence_probability: float = 0.01
