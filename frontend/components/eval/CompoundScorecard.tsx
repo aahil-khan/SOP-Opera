@@ -14,7 +14,44 @@ function fmtLead(minutes: number | null | undefined): string {
   return `${Math.round(minutes)} min`;
 }
 
-/** Full page scorecard for /eval. */
+function HeroStat({
+  value,
+  label,
+  hint,
+  tone = "neutral",
+}: {
+  value: string;
+  label: string;
+  hint: string;
+  tone?: "good" | "accent" | "neutral";
+}) {
+  return (
+    <div className={styles.hero} data-tone={tone} title={hint}>
+      <span className={styles.heroValue}>{value}</span>
+      <span className={styles.heroLabel}>{label}</span>
+      <span className={styles.heroHint}>{hint}</span>
+    </div>
+  );
+}
+
+function StatPair({
+  label,
+  value,
+  hint,
+}: {
+  label: string;
+  value: string;
+  hint: string;
+}) {
+  return (
+    <div className={styles.statPair} title={hint}>
+      <span className={styles.statValue}>{value}</span>
+      <span className={styles.statLabel}>{label}</span>
+    </div>
+  );
+}
+
+/** Full page scorecard for /eval — same glanceable shell as /ai-ops. */
 export function EvalScorecardView() {
   const [summary, setSummary] = useState<EvalSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -40,8 +77,12 @@ export function EvalScorecardView() {
   const tForecast = summary?.hero_t_forecast_minutes ?? null;
   const tCompound = summary?.hero_t_compound_minutes ?? null;
   const tCritical = summary?.hero_t_single_sensor_minutes ?? null;
-  const span =
-    tCritical != null && tCritical > 0 ? tCritical : 34;
+  const span = tCritical != null && tCritical > 0 ? tCritical : 34;
+  const positives =
+    summary?.positive_count ??
+    (summary
+      ? summary.single_sensor.tp + summary.single_sensor.fn
+      : null);
 
   function laneWidth(at: number | null): string {
     if (at == null || span <= 0) return "0%";
@@ -54,310 +95,294 @@ export function EvalScorecardView() {
         <div className={styles.headerText}>
           <h1 className={styles.pageTitle}>Compound vs single-sensor</h1>
           <p className={styles.pageSubtitle}>
-            False negatives on plant states where a statutory provision requires
-            stopping work. Labels come from the regulations, not from our
-            detector.
+            Stop-work cases labeled from statute
+            {summary
+              ? ` · ${summary.case_count} cases · ${positives} requiring stop-work`
+              : ""}
           </p>
         </div>
         <button
           type="button"
-          className={`btn ${styles.refresh}`}
+          className={styles.refresh}
           disabled={loading}
           onClick={() => void refresh()}
         >
-          {loading ? "Running…" : "Re-run"}
+          {loading ? "…" : "Re-run"}
         </button>
       </header>
 
       {error && <p className={styles.error}>{error}</p>}
 
-      {summary && (
-        <>
-          <div className={styles.heroStats} aria-label="Key metrics">
-            {/* Raw counts, not the FN-reduction ratio. That ratio is pinned at
-                100% whenever compound FN is zero, so it restates one number
-                rather than adding one — and a bare "100%" reads as a red flag.
-                It stays available as a column in the comparison table. */}
-            <div className={styles.heroStat} data-tone="success">
-              <span className={styles.heroValue}>
-                {summary.single_sensor.fn} → {summary.compound.fn}
-              </span>
-              <span className={styles.heroLabel}>
-                Stop-work cases missed — single-sensor vs compound (of{" "}
-                {summary.positive_count ??
-                  summary.single_sensor.tp + summary.single_sensor.fn}
-                )
-              </span>
-              <span className={styles.heroHint}>
-                Fewer missed stop-work cases, scored on the same labeled set
-              </span>
+      <div className={styles.heroRow} aria-label="Key metrics">
+        <HeroStat
+          value={
+            summary
+              ? `${summary.single_sensor.fn} → ${summary.compound.fn}`
+              : "—"
+          }
+          label="Missed stop-work"
+          hint={
+            positives != null
+              ? `Single-sensor vs compound false negatives of ${positives} labeled stop-work cases`
+              : "Single-sensor vs compound false negatives on labeled stop-work cases"
+          }
+          tone={summary ? "good" : "neutral"}
+        />
+        <HeroStat
+          value={fmtLead(summary?.hero_lead_time_minutes)}
+          label="Lead time"
+          hint="Plant-process minutes compound warns before the single-sensor critical line on the VSP hero case"
+          tone={summary ? "accent" : "neutral"}
+        />
+        <HeroStat
+          value={summary ? pct(summary.compound.precision) : "—"}
+          label="Compound precision"
+          hint={`${summary?.compound.fp ?? 0} false positives — stricter than the statutory minimum, not a free lunch`}
+        />
+        <HeroStat
+          value={
+            summary?.statutory_coverage_pct != null
+              ? `${summary.statutory_coverage_pct.toFixed(0)}%`
+              : "—"
+          }
+          label="Statutory coverage"
+          hint="Share of fact-bearing cases with an Indian statutory citation (Factories Act / OISD)"
+          tone={summary ? "accent" : "neutral"}
+        />
+      </div>
+
+      <div className={styles.grid}>
+        <section className={styles.panel}>
+          <header className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>VSP timeline</h2>
+            <p className={styles.panelSubtitle}>
+              When each detector alarms on the rising-gas story
+            </p>
+          </header>
+          <div className={styles.panelBody}>
+            <div className={styles.lanes} role="list">
+              <div className={styles.lane} role="listitem" data-tone="silent">
+                <div className={styles.laneMeta}>
+                  <span className={styles.laneName}>Single-sensor</span>
+                  <span className={styles.laneValue}>{fmtLead(tCritical)}</span>
+                </div>
+                <div className={styles.laneTrack}>
+                  <div
+                    className={styles.laneFill}
+                    style={{ width: laneWidth(tCritical) }}
+                  />
+                </div>
+                <p className={styles.laneDetail}>
+                  FN{" "}
+                  {summary
+                    ? pct(summary.single_sensor.false_negative_rate)
+                    : "—"}{" "}
+                  · fires at critical only
+                </p>
+              </div>
+
+              <div className={styles.lane} role="listitem" data-tone="forecast">
+                <div className={styles.laneMeta}>
+                  <span className={styles.laneName}>Forecast</span>
+                  <span className={styles.laneValue}>{fmtLead(tForecast)}</span>
+                </div>
+                <div className={styles.laneTrack}>
+                  <div
+                    className={styles.laneFill}
+                    style={{ width: laneWidth(tForecast) }}
+                  />
+                </div>
+                <p className={styles.laneDetail}>
+                  FN{" "}
+                  {summary ? pct(summary.forecast.false_negative_rate) : "—"} ·
+                  ML trend toward critical
+                </p>
+              </div>
+
+              <div className={styles.lane} role="listitem" data-tone="compound">
+                <div className={styles.laneMeta}>
+                  <span className={styles.laneName}>Compound</span>
+                  <span className={styles.laneValue}>{fmtLead(tCompound)}</span>
+                </div>
+                <div className={styles.laneTrack}>
+                  <div
+                    className={styles.laneFill}
+                    style={{ width: laneWidth(tCompound) }}
+                  />
+                </div>
+                <p className={styles.laneDetail}>
+                  FN{" "}
+                  {summary ? pct(summary.compound.false_negative_rate) : "—"} ·
+                  atmosphere + ignition + failed control
+                </p>
+              </div>
             </div>
-            <div className={styles.heroStat} data-tone="accent">
-              <span className={styles.heroValue}>
-                {fmtLead(summary.hero_lead_time_minutes)}
-              </span>
-              <span className={styles.heroLabel}>
-                Lead time before single-sensor critical
-              </span>
-              <span className={styles.heroHint}>
-                Warning on the hero case before the critical threshold alone
-                would fire
-              </span>
-            </div>
-            {/* Deliberately shows the cost, not another win. While compound FN is
-                zero, "cases only compound catches" is identical to single-sensor's
-                miss count — the same number twice. Precision is the counterweight
-                that answers "so you just alarm on everything?". */}
-            <div className={styles.heroStat}>
-              <span className={styles.heroValue}>
-                {pct(summary.compound.precision)}
-              </span>
-              <span className={styles.heroLabel}>
-                Compound precision — {summary.compound.fp} false positives, all
-                stricter than the statutory minimum
-              </span>
-              <span className={styles.heroHint}>
-                The cost of catching every stop-work case — not another win
-                metric
-              </span>
-            </div>
+            <p className={styles.caption}>
+              Hero <code>{summary?.hero_case_id ?? "—"}</code> · compound leads
+              by {fmtLead(summary?.hero_lead_time_minutes)}
+            </p>
           </div>
+        </section>
 
-          <section className={styles.panel}>
-            <header className={styles.panelHeader}>
-              <h2 className={styles.panelTitle}>
-                Three detectors on the VSP timeline
-              </h2>
-              <p className={styles.panelSubtitle}>
-                Same rising gas story — when each detector would alarm.
-              </p>
-            </header>
-            <div className={styles.panelBody}>
-              <div className={styles.lanes} role="list">
-                <div className={styles.lane} role="listitem" data-tone="silent">
-                  <div className={styles.laneMeta}>
-                    <span className={styles.laneName}>Single-sensor</span>
-                    <span className={styles.laneVerdict}>Silent until critical</span>
-                  </div>
-                  <div className={styles.laneTrack}>
-                    <div
-                      className={styles.laneFill}
-                      style={{ width: laneWidth(tCritical) }}
-                    />
-                    <span
-                      className={styles.laneMark}
-                      style={{ left: laneWidth(tCritical) }}
-                    >
-                      {fmtLead(tCritical)}
-                    </span>
-                  </div>
-                  <p className={styles.laneDetail}>
-                    FN rate {pct(summary.single_sensor.false_negative_rate)} ·
-                    only fires when gas ≥ critical
-                  </p>
-                </div>
-
-                <div className={styles.lane} role="listitem" data-tone="forecast">
-                  <div className={styles.laneMeta}>
-                    <span className={styles.laneName}>Predictive forecast</span>
-                    <span className={styles.laneVerdict}>Early trend alarm</span>
-                  </div>
-                  <div className={styles.laneTrack}>
-                    <div
-                      className={styles.laneFill}
-                      style={{ width: laneWidth(tForecast) }}
-                    />
-                    <span
-                      className={styles.laneMark}
-                      style={{ left: laneWidth(tForecast) }}
-                    >
-                      {fmtLead(tForecast)}
-                    </span>
-                  </div>
-                  <p className={styles.laneDetail}>
-                    FN rate {pct(summary.forecast.false_negative_rate)} · ML trend
-                    toward critical
-                  </p>
-                </div>
-
-                <div className={styles.lane} role="listitem" data-tone="compound">
-                  <div className={styles.laneMeta}>
-                    <span className={styles.laneName}>Compound engine</span>
-                    <span className={styles.laneVerdict}>Definitive block</span>
-                  </div>
-                  <div className={styles.laneTrack}>
-                    <div
-                      className={styles.laneFill}
-                      style={{ width: laneWidth(tCompound) }}
-                    />
-                    <span
-                      className={styles.laneMark}
-                      style={{ left: laneWidth(tCompound) }}
-                    >
-                      {fmtLead(tCompound)}
-                    </span>
-                  </div>
-                  <p className={styles.laneDetail}>
-                    FN rate {pct(summary.compound.false_negative_rate)} · hazard
-                    pathway: atmosphere + ignition + failed control
-                  </p>
-                </div>
-              </div>
-              <p className={styles.caption}>
-                Hero case <code>{summary.hero_case_id}</code> · compound leads
-                single-sensor by {fmtLead(summary.hero_lead_time_minutes)} ·{" "}
-                {summary.case_count} labeled cases (
-                {summary.positive_count ?? 0} requiring stop-work)
-              </p>
-            </div>
-          </section>
-
-          <section className={styles.panel}>
-            <header className={styles.panelHeader}>
-              <h2 className={styles.panelTitle}>How these cases are labeled</h2>
-              {summary.label_basis && (
-                <p className={styles.panelSubtitle}>{summary.label_basis}</p>
-              )}
-            </header>
-            <div className={styles.panelBody}>
-              <p className={styles.prose}>
-                This measures <strong>criterion coverage</strong> — of the
-                plant states where a regulation requires stopping, how many
-                does each detector catch — not generalization to unseen
-                incidents. The comparable baseline is single-sensor scored on
-                the same labels: {pct(summary.single_sensor.false_negative_rate)}{" "}
-                FN, missing {summary.single_sensor.fn} of{" "}
-                {summary.positive_count ?? 0} stop-work cases.
-              </p>
-              <p className={styles.note}>
-                Ground truth is computed from raw sensor and permit payloads in{" "}
-                <code>app/eval/hazard_ground_truth.py</code>, which cannot
-                import the risk policy it scores — a build test fails if it
-                does, and also fails if labels and detector ever agree on{" "}
-                <em>every</em> case.
-              </p>
-            </div>
-          </section>
-
-          {summary.regulation_coverage_pct != null && (
-            <section className={styles.panel}>
-              <header className={styles.panelHeader}>
-                <h2 className={styles.panelTitle}>Regulatory coverage</h2>
-                <p className={styles.panelSubtitle}>
-                  Of the fact-bearing cases, how often deterministic retrieval
-                  surfaces a matching regulation.
-                </p>
-              </header>
-              <div className={styles.panelBody}>
-                <div className={styles.heroStats}>
-                  <div className={styles.heroStat} data-tone="accent">
-                    <span className={styles.heroValue}>
-                      {summary.regulation_coverage_pct.toFixed(1)}%
-                    </span>
-                    <span className={styles.heroLabel}>
-                      Fact-bearing cases with a citable regulation
-                    </span>
-                  </div>
-                  <div className={styles.heroStat}>
-                    <span className={styles.heroValue}>
-                      {(summary.statutory_coverage_pct ?? 0).toFixed(1)}%
-                    </span>
-                    <span className={styles.heroLabel}>
-                      Citing an Indian statutory provision
-                    </span>
-                  </div>
-                </div>
-                {summary.coverage_by_standard && (
-                  <table className={styles.table}>
-                    <thead>
-                      <tr>
-                        <th>Standard</th>
-                        <th>Citations available</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {Object.entries(summary.coverage_by_standard).map(
-                        ([standard, count]) => (
-                          <tr key={standard}>
-                            <td>{standard}</td>
-                            <td>{count}</td>
-                          </tr>
-                        ),
-                      )}
-                    </tbody>
-                  </table>
-                )}
-                <p className={styles.caption}>
-                  Clause-level citations with primary-source links. Retrieval is
-                  deterministic SQL by choice, so a citation is always present.
-                </p>
-              </div>
-            </section>
-          )}
-
-          <section className={styles.panel}>
-            <header className={styles.panelHeader}>
-              <h2 className={styles.panelTitle}>Detector comparison</h2>
-              <p className={styles.panelSubtitle}>
-                Accuracy, recall, and false-negative rate for each detector,
-                scored against the same labels.
-              </p>
-            </header>
-            <div className={styles.panelBody}>
-              <table className={styles.table}>
-                <thead>
-                  <tr>
-                    <th>Detector</th>
-                    <th>Accuracy</th>
-                    <th>Recall</th>
-                    <th>FN rate</th>
-                    <th>Missed</th>
-                    <th>Precision</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {(
-                    [
+        <section className={styles.panel}>
+          <header className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Detector comparison</h2>
+            <p className={styles.panelSubtitle}>
+              Same statutory labels for every detector
+            </p>
+          </header>
+          <div className={styles.panelBody}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Detector</th>
+                  <th>FN</th>
+                  <th>Missed</th>
+                  <th>Prec.</th>
+                  <th>Acc.</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(summary
+                  ? ([
                       summary.single_sensor,
                       summary.forecast,
                       summary.compound,
-                    ] as const
-                  ).map((d) => (
-                    <tr
-                      key={d.name}
-                      data-highlight={
-                        d.name.startsWith("Compound") ? "true" : undefined
-                      }
-                    >
-                      <td>{d.name}</td>
-                      <td>{pct(d.accuracy)}</td>
-                      <td>{pct(d.recall)}</td>
-                      <td>{pct(d.false_negative_rate)}</td>
-                      <td>
-                        {d.fn} / {d.tp + d.fn}
-                      </td>
-                      <td>{pct(d.precision)}</td>
-                    </tr>
-                  ))}
+                    ] as const)
+                  : ([
+                      { name: "Single-sensor", fn: 0, tp: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
+                      { name: "Forecast", fn: 0, tp: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
+                      { name: "Compound", fn: 0, tp: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
+                    ] as const)
+                ).map((d) => (
+                  <tr
+                    key={d.name}
+                    data-highlight={
+                      d.name.startsWith("Compound") ? "true" : undefined
+                    }
+                  >
+                    <td>{d.name.replace(/ .*/, "")}</td>
+                    <td>{summary ? pct(d.false_negative_rate) : "—"}</td>
+                    <td>
+                      {summary ? `${d.fn}/${d.tp + d.fn}` : "—"}
+                    </td>
+                    <td>{summary ? pct(d.precision) : "—"}</td>
+                    <td>{summary ? pct(d.accuracy) : "—"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className={styles.statGrid}>
+              <StatPair
+                label="FN reduction"
+                value={
+                  summary ? `${summary.fn_reduction_pct.toFixed(0)}%` : "—"
+                }
+                hint="Pinned at 100% whenever compound FN is zero — prefer the missed counts above"
+              />
+              <StatPair
+                label="Compound FP"
+                value={summary ? String(summary.compound.fp) : "—"}
+                hint="Cases where we stop work and the statute does not strictly require it"
+              />
+            </div>
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <header className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Coverage & labels</h2>
+            <p className={styles.panelSubtitle}>
+              {summary?.label_basis ??
+                "Statutory stop-work criteria, independent of the risk policy"}
+            </p>
+          </header>
+          <div className={styles.panelBody}>
+            <div className={styles.statGrid}>
+              <StatPair
+                label="Citable regs"
+                value={
+                  summary?.regulation_coverage_pct != null
+                    ? `${summary.regulation_coverage_pct.toFixed(0)}%`
+                    : "—"
+                }
+                hint="Fact-bearing cases with a regulation the deterministic retriever can cite"
+              />
+              <StatPair
+                label="Statutory"
+                value={
+                  summary?.statutory_coverage_pct != null
+                    ? `${summary.statutory_coverage_pct.toFixed(0)}%`
+                    : "—"
+                }
+                hint="Citing an Indian statutory provision (Factories Act / OISD)"
+              />
+              <StatPair
+                label="Stop-work"
+                value={
+                  summary && positives != null
+                    ? `${positives}/${summary.case_count}`
+                    : "—"
+                }
+                hint="Cases where a statutory provision requires stopping work"
+              />
+              <StatPair
+                label="Baseline miss"
+                value={
+                  summary && positives != null
+                    ? `${summary.single_sensor.fn}/${positives}`
+                    : "—"
+                }
+                hint="Single-sensor false negatives on the same labels"
+              />
+            </div>
+            {summary?.coverage_by_standard ? (
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Standard</th>
+                    <th>Citations</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {Object.entries(summary.coverage_by_standard).map(
+                    ([standard, count]) => (
+                      <tr key={standard}>
+                        <td>{standard}</td>
+                        <td>{count}</td>
+                      </tr>
+                    ),
+                  )}
                 </tbody>
               </table>
-              <p className={styles.caption}>
-                All three detectors scored on the same labels.{" "}
-                {summary.fn_reduction_pct.toFixed(0)}% false-negative reduction
-                is the ratio of the first two FN rates — it is pinned at 100%
-                whenever the compound engine misses nothing, so read the raw
-                counts rather than the ratio.
-              </p>
-            </div>
-          </section>
+            ) : (
+              <table className={styles.table}>
+                <thead>
+                  <tr>
+                    <th>Standard</th>
+                    <th>Citations</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>—</td>
+                    <td>—</td>
+                  </tr>
+                </tbody>
+              </table>
+            )}
+            <p className={styles.caption}>
+              Labels from <code>hazard_ground_truth.py</code> — cannot import
+              the risk policy it scores.
+            </p>
+          </div>
+        </section>
+      </div>
 
-          <p className={styles.sourceNote}>
-            Source: deterministic detector harness in{" "}
-            <code>backend/app/eval/</code> · recomputed fresh on every re-run,
-            no database involved
-          </p>
-        </>
-      )}
+      <p className={styles.sourceNote}>
+        Source: deterministic harness in <code>backend/app/eval/</code> · fresh
+        on every re-run · no database
+      </p>
     </div>
   );
 }
