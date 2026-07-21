@@ -2,15 +2,14 @@
    header → hero KPI row → 3-column panel grid. */
 
 .page {
-  height: calc(100vh - var(--nav-height));
-  min-height: 480px;
+  /* Content-sized so /eval can stack HandoverCoverage below without a
+     second full-viewport trap. The page route owns scroll. */
   padding: var(--space-6) var(--space-8);
-  background: var(--surface-canvas);
+  background: transparent;
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  justify-content: flex-start;
   gap: var(--space-6);
-  overflow: auto;
 }
 
 .pageHeader {

@@ -1,0 +1,18 @@
+/* Full-bleed scroll shell for /eval — scorecard + handover coverage. */
+
+.shell {
+  height: calc(100vh - var(--nav-height));
+  min-height: 480px;
+  overflow: auto;
+  background: var(--surface-canvas);
+}
+
+.below {
+  padding: 0 var(--space-8) var(--space-6);
+}
+
+@media (max-width: 640px) {
+  .below {
+    padding: 0 var(--space-3) var(--space-4);
+  }
+}
