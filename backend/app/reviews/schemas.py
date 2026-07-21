@@ -7,3 +7,20 @@ from app.context.schemas import (  # noqa: F401
     ReopenIn,
     ReviewDetailOut,
 )
+
+from datetime import datetime
+from uuid import UUID
+
+from pydantic import BaseModel
+
+
+class SharedReviewOut(BaseModel):
+    review_id: UUID
+    asset_id: UUID
+    asset_name: str
+    asset_zone: str
+    review_state: str
+    description: str
+    concern_type: str
+    raised_by_name: str
+    created_at: datetime

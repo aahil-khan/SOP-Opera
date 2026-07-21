@@ -19,6 +19,10 @@ def _row_to_review(row: object) -> Review:
         state=m["state"],
         owner_id=m["owner_id"],
         triggered_by=m["triggered_by"],
+        origin=m["origin"] if "origin" in m else "system",
+        raised_by_worker_id=m["raised_by_worker_id"]
+        if "raised_by_worker_id" in m
+        else None,
         created_at=m["created_at"],
     )
 
@@ -27,7 +31,14 @@ async def get_review(session: AsyncSession, review_id: UUID) -> Review | None:
     result = await session.execute(
         text(
             """
-            SELECT id, asset_id, state, owner_id, triggered_by, created_at
+            SELECT id,
+                   asset_id,
+                   state,
+                   owner_id,
+                   triggered_by,
+                   origin,
+                   raised_by_worker_id,
+                   created_at
             FROM reviews
             WHERE id = CAST(:id AS uuid)
             """
@@ -45,25 +56,54 @@ async def create_review(
     triggered_by: str,
     owner_id: UUID,
     actor: str,
+    origin: str = "system",
+    raised_by_worker_id: UUID | None = None,
+    tagged_worker_ids: list[UUID] | None = None,
+    report_description: str | None = None,
+    report_concern_type: str | None = None,
 ) -> Review:
     """Insert a review in `opened`. Audits and broadcasts. Only writer of new review rows."""
+    tagged = [str(w) for w in (tagged_worker_ids or [])]
     result = await session.execute(
         text(
             """
-            INSERT INTO reviews (asset_id, state, owner_id, triggered_by)
+            INSERT INTO reviews (
+                asset_id, state, owner_id, triggered_by,
+                origin, raised_by_worker_id, tagged_worker_ids,
+                report_description, report_concern_type
+            )
             VALUES (
                 CAST(:asset_id AS uuid),
                 'opened',
                 CAST(:owner_id AS uuid),
-                :triggered_by
+                :triggered_by,
+                :origin,
+                :raised_by_worker_id,
+                CAST(:tagged_worker_ids AS uuid[]),
+                :report_description,
+                :report_concern_type
             )
-            RETURNING id, asset_id, state, owner_id, triggered_by, created_at
+            RETURNING id,
+                      asset_id,
+                      state,
+                      owner_id,
+                      triggered_by,
+                      origin,
+                      raised_by_worker_id,
+                      created_at
             """
         ),
         {
             "asset_id": str(asset_id),
             "owner_id": str(owner_id),
             "triggered_by": triggered_by,
+            "origin": origin,
+            "raised_by_worker_id": str(raised_by_worker_id)
+            if raised_by_worker_id is not None
+            else None,
+            "tagged_worker_ids": tagged,
+            "report_description": report_description,
+            "report_concern_type": report_concern_type,
         },
     )
     review = _row_to_review(result.one())
@@ -102,6 +142,39 @@ async def create_review(
     return review
 
 
+async def update_review_supervisor_report(
+    session: AsyncSession,
+    review_id: UUID,
+    *,
+    raised_by_worker_id: UUID,
+    tagged_worker_ids: list[UUID],
+    report_description: str,
+    report_concern_type: str,
+) -> None:
+    """Attach / refresh supervisor floor-report fields on an existing review."""
+    await session.execute(
+        text(
+            """
+            UPDATE reviews
+            SET origin = 'supervisor',
+                raised_by_worker_id = CAST(:wid AS uuid),
+                tagged_worker_ids = CAST(:tagged AS uuid[]),
+                report_description = :description,
+                report_concern_type = :concern
+            WHERE id = CAST(:id AS uuid)
+            """
+        ),
+        {
+            "id": str(review_id),
+            "wid": str(raised_by_worker_id),
+            "tagged": [str(w) for w in tagged_worker_ids],
+            "description": report_description,
+            "concern": report_concern_type,
+        },
+    )
+    await session.commit()
+
+
 async def transition_review(
     session: AsyncSession,
     review_id: UUID,
@@ -134,7 +207,14 @@ async def transition_review(
             UPDATE reviews
             SET state = :state{closed_sql}
             WHERE id = CAST(:id AS uuid)
-            RETURNING id, asset_id, state, owner_id, triggered_by, created_at
+            RETURNING id,
+                      asset_id,
+                      state,
+                      owner_id,
+                      triggered_by,
+                      origin,
+                      raised_by_worker_id,
+                      created_at
             """
         ),
         params,
@@ -170,6 +250,15 @@ async def transition_review(
             owner_id=updated.owner_id,
             reason=(extra_payload or {}).get("reason") or default_reason,
         )
+    elif event == ReviewEvent.RESOLVE_ESCALATION:
+        from app.notifications.service import notify_review_de_escalated
+
+        await notify_review_de_escalated(
+            session,
+            review_id=updated.id,
+            owner_id=updated.owner_id,
+            reason=(extra_payload or {}).get("reason") or None,
+        )
     elif event == ReviewEvent.SUBMIT_DECISION:
         from app.notifications.service import notify_decision_submitted
 
@@ -196,6 +285,14 @@ async def transition_review(
         from app.assessment.orchestrator import enqueue_for_review
 
         await enqueue_for_review(session, updated)
+    if new_state == "reopened":
+        from app.tasks.service import cancel_open_tasks_for_review
+
+        await cancel_open_tasks_for_review(
+            session,
+            review_id=updated.id,
+            actor=actor,
+        )
     if new_state == "closed":
         from app.simulator.engine import demo_controller
 

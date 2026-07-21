@@ -1,12 +1,28 @@
 from __future__ import annotations
 
 from datetime import datetime
-from typing import Any
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
 
+from app.tasks.schemas import TaskSummaryOut
 from shared.python.schemas import AreaOwner, Asset, Context, Decision, DerivedFact, Review
+
+SupervisorConcernType = Literal[
+    "safety_hazard",
+    "equipment",
+    "permit_isolation",
+    "environmental",
+    "personnel",
+    "other",
+]
+
+
+class SupervisorReportOut(BaseModel):
+    description: str
+    concern_type: SupervisorConcernType
+    reported_by_name: str
 
 
 class ContextIn(BaseModel):
@@ -29,6 +45,11 @@ class CreateReviewIn(BaseModel):
     asset_id: UUID
     triggered_by: str = "manual_request"
     owner_id: UUID | None = None
+    # HITL: optional supervisor free-text issue report.
+    description: str | None = None
+    raised_by_worker_id: UUID | None = None
+    tagged_worker_ids: list[UUID] = Field(default_factory=list)
+    concern_type: SupervisorConcernType = "other"
 
 
 class EscalateIn(BaseModel):
@@ -46,3 +67,6 @@ class ReviewDetailOut(BaseModel):
     derived_facts: list[DerivedFact]
     decision: Decision | None = None
     area_owner: AreaOwner | None = None
+    raised_by_worker_name: str | None = None
+    supervisor_report: SupervisorReportOut | None = None
+    task_summary: TaskSummaryOut | None = None

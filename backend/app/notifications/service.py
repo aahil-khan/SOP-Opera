@@ -161,6 +161,42 @@ async def notify_review_escalated(
     )
 
 
+async def notify_review_de_escalated(
+    session: AsyncSession,
+    *,
+    review_id: UUID,
+    owner_id: UUID,
+    reason: str | None = None,
+) -> None:
+    suffix = f" — {reason}" if reason else ""
+    await create_notification(
+        session,
+        review_id=review_id,
+        event_type="review.de_escalated",
+        summary=f"Escalation resolved{suffix}",
+        recipient_ids=[owner_id],
+    )
+
+
+async def notify_supervisor_report_tagged(
+    session: AsyncSession,
+    *,
+    review_id: UUID,
+    recipient_ids: list[UUID],
+    reporter_name: str,
+    asset_name: str,
+) -> None:
+    if not recipient_ids:
+        return
+    await create_notification(
+        session,
+        review_id=review_id,
+        event_type="supervisor_report.tagged",
+        summary=f"{reporter_name} shared a floor issue on {asset_name}",
+        recipient_ids=recipient_ids,
+    )
+
+
 async def list_notifications(
     session: AsyncSession, *, limit: int = 50
 ) -> list[dict]:

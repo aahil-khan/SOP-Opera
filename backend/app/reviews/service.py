@@ -4,7 +4,6 @@ from uuid import UUID
 
 from app.context.derived_facts import load_valid_context
 from app.context.schemas import ReviewDetailOut
-from app.decisions.service import get_decision_for_review
 from shared.python.schemas import Context
 from shared.python.schemas import DerivedFact, Review
 from app.reviews.state_machine import ReviewEvent
@@ -73,7 +72,7 @@ def should_reassess(
     changed_fact_types: list[str],
     current_true_facts: list[DerivedFact],
 ) -> bool:
-    """Deterministic reassessment / auto-open gate (Phase 2; Phase 3 extends)."""
+    """Deterministic reassessment / auto-open / reopen gate."""
     if not changed_fact_types:
         return False
     if review is None:
@@ -81,7 +80,7 @@ def should_reassess(
             f.fact_type for f in current_true_facts
         } & set(changed_fact_types)
         return bool(newly_true)
-    if review.state == "decided":
+    if review.state in ("decided", "closed"):
         return should_reopen_after_decision(changed_fact_types, current_true_facts)
     return review.state in REASSESSABLE_STATES
 
@@ -92,7 +91,14 @@ async def find_active_review_for_asset(
     result = await session.execute(
         text(
             """
-            SELECT id, asset_id, state, owner_id, triggered_by, created_at
+            SELECT id,
+                   asset_id,
+                   state,
+                   owner_id,
+                   triggered_by,
+                   origin,
+                   raised_by_worker_id,
+                   created_at
             FROM reviews
             WHERE asset_id = CAST(:asset_id AS uuid)
               AND state <> 'closed'
@@ -112,6 +118,51 @@ async def find_active_review_for_asset(
         state=m["state"],
         owner_id=m["owner_id"],
         triggered_by=m["triggered_by"],
+        origin=m["origin"] if "origin" in m else "system",
+        raised_by_worker_id=m["raised_by_worker_id"]
+        if "raised_by_worker_id" in m
+        else None,
+        created_at=m["created_at"],
+    )
+
+
+async def find_latest_review_for_asset(
+    session: AsyncSession, asset_id: UUID
+) -> Review | None:
+    """Most recent review for an asset, including closed."""
+    result = await session.execute(
+        text(
+            """
+            SELECT id,
+                   asset_id,
+                   state,
+                   owner_id,
+                   triggered_by,
+                   origin,
+                   raised_by_worker_id,
+                   created_at
+            FROM reviews
+            WHERE asset_id = CAST(:asset_id AS uuid)
+            ORDER BY created_at DESC
+            LIMIT 1
+            """
+        ),
+        {"asset_id": str(asset_id)},
+    )
+    row = result.first()
+    if row is None:
+        return None
+    m = row._mapping
+    return Review(
+        id=m["id"],
+        asset_id=m["asset_id"],
+        state=m["state"],
+        owner_id=m["owner_id"],
+        triggered_by=m["triggered_by"],
+        origin=m["origin"] if "origin" in m else "system",
+        raised_by_worker_id=m["raised_by_worker_id"]
+        if "raised_by_worker_id" in m
+        else None,
         created_at=m["created_at"],
     )
 
@@ -125,19 +176,31 @@ async def handle_context_change(
     actor: str = "system:context",
 ) -> Review | None:
     review = await find_active_review_for_asset(session, asset_id)
-    if not should_reassess(review, changed_fact_types, current_true_facts):
-        return review
 
-    if review is not None and review.state == "decided":
-        review = await transition_review(
-            session,
-            review.id,
-            ReviewEvent.RISK_ESCALATED,
-            actor,
-            extra_payload={"changed_fact_types": changed_fact_types},
-        )
-
+    # No open review — prefer reopening the latest closed one over creating a duplicate.
     if review is None:
+        latest = await find_latest_review_for_asset(session, asset_id)
+        if (
+            latest is not None
+            and latest.state == "closed"
+            and should_reopen_after_decision(changed_fact_types, current_true_facts)
+        ):
+            review = await transition_review(
+                session,
+                latest.id,
+                ReviewEvent.REOPEN,
+                actor,
+                extra_payload={"changed_fact_types": changed_fact_types},
+            )
+            return await transition_review(
+                session,
+                review.id,
+                ReviewEvent.TRIGGER_ASSESSMENT,
+                actor,
+                extra_payload={"changed_fact_types": changed_fact_types},
+            )
+        if not should_reassess(None, changed_fact_types, current_true_facts):
+            return latest
         triggered = ",".join(sorted(changed_fact_types))
         owner = UUID(get_settings().default_owner_user_id)
         review = await create_review(
@@ -147,14 +210,25 @@ async def handle_context_change(
             owner_id=owner,
             actor=actor,
         )
-        review = await transition_review(
+        return await transition_review(
             session,
             review.id,
             ReviewEvent.TRIGGER_ASSESSMENT,
             actor,
             extra_payload={"changed_fact_types": changed_fact_types},
         )
+
+    if not should_reassess(review, changed_fact_types, current_true_facts):
         return review
+
+    if review.state == "decided":
+        review = await transition_review(
+            session,
+            review.id,
+            ReviewEvent.RISK_ESCALATED,
+            actor,
+            extra_payload={"changed_fact_types": changed_fact_types},
+        )
 
     return await transition_review(
         session,
@@ -245,8 +319,74 @@ async def get_review_detail(
             )
         )
 
+    from app.decisions.service import get_decision_for_review
+    from app.tasks.service import get_task_summary
+
     decision = await get_decision_for_review(session, review_id)
     area_owner = await get_zone_owner(session, asset.zone)
+    raised_by_worker_name: str | None = None
+    supervisor_report = None
+    if review.raised_by_worker_id is not None:
+        name_result = await session.execute(
+            text(
+                """
+                SELECT name
+                FROM workers
+                WHERE id = CAST(:wid AS uuid)
+                """
+            ),
+            {"wid": str(review.raised_by_worker_id)},
+        )
+        row = name_result.first()
+        if row is not None:
+            raised_by_worker_name = row._mapping["name"]
+
+    if review.origin == "supervisor":
+        from app.context.schemas import SupervisorReportOut
+        from app.reviews.concerns import normalize_concern_type
+
+        report_row = await session.execute(
+            text(
+                """
+                SELECT report_description, report_concern_type
+                FROM reviews
+                WHERE id = CAST(:rid AS uuid)
+                """
+            ),
+            {"rid": str(review_id)},
+        )
+        rr = report_row.first()
+        if rr is not None:
+            desc = rr._mapping["report_description"]
+            concern = normalize_concern_type(rr._mapping["report_concern_type"])
+            if isinstance(desc, str) and desc.strip():
+                supervisor_report = SupervisorReportOut(
+                    description=desc.strip(),
+                    concern_type=concern,  # type: ignore[arg-type]
+                    reported_by_name=raised_by_worker_name or "Supervisor",
+                )
+            else:
+                for ctx in context:
+                    if ctx.category != "supervisor_report":
+                        continue
+                    payload = ctx.payload or {}
+                    fallback_desc = str(payload.get("description") or "").strip()
+                    if fallback_desc:
+                        supervisor_report = SupervisorReportOut(
+                            description=fallback_desc,
+                            concern_type=normalize_concern_type(
+                                payload.get("concern_type")
+                            ),  # type: ignore[arg-type]
+                            reported_by_name=str(
+                                payload.get("reported_by")
+                                or raised_by_worker_name
+                                or "Supervisor"
+                            ),
+                        )
+                        break
+
+    task_summary = await get_task_summary(session, review_id=review_id)
+
     return ReviewDetailOut(
         review=review,
         asset=asset,
@@ -254,6 +394,9 @@ async def get_review_detail(
         derived_facts=derived,
         decision=decision,
         area_owner=area_owner,
+        raised_by_worker_name=raised_by_worker_name,
+        supervisor_report=supervisor_report,
+        task_summary=task_summary,
     )
 
 
@@ -275,7 +418,14 @@ async def list_reviews(
     result = await session.execute(
         text(
             f"""
-            SELECT id, asset_id, state, owner_id, triggered_by, created_at
+            SELECT id,
+                   asset_id,
+                   state,
+                   owner_id,
+                   triggered_by,
+                   origin,
+                   raised_by_worker_id,
+                   created_at
             FROM reviews
             WHERE {where}
             ORDER BY created_at DESC
@@ -293,6 +443,131 @@ async def list_reviews(
                 state=m["state"],
                 owner_id=m["owner_id"],
                 triggered_by=m["triggered_by"],
+                origin=m["origin"] if "origin" in m else "system",
+                raised_by_worker_id=m["raised_by_worker_id"]
+                if "raised_by_worker_id" in m
+                else None,
+                created_at=m["created_at"],
+            )
+        )
+    return out
+
+
+async def list_shared_reviews_for_worker(
+    session: AsyncSession,
+    *,
+    worker_id: UUID,
+) -> list:
+    from app.reviews.schemas import SharedReviewOut
+
+    result = await session.execute(
+        text(
+            """
+            SELECT
+              r.id AS review_id,
+              r.asset_id,
+              r.state AS review_state,
+              r.created_at,
+              a.name AS asset_name,
+              a.zone AS asset_zone,
+              COALESCE(w.name, 'Unknown') AS raised_by_name,
+              COALESCE(
+                NULLIF(r.report_description, ''),
+                (
+                  SELECT ce.payload->>'description'
+                  FROM context_entries ce
+                  WHERE ce.asset_id = r.asset_id
+                    AND ce.category = 'supervisor_report'
+                  ORDER BY ce.valid_from DESC
+                  LIMIT 1
+                ),
+                'Floor issue reported'
+              ) AS description,
+              COALESCE(
+                NULLIF(r.report_concern_type, ''),
+                'other'
+              ) AS concern_type
+            FROM reviews r
+            JOIN assets a ON a.id = r.asset_id
+            LEFT JOIN workers w ON w.id = r.raised_by_worker_id
+            WHERE CAST(:wid AS uuid) = ANY(r.tagged_worker_ids)
+              AND r.state <> 'closed'
+            ORDER BY r.created_at DESC
+            LIMIT 50
+            """
+        ),
+        {"wid": str(worker_id)},
+    )
+    out: list[SharedReviewOut] = []
+    for row in result.fetchall():
+        m = row._mapping
+        out.append(
+            SharedReviewOut(
+                review_id=m["review_id"],
+                asset_id=m["asset_id"],
+                asset_name=m["asset_name"],
+                asset_zone=m["asset_zone"],
+                review_state=m["review_state"],
+                description=m["description"],
+                concern_type=m["concern_type"],
+                raised_by_name=m["raised_by_name"],
+                created_at=m["created_at"],
+            )
+        )
+    return out
+
+
+async def list_raised_reviews_for_worker(
+    session: AsyncSession,
+    *,
+    worker_id: UUID,
+) -> list:
+    from app.reviews.schemas import SharedReviewOut
+
+    result = await session.execute(
+        text(
+            """
+            SELECT
+              r.id AS review_id,
+              r.asset_id,
+              r.state AS review_state,
+              r.created_at,
+              a.name AS asset_name,
+              a.zone AS asset_zone,
+              COALESCE(w.name, 'Unknown') AS raised_by_name,
+              COALESCE(
+                NULLIF(r.report_description, ''),
+                'Floor issue reported'
+              ) AS description,
+              COALESCE(
+                NULLIF(r.report_concern_type, ''),
+                'other'
+              ) AS concern_type
+            FROM reviews r
+            JOIN assets a ON a.id = r.asset_id
+            LEFT JOIN workers w ON w.id = r.raised_by_worker_id
+            WHERE r.raised_by_worker_id = CAST(:wid AS uuid)
+              AND r.origin = 'supervisor'
+              AND r.state <> 'closed'
+            ORDER BY r.created_at DESC
+            LIMIT 50
+            """
+        ),
+        {"wid": str(worker_id)},
+    )
+    out: list[SharedReviewOut] = []
+    for row in result.fetchall():
+        m = row._mapping
+        out.append(
+            SharedReviewOut(
+                review_id=m["review_id"],
+                asset_id=m["asset_id"],
+                asset_name=m["asset_name"],
+                asset_zone=m["asset_zone"],
+                review_state=m["review_state"],
+                description=m["description"],
+                concern_type=m["concern_type"],
+                raised_by_name=m["raised_by_name"],
                 created_at=m["created_at"],
             )
         )

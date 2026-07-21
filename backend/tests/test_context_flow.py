@@ -56,16 +56,25 @@ async def client():
                     "DELETE FROM assessment_metadata WHERE assessment_id = ANY($1::uuid[])",
                     assessment_ids,
                 )
-                await conn.execute(
-                    "DELETE FROM assessments WHERE id = ANY($1::uuid[])",
-                    assessment_ids,
-                )
             await conn.execute(
                 "DELETE FROM evidence WHERE review_id = ANY($1::uuid[])", review_ids
             )
             await conn.execute(
+                "DELETE FROM review_tasks WHERE review_id = ANY($1::uuid[])",
+                review_ids,
+            )
+            await conn.execute(
+                "DELETE FROM review_comments WHERE review_id = ANY($1::uuid[])",
+                review_ids,
+            )
+            await conn.execute(
                 "DELETE FROM decisions WHERE review_id = ANY($1::uuid[])", review_ids
             )
+            if assessment_ids:
+                await conn.execute(
+                    "DELETE FROM assessments WHERE id = ANY($1::uuid[])",
+                    assessment_ids,
+                )
             await conn.execute(
                 "DELETE FROM reports WHERE review_id = ANY($1::uuid[])", review_ids
             )
@@ -142,6 +151,7 @@ async def test_compound_risk_context_flow(client: AsyncClient):
     )
     assert r2.status_code == 200, r2.text
     body2 = r2.json()
+    assert body2["context"]["payload"]["worker_name"] == "Asha Rao"
     types2 = {f["fact_type"] for f in body2["derived_facts"]}
     assert "elevated_gas" in types2
     assert "zone_occupied" in types2
@@ -195,3 +205,11 @@ async def test_compound_risk_context_flow(client: AsyncClient):
     detail_types = {f["fact_type"] for f in d["derived_facts"]}
     assert {"elevated_gas", "zone_occupied", "permit_conflict"} <= detail_types
     assert len(d["context"]) >= 3
+
+    context_resp = await client.get(f"/assets/{VESSEL_A}/context")
+    assert context_resp.status_code == 200, context_resp.text
+    worker_ctx = [
+        c for c in context_resp.json() if c["category"] == "worker_location"
+    ]
+    assert worker_ctx
+    assert worker_ctx[0]["payload"]["worker_name"] == "Asha Rao"

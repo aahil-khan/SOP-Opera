@@ -35,8 +35,6 @@ async def client():
 
     os.environ["AI_PROVIDER"] = "mock"
     os.environ["EMBEDDING_PROVIDER"] = "mock"
-    os.environ["BLOCKED_INACTIVE_MIN_SECONDS"] = "0.1"
-    os.environ["BLOCKED_INACTIVE_MAX_SECONDS"] = "0.1"
     get_settings.cache_clear()
 
     await close_vector_pool()
@@ -249,15 +247,39 @@ async def test_blocking_assessment_rejects_approved_outcome(client: AsyncClient)
 
 
 @pytest.mark.asyncio
-async def test_blocked_decision_locks_asset_until_close_and_timer(
-    client: AsyncClient, monkeypatch: pytest.MonkeyPatch
+async def test_decision_persists_optional_comments(client: AsyncClient):
+    review_id, assessments = await _bring_to_pending_decision(client)
+    complete = next(a for a in assessments if a["status"] == "complete")
+    rec_id = complete["recommendations"][0]["id"]
+    note = "Confirmed with shift lead before halting work."
+
+    resp = await client.post(
+        f"/reviews/{review_id}/decisions",
+        json={
+            "outcome": "blocked",
+            "recommendation_dispositions": {rec_id: "accepted"},
+            "conditions": None,
+            "comments": note,
+        },
+    )
+    assert resp.status_code == 201, resp.text
+    decision = resp.json()
+    assert decision["comments"] == note
+
+    detail = await client.get(f"/reviews/{review_id}")
+    assert detail.status_code == 200
+    assert detail.json()["decision"]["comments"] == note
+
+
+@pytest.mark.asyncio
+async def test_blocked_decision_locks_asset_until_unblock_task_completion(
+    client: AsyncClient,
 ):
     review_id, assessments = await _bring_to_pending_decision(client)
     complete = next(a for a in assessments if a["status"] == "complete")
     rec_id = complete["recommendations"][0]["id"]
 
     from app.simulator.engine import demo_controller
-    monkeypatch.setattr("app.decisions.service.random.uniform", lambda _a, _b: 0.1)
 
     decision_resp = await client.post(
         f"/reviews/{review_id}/decisions",
@@ -270,11 +292,31 @@ async def test_blocked_decision_locks_asset_until_close_and_timer(
     assert decision_resp.status_code == 201, decision_resp.text
     assert str(VESSEL_A) in demo_controller.inactive_asset_ids
 
-    # Timer alone is not enough — review must also close.
-    await asyncio.sleep(0.2)
+    # Closing the review does NOT automatically unlock anymore.
     assert str(VESSEL_A) in demo_controller.inactive_asset_ids
 
     close = await client.post(f"/reviews/{review_id}/close")
     assert close.status_code == 200, close.text
-    await asyncio.sleep(0.2)
+
+    # Unlock via the created HITL "unblock" task.
+    # Vessel A zone=coke-oven-battery → zone_owners points to worker_id 555...551 (Asha Rao).
+    unblock_assignee = UUID("55555555-5555-5555-5555-555555555551")
+    tasks_resp = await client.get(
+        "/tasks",
+        params={"assigned_worker_id": str(unblock_assignee)},
+    )
+    assert tasks_resp.status_code == 200, tasks_resp.text
+    tasks = tasks_resp.json()
+    unblock_tasks = [
+        t for t in tasks if t["task_type"] == "unblock" and t["status"] != "done"
+    ]
+    assert unblock_tasks, "expected at least one unblock task"
+    unblock_task_id = unblock_tasks[0]["id"]
+
+    done_resp = await client.post(
+        f"/tasks/{unblock_task_id}/done",
+        json={"done_note": "Unblocked work permit after inspection."},
+    )
+    assert done_resp.status_code == 200, done_resp.text
+
     assert str(VESSEL_A) not in demo_controller.inactive_asset_ids

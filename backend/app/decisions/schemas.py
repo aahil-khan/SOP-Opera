@@ -16,6 +16,8 @@ class DecisionIn(BaseModel):
         default_factory=dict
     )
     conditions: str | None = None
+    comments: str | None = None
+    tagged_worker_ids: list[UUID] = Field(default_factory=list)
 
     @model_validator(mode="after")
     def require_conditions_when_needed(self) -> DecisionIn:

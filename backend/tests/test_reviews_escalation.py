@@ -25,10 +25,52 @@ def _fact(fact_type: str) -> DerivedFact:
     )
 
 
+def test_escalated_resolve_returns_pending_decision():
+    assert (
+        next_state("escalated", ReviewEvent.RESOLVE_ESCALATION)
+        == "pending_decision"
+    )
+
+
+def test_pending_decision_escalate():
+    assert next_state("pending_decision", ReviewEvent.ESCALATE) == "escalated"
+
+
 def test_decided_to_reopened_transition():
     assert (
         next_state("decided", ReviewEvent.RISK_ESCALATED) == "reopened"
     )
+
+
+def test_decided_to_reopened_via_manual_reopen():
+    assert next_state("decided", ReviewEvent.REOPEN) == "reopened"
+
+
+def test_should_reassess_closed_when_critical_returns():
+    review = Review(
+        id=uuid4(),
+        asset_id=uuid4(),
+        state="closed",
+        owner_id=uuid4(),
+        triggered_by="elevated_gas",
+        created_at=datetime.now(timezone.utc),
+    )
+    facts = [_fact("elevated_gas"), _fact("critical_gas")]
+    assert should_reassess(review, ["critical_gas"], facts) is True
+
+
+def test_should_not_reassess_closed_on_benign_change():
+    review = Review(
+        id=uuid4(),
+        asset_id=uuid4(),
+        state="closed",
+        owner_id=uuid4(),
+        triggered_by="elevated_gas",
+        created_at=datetime.now(timezone.utc),
+    )
+    facts = [_fact("elevated_gas")]
+    assert should_reassess(review, ["elevated_gas"], facts) is False
+
 
 
 def test_should_reopen_on_critical_gas():

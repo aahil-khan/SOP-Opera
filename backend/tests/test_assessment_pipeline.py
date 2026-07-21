@@ -31,6 +31,12 @@ async def _cleanup_vessel() -> None:
                 "DELETE FROM evidence WHERE review_id = ANY($1::uuid[])", rids
             )
             await conn.execute(
+                "DELETE FROM review_tasks WHERE review_id = ANY($1::uuid[])", rids
+            )
+            await conn.execute(
+                "DELETE FROM review_comments WHERE review_id = ANY($1::uuid[])", rids
+            )
+            await conn.execute(
                 "DELETE FROM decisions WHERE review_id = ANY($1::uuid[])", rids
             )
             await conn.execute(

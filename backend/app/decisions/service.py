@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import random
 from typing import Literal
 from uuid import UUID
 
@@ -15,6 +14,7 @@ from app.context.derived_facts import load_valid_context
 from app.core.config import get_settings
 from app.decisions.schemas import DecisionIn
 from app.realtime.connection_manager import manager
+from app.reviews.ownership import get_zone_owner
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
 from shared.python.schemas import Decision
@@ -76,7 +76,7 @@ async def get_decision_for_review(
         text(
             """
             SELECT id, review_id, assessment_id, decided_by, outcome,
-                   conditions, submitted_at
+                   conditions, comments, submitted_at
             FROM decisions
             WHERE review_id = CAST(:review_id AS uuid)
             ORDER BY submitted_at DESC
@@ -113,6 +113,7 @@ async def get_decision_for_review(
         outcome=m["outcome"],
         recommendation_dispositions=dispositions,
         conditions=m["conditions"],
+        comments=m.get("comments"),
         submitted_at=m["submitted_at"],
     )
 
@@ -162,22 +163,24 @@ async def submit_decision(
         if body.outcome == "approved_with_conditions" and body.conditions
         else None
     )
+    comments = body.comments.strip() if body.comments and body.comments.strip() else None
 
     result = await session.execute(
         text(
             """
             INSERT INTO decisions (
-                review_id, assessment_id, decided_by, outcome, conditions
+                review_id, assessment_id, decided_by, outcome, conditions, comments
             )
             VALUES (
                 CAST(:review_id AS uuid),
                 CAST(:assessment_id AS uuid),
                 CAST(:decided_by AS uuid),
                 :outcome,
-                :conditions
+                :conditions,
+                :comments
             )
             RETURNING id, review_id, assessment_id, decided_by, outcome,
-                      conditions, submitted_at
+                      conditions, comments, submitted_at
             """
         ),
         {
@@ -186,6 +189,7 @@ async def submit_decision(
             "decided_by": str(decided_by),
             "outcome": body.outcome,
             "conditions": conditions,
+            "comments": comments,
         },
     )
     dm = result.one()._mapping
@@ -245,6 +249,7 @@ async def submit_decision(
             "assessment_id": str(assessment_id),
             "outcome": body.outcome,
             "conditions": conditions,
+            "comments": comments,
         },
     )
     await record_audit(
@@ -277,25 +282,40 @@ async def submit_decision(
     except IllegalTransitionError as exc:
         raise DecisionError(str(exc), status_code=409) from exc
 
+    # Create HITL tasks for the zone owner + any additionally tagged workers.
+    # Deferred to avoid circular import with context.service → reviews.service.
+    from app.context.service import get_asset
+
+    asset = await get_asset(session, review.asset_id)
+    if asset is None:
+        raise DecisionError("Asset not found for review", status_code=409)
+    zone_owner = await get_zone_owner(session, asset.zone)
+    if zone_owner is None:
+        raise DecisionError(
+            f"No zone owner configured for zone={asset.zone}",
+            status_code=409,
+        )
+
+    assigned_worker_ids = list(
+        {zone_owner.worker_id, *(body.tagged_worker_ids or [])}
+    )
+    from app.tasks.service import create_tasks_for_decision
+
+    await create_tasks_for_decision(
+        session,
+        review_id=review_id,
+        decision_id=decision_id,
+        assigned_worker_ids=assigned_worker_ids,
+        outcome=str(body.outcome),
+        actor=actor,
+    )
+
+    # Replace the old random unblock timer with a real HITL unlock action.
+    from app.simulator.engine import demo_controller
+
     if body.outcome == "blocked":
-        settings = get_settings()
-        low = min(
-            float(settings.blocked_inactive_min_seconds),
-            float(settings.blocked_inactive_max_seconds),
-        )
-        high = max(
-            float(settings.blocked_inactive_min_seconds),
-            float(settings.blocked_inactive_max_seconds),
-        )
-        duration = random.uniform(low, high)
-        from app.simulator.engine import demo_controller
-
-        demo_controller.lock_asset_inactive(
-            asset_id=review.asset_id, review_id=review_id, duration_seconds=duration
-        )
+        demo_controller.lock_asset_inactive(asset_id=review.asset_id, review_id=review_id)
     else:
-        from app.simulator.engine import demo_controller
-
         demo_controller.clear_inactive_lock_for_review(review_id)
 
     await manager.broadcast(
@@ -316,5 +336,6 @@ async def submit_decision(
         outcome=body.outcome,
         recommendation_dispositions=dict(body.recommendation_dispositions),
         conditions=conditions,
+        comments=comments,
         submitted_at=dm["submitted_at"],
     )

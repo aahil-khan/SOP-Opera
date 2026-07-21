@@ -42,6 +42,7 @@ TRANSITIONS: dict[tuple[ReviewState, ReviewEvent], ReviewState] = {
     ("escalated", ReviewEvent.RESOLVE_ESCALATION): "pending_decision",
     ("escalated", ReviewEvent.SUBMIT_DECISION): "decided",
     ("decided", ReviewEvent.CLOSE): "closed",
+    ("decided", ReviewEvent.REOPEN): "reopened",
     ("decided", ReviewEvent.RISK_ESCALATED): "reopened",
     ("closed", ReviewEvent.REOPEN): "reopened",
     ("reopened", ReviewEvent.TRIGGER_ASSESSMENT): "assessing",

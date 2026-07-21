@@ -93,16 +93,45 @@ CREATE TABLE IF NOT EXISTS reviews (
     state TEXT NOT NULL,
     owner_id UUID NOT NULL REFERENCES users(id),
     triggered_by TEXT NOT NULL,
+    origin TEXT NOT NULL DEFAULT 'system',
+    raised_by_worker_id UUID REFERENCES workers(id),
+    tagged_worker_ids UUID[] NOT NULL DEFAULT '{}',
+    report_description TEXT,
+    report_concern_type TEXT,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     closed_at TIMESTAMPTZ
 );
 
-CREATE TABLE IF NOT EXISTS review_participants (
+-- Dead table removed: tagging uses reviews.tagged_worker_ids.
+DROP TABLE IF EXISTS review_participants;
+
+-- HITL backlog items created by decisions (and optionally supervisor actions).
+CREATE TABLE IF NOT EXISTS review_tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_id UUID NOT NULL REFERENCES reviews(id),
-    worker_id UUID NOT NULL REFERENCES workers(id),
-    role TEXT NOT NULL,
-    active BOOLEAN NOT NULL DEFAULT true,
-    PRIMARY KEY (review_id, worker_id)
+    decision_id UUID REFERENCES decisions(id),
+    assigned_worker_id UUID NOT NULL REFERENCES workers(id),
+    task_type TEXT NOT NULL DEFAULT 'follow_up', -- follow_up | unblock
+    title TEXT NOT NULL,
+    detail TEXT,
+    status TEXT NOT NULL DEFAULT 'open', -- open | acknowledged | done | cancelled
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acknowledged_at TIMESTAMPTZ,
+    done_at TIMESTAMPTZ,
+    done_note TEXT
+);
+
+-- Chronological discussion thread per review.
+CREATE TABLE IF NOT EXISTS review_comments (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    review_id UUID NOT NULL REFERENCES reviews(id),
+    author_kind TEXT NOT NULL, -- user | worker
+    author_id UUID NOT NULL,
+    author_name TEXT NOT NULL,
+    body TEXT NOT NULL,
+    mentioned_worker_ids UUID[] NOT NULL DEFAULT '{}',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
 CREATE TABLE IF NOT EXISTS context_entries (
@@ -187,6 +216,7 @@ CREATE TABLE IF NOT EXISTS decisions (
     decided_by UUID NOT NULL REFERENCES users(id),
     outcome TEXT NOT NULL,
     conditions TEXT,
+    comments TEXT,
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -254,6 +284,8 @@ CREATE INDEX IF NOT EXISTS idx_reviews_state ON reviews(state);
 CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_source ON knowledge_chunks(source_type, source_id);
 CREATE INDEX IF NOT EXISTS idx_assessments_review ON assessments(review_id);
 CREATE INDEX IF NOT EXISTS idx_ai_ops_events_recorded ON ai_ops_events(recorded_at DESC);
+CREATE INDEX IF NOT EXISTS idx_review_tasks_assignee_status ON review_tasks(assigned_worker_id, status);
+CREATE INDEX IF NOT EXISTS idx_review_comments_review ON review_comments(review_id, created_at DESC);
 
 -- Backfill historical AI runs into the append-only log (idempotent).
 INSERT INTO ai_ops_events (
@@ -284,3 +316,11 @@ ALTER TABLE assessment_metadata ADD COLUMN IF NOT EXISTS agent_trace JSONB NOT N
 ALTER TABLE ai_ops_events ADD COLUMN IF NOT EXISTS llm_attempt_count INT NOT NULL DEFAULT 0;
 ALTER TABLE ai_ops_events ADD COLUMN IF NOT EXISTS llm_fallback_count INT NOT NULL DEFAULT 0;
 ALTER TABLE ai_ops_events ADD COLUMN IF NOT EXISTS degraded BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE decisions ADD COLUMN IF NOT EXISTS comments TEXT;
+
+-- Supervisor raised issue tracking (HITL narrative)
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS origin TEXT NOT NULL DEFAULT 'system';
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS raised_by_worker_id UUID REFERENCES workers(id);
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS tagged_worker_ids UUID[] NOT NULL DEFAULT '{}';
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_description TEXT;
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
