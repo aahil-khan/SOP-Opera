@@ -6,7 +6,7 @@ import asyncio
 import logging
 import random
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 # ai_ops_events is intentionally excluded — append-only pipeline analytics.
 _RESET_DELETE_ORDER = (
     "evidence",
+    "review_tasks",
+    "review_comments",
     "decisions",
     "recommendations",
     "assessment_metadata",
@@ -61,8 +63,6 @@ class ScenarioAlreadyRunningError(RuntimeError):
 class InactiveLock:
     asset_id: str
     review_id: str
-    unlock_at: datetime
-    review_closed: bool = False
 
 
 class DemoController:
@@ -104,23 +104,15 @@ class DemoController:
         self._inactive_locks_by_review.clear()
 
     def _clear_stale_inactive_locks(self) -> None:
-        now = datetime.now(timezone.utc)
-        stale_assets: list[str] = []
-        for asset_id, lock in self._inactive_locks_by_asset.items():
-            if lock.review_closed and lock.unlock_at <= now:
-                stale_assets.append(asset_id)
-        for asset_id in stale_assets:
-            lock = self._inactive_locks_by_asset.pop(asset_id, None)
-            if lock:
-                self._inactive_locks_by_review.pop(lock.review_id, None)
+        # HITL unlock is explicit (task completion). We no longer apply time-based
+        # cleanup for blocked decisions.
+        return
 
     @property
     def inactive_asset_ids(self) -> set[str]:
-        self._clear_stale_inactive_locks()
         return set(self._inactive_locks_by_asset.keys())
 
     def is_asset_inactive(self, asset_id: str | UUID) -> bool:
-        self._clear_stale_inactive_locks()
         return str(asset_id) in self._inactive_locks_by_asset
 
     async def wait_until_asset_active(self, asset_id: str | UUID) -> None:
@@ -128,14 +120,10 @@ class DemoController:
             await asyncio.sleep(1.0)
 
     def lock_asset_inactive(
-        self, *, asset_id: str | UUID, review_id: str | UUID, duration_seconds: float
+        self, *, asset_id: str | UUID, review_id: str | UUID
     ) -> None:
-        self._clear_stale_inactive_locks()
         aid = str(asset_id)
         rid = str(review_id)
-        unlock_at = datetime.now(timezone.utc) + timedelta(
-            seconds=max(0.0, float(duration_seconds))
-        )
         # Clear prior mapping for this review if it targeted a different asset.
         previous_asset = self._inactive_locks_by_review.get(rid)
         if previous_asset and previous_asset != aid:
@@ -143,8 +131,6 @@ class DemoController:
         self._inactive_locks_by_asset[aid] = InactiveLock(
             asset_id=aid,
             review_id=rid,
-            unlock_at=unlock_at,
-            review_closed=False,
         )
         self._inactive_locks_by_review[rid] = aid
 
@@ -158,25 +144,8 @@ class DemoController:
     def mark_review_closed(
         self, *, review_id: str | UUID, asset_id: str | UUID | None = None
     ) -> None:
-        self._clear_stale_inactive_locks()
-        rid = str(review_id)
-        candidates: list[InactiveLock] = []
-        aid = self._inactive_locks_by_review.get(rid)
-        if aid is not None:
-            lock = self._inactive_locks_by_asset.get(aid)
-            if lock is not None:
-                candidates.append(lock)
-        if asset_id is not None:
-            by_asset = self._inactive_locks_by_asset.get(str(asset_id))
-            if by_asset is not None and by_asset not in candidates:
-                candidates.append(by_asset)
-        for lock in candidates:
-            # Prefer strict review-id match, but allow asset-level close fallback
-            # so unlock is not blocked by stale mapping state.
-            if lock.review_id == rid or asset_id is not None:
-                lock.review_closed = True
-                self._inactive_locks_by_review[lock.review_id] = lock.asset_id
-        self._clear_stale_inactive_locks()
+        # No-op: blocked assets unlock only after HITL task completion.
+        return
 
     def status(self) -> dict[str, Any]:
         from app.simulator.ambient import ambient_loop
@@ -213,11 +182,16 @@ class DemoController:
     async def _wipe_runtime(self) -> None:
         """Delete demo runtime rows so scenarios can replay cleanly."""
         orchestrator.drain()
-        worker = orchestrator._worker_task
+        workers = list(orchestrator._worker_tasks)
+        boot = getattr(orchestrator, "_boot_task", None)
         orchestrator.stop()
-        if worker is not None:
+        pending = [t for t in (*workers, boot) if t is not None and not t.done()]
+        if pending:
             try:
-                await asyncio.wait_for(asyncio.shield(worker), timeout=2.0)
+                await asyncio.wait_for(
+                    asyncio.shield(asyncio.gather(*pending, return_exceptions=True)),
+                    timeout=2.0,
+                )
             except (asyncio.TimeoutError, asyncio.CancelledError, Exception):  # noqa: BLE001
                 pass
 

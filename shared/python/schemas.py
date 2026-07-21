@@ -23,6 +23,7 @@ AssessmentStatus = Literal[
 ]
 RiskLevel = Literal["nominal", "elevated", "blocking"]
 DecisionOutcome = Literal["approved", "approved_with_conditions", "blocked"]
+ReviewOrigin = Literal["system", "operator", "supervisor"]
 ReferenceSource = Literal["regulations", "historical_incidents", "sops"]
 RetrievalPath = Literal["rag", "deterministic"]
 RetrievalMode = Literal["rag", "deterministic", "skipped"]
@@ -135,6 +136,7 @@ class Decision(BaseModel):
     outcome: DecisionOutcome
     recommendation_dispositions: dict[UUID, Literal["accepted", "rejected"]]
     conditions: str | None = None
+    comments: str | None = None
     submitted_at: datetime
 
 
@@ -144,6 +146,8 @@ class Review(BaseModel):
     state: ReviewState
     owner_id: UUID
     triggered_by: str
+    origin: ReviewOrigin = "system"
+    raised_by_worker_id: UUID | None = None
     created_at: datetime
 
 

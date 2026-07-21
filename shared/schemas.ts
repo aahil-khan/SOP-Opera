@@ -120,6 +120,7 @@ export interface Decision {
   outcome: DecisionOutcome;
   recommendation_dispositions: Record<string, "accepted" | "rejected">;
   conditions: string | null;
+  comments: string | null;
   submitted_at: string;
 }
 
@@ -129,6 +130,8 @@ export interface Review {
   state: ReviewState;
   owner_id: string;
   triggered_by: string;
+  origin: "system" | "operator" | "supervisor";
+  raised_by_worker_id: string | null;
   created_at: string;
 }
 

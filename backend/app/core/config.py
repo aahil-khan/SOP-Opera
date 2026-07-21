@@ -18,7 +18,9 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://sop:sop@localhost:5433/sop_opera"
-    cors_origins: str = "http://localhost:3000"
+    cors_origins: str = "http://localhost:3000,http://localhost:3001"
+    # Allow Next.js dev fallback ports (and 127.0.0.1) without editing CORS_ORIGINS each time.
+    cors_localhost_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 
     ai_provider: str = "mock"
     openai_api_key: str = ""
@@ -28,6 +30,8 @@ class Settings(BaseSettings):
     ollama_model: str = "llama3.2"
 
     assessment_max_retries: int = 1
+    # Parallel in-process assessment workers (durable claim via SKIP LOCKED).
+    assessment_worker_count: int = 2
     # Elevated = compound-engine early warning (sub-critical co-occurrence).
     # Critical = single-sensor "incident threshold" — baseline alarm line for
     # false-negative / lead-time eval. Critical must stay above elevated.
@@ -44,8 +48,6 @@ class Settings(BaseSettings):
     cert_expiry_warning_days: int = 14
     default_owner_user_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     simulator_default_step_delay_seconds: int = 5
-    blocked_inactive_min_seconds: float = 15.0
-    blocked_inactive_max_seconds: float = 60.0
     random_max_concurrent_issues: int = 8
     random_spawn_interval_min_seconds: float = 4.0
     random_spawn_interval_max_seconds: float = 12.0

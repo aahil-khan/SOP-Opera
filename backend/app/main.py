@@ -67,6 +67,7 @@ app = FastAPI(title="SOP Opera API", version="0.9.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origin_list,
+    allow_origin_regex=settings.cors_localhost_regex or None,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -82,6 +83,11 @@ from app.ai_ops.routes import router as ai_ops_router  # noqa: E402
 from app.graph.routes import router as graph_router  # noqa: E402
 from app.agents.routes import router as agents_router  # noqa: E402
 from app.config.routes import router as config_router  # noqa: E402
+from app.eval.routes import router as eval_router  # noqa: E402
+from app.context.ingest_routes import router as ingest_router  # noqa: E402
+from app.assessment.queue_routes import router as queue_router  # noqa: E402
+from app.auth.routes import router as auth_router  # noqa: E402
+from app.tasks.routes import router as tasks_router  # noqa: E402
 
 app.include_router(context_router)
 app.include_router(reviews_router)
@@ -93,6 +99,11 @@ app.include_router(ai_ops_router)
 app.include_router(graph_router)
 app.include_router(agents_router)
 app.include_router(config_router)
+app.include_router(eval_router)
+app.include_router(ingest_router)
+app.include_router(queue_router)
+app.include_router(auth_router)
+app.include_router(tasks_router)
 
 
 @app.get("/health")

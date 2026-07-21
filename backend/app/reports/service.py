@@ -125,7 +125,7 @@ async def generate_report_on_closure(
     decision_result = await session.execute(
         text(
             """
-            SELECT id, assessment_id, decided_by, outcome, conditions, submitted_at
+            SELECT id, assessment_id, decided_by, outcome, conditions, comments, submitted_at
             FROM decisions
             WHERE review_id = CAST(:review_id AS uuid)
             ORDER BY submitted_at DESC
@@ -144,6 +144,7 @@ async def generate_report_on_closure(
             "decided_by": str(dm["decided_by"]),
             "outcome": dm["outcome"],
             "conditions": dm["conditions"],
+            "comments": dm.get("comments"),
             "submitted_at": _iso(dm["submitted_at"]),
         }
 

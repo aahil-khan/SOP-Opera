@@ -57,3 +57,48 @@ async def test_thresholds_reflect_env_override(monkeypatch: pytest.MonkeyPatch):
     assert gas["critical"] == 55.0
 
     get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_put_thresholds_updates_runtime(client: AsyncClient):
+    from app.core.config import get_settings
+
+    get_settings.cache_clear()
+    resp = await client.put(
+        "/api/config/thresholds",
+        json={
+            "sensors": {
+                "gas_reading": {"elevated": 22.0, "critical": 48.0},
+            }
+        },
+    )
+    assert resp.status_code == 200, resp.text
+    gas = resp.json()["sensors"]["gas_reading"]
+    assert gas["elevated"] == 22.0
+    assert gas["critical"] == 48.0
+
+    again = await client.get("/api/config/thresholds")
+    assert again.json()["sensors"]["gas_reading"]["critical"] == 48.0
+
+    await client.put(
+        "/api/config/thresholds",
+        json={
+            "sensors": {
+                "gas_reading": {"elevated": 20.0, "critical": 50.0},
+            }
+        },
+    )
+    get_settings.cache_clear()
+
+
+@pytest.mark.asyncio
+async def test_put_thresholds_rejects_inverted_band(client: AsyncClient):
+    resp = await client.put(
+        "/api/config/thresholds",
+        json={
+            "sensors": {
+                "gas_reading": {"elevated": 60.0, "critical": 40.0},
+            }
+        },
+    )
+    assert resp.status_code == 400
