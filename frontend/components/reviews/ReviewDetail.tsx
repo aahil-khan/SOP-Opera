@@ -25,13 +25,20 @@ interface ReviewDetailProps {
   reviewId: string;
   /** In-drawer twin embedding: single column, no page chrome. */
   variant?: "page" | "embedded";
+  /**
+   * Supervisor board: summary + thread only — no why/citations, agent
+   * trace, recommended action, or assessment panel.
+   */
+  audience?: "operator" | "supervisor";
 }
 
 export function ReviewDetail({
   reviewId,
   variant = "page",
+  audience = "operator",
 }: ReviewDetailProps) {
   const embedded = variant === "embedded";
+  const supervisorAudience = audience === "supervisor";
   const loadReviewDetail = useLiveStore((s) => s.loadReviewDetail);
   const listReview = useLiveStore((s) =>
     s.reviews.find((r) => r.id === reviewId) ?? null,
@@ -119,7 +126,8 @@ export function ReviewDetail({
   const nextAction = nextActionForView(view);
   const ownerName = ownerNameForView(view);
   const showRecommended =
-    latest?.status === "complete" || recommendations.length > 0;
+    !supervisorAudience &&
+    (latest?.status === "complete" || recommendations.length > 0);
 
   return (
     <div className={styles.detail} data-variant={variant}>
@@ -152,7 +160,7 @@ export function ReviewDetail({
         </header>
       )}
 
-      {assessmentInProgress ? (
+      {!supervisorAudience && assessmentInProgress ? (
         <AssessingBanner
           priorRisk={priorAssessment?.risk_level ?? null}
           provisionalRisk={openWorkDisplayRisk(
@@ -171,6 +179,7 @@ export function ReviewDetail({
             | null
         }
         inProgress={assessmentInProgress && priorAssessment == null}
+        summaryOnly={supervisorAudience}
       />
 
       {showRecommended && !assessmentInProgress && (
@@ -246,19 +255,23 @@ export function ReviewDetail({
         </section>
       )}
 
-      <AgentTracePanel
-        reviewId={review.id}
-        assessment={latest as AssessmentHistoryItem | null}
-        inProgress={assessmentInProgress}
-      />
+      {!supervisorAudience ? (
+        <>
+          <AgentTracePanel
+            reviewId={review.id}
+            assessment={latest as AssessmentHistoryItem | null}
+            inProgress={assessmentInProgress}
+          />
 
-      <AssessmentPanel
-        reviewId={review.id}
-        reviewState={review.state}
-        assessment={latest as AssessmentHistoryItem | null}
-        inProgress={assessmentInProgress}
-        reassessing={priorAssessment != null}
-      />
+          <AssessmentPanel
+            reviewId={review.id}
+            reviewState={review.state}
+            assessment={latest as AssessmentHistoryItem | null}
+            inProgress={assessmentInProgress}
+            reassessing={priorAssessment != null}
+          />
+        </>
+      ) : null}
 
       {!embedded && (
         <DecisionCard title="Decision">

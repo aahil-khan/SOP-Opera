@@ -159,12 +159,15 @@ interface IssueReportProps {
   view: LiveAssetView;
   assessment: AssessmentHistoryItem | null;
   inProgress?: boolean;
+  /** Supervisor drawer: summary (and their report) only — no why/citations. */
+  summaryOnly?: boolean;
 }
 
 export function IssueReport({
   view,
   assessment,
   inProgress = false,
+  summaryOnly = false,
 }: IssueReportProps) {
   const review = view.review;
   const displayRisk = openWorkDisplayRisk(
@@ -173,8 +176,10 @@ export function IssueReport({
   );
   const rawSummary = assessment?.summary?.trim() || null;
   const summaryParts = rawSummary ? splitSummary(rawSummary) : null;
-  const why = whyItems(view, assessment);
-  const refs = assessment?.retrieved_references ?? [];
+  const why = summaryOnly ? [] : whyItems(view, assessment);
+  const refs = summaryOnly
+    ? []
+    : (assessment?.retrieved_references ?? []);
   const trigger = review?.triggered_by
     ? humanize(review.triggered_by)
     : "Review";
@@ -250,8 +255,9 @@ export function IssueReport({
         </header>
         {supervisorSection}
         <p className={styles.placeholder}>
-          Investigation in progress — the full write-up will appear here when
-          the assessment settles.
+          {summaryOnly
+            ? "Investigation in progress — the summary will appear here when the assessment settles."
+            : "Investigation in progress — the full write-up will appear here when the assessment settles."}
         </p>
       </article>
     );
@@ -277,8 +283,9 @@ export function IssueReport({
         </header>
         {supervisorSection}
         <p className={styles.placeholder}>
-          No assessment write-up yet — waiting for the pipeline or a manual
-          assessment.
+          {summaryOnly
+            ? "No summary yet — waiting for the assessment to settle."
+            : "No assessment write-up yet — waiting for the pipeline or a manual assessment."}
         </p>
       </article>
     );

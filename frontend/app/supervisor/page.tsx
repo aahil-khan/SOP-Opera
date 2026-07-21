@@ -955,7 +955,11 @@ export default function SupervisorPage() {
                 </button>
               </header>
               <div className={styles.drawerBody}>
-                <ReviewDetail reviewId={selectedReviewId} variant="embedded" />
+                <ReviewDetail
+                  reviewId={selectedReviewId}
+                  variant="embedded"
+                  audience="supervisor"
+                />
               </div>
             </>
           ) : null}
