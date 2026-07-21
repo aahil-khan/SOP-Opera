@@ -26,6 +26,43 @@
   line-height: var(--leading-normal);
 }
 
+.tagList {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.tagRow {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.35rem 0.5rem;
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  background: var(--surface-panel);
+  cursor: pointer;
+}
+
+.tagRow input[type="checkbox"] {
+  cursor: pointer;
+}
+
+.tagRow[data-locked="true"] {
+  opacity: 0.75;
+}
+
+.tagName {
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  font-weight: var(--weight-regular);
+}
+
+.tagRole {
+  color: var(--text-muted);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-regular);
+}
+
 /* ── Recommendation cards ── */
 
 .recList {
@@ -333,6 +370,52 @@
   padding: 0.45rem 0.75rem;
   font-size: var(--text-sm);
   margin-top: var(--space-1);
+}
+
+.actionRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.actionRow .submit {
+  margin-top: 0;
+  flex: 1 1 auto;
+}
+
+.secondaryAction {
+  align-self: stretch;
+  padding: 0.45rem 0.75rem;
+  font-size: var(--text-sm);
+  flex: 0 0 auto;
+}
+
+.escalatedBanner {
+  margin: 0;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
+  border: 1px solid color-mix(in srgb, var(--status-blocking) 40%, transparent);
+  background: color-mix(in srgb, var(--status-blocking) 10%, transparent);
+  color: var(--status-blocking);
+  font-size: var(--text-xs);
+  line-height: var(--leading-normal);
+}
+
+.escalationInput {
+  width: 100%;
+  padding: 0.4rem 0.55rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--surface-canvas) 88%, var(--border-muted));
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+}
+
+.escalationInput:focus {
+  outline: none;
+  border-color: var(--border-hover);
 }
 
 .done {

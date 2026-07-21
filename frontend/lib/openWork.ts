@@ -1,21 +1,29 @@
 import type { ReviewState } from "@/shared/enums";
 import type { LiveAssetView } from "@/lib/liveStore";
+import type { TaskSummary } from "@/lib/liveApi";
 import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 
 export type OpenWorkColumnId =
   | "investigating"
   | "awaiting_decision"
+  | "awaiting_fix"
+  | "ready_to_close"
   | "closed";
 
 export const OPEN_WORK_COLUMNS: {
   id: OpenWorkColumnId;
   label: string;
+  /** Short label for the narrow stage-chip track. */
+  shortLabel: string;
 }[] = [
-  { id: "investigating", label: "Investigating" },
-  { id: "awaiting_decision", label: "Awaiting decision" },
-  { id: "closed", label: "Closed" },
+  { id: "investigating", label: "Investigating", shortLabel: "Invest." },
+  { id: "awaiting_decision", label: "Awaiting decision", shortLabel: "Decide" },
+  { id: "awaiting_fix", label: "Awaiting fix", shortLabel: "Fix" },
+  { id: "ready_to_close", label: "Ready to close", shortLabel: "Ready" },
+  { id: "closed", label: "Closed", shortLabel: "Closed" },
 ];
 
+/** Map review state only — use columnForView when task_summary is available. */
 export function columnForReviewState(
   state: ReviewState | null | undefined,
 ): OpenWorkColumnId {
@@ -27,12 +35,49 @@ export function columnForReviewState(
   ) {
     return "investigating";
   }
-  if (
-    state === "pending_decision" ||
-    state === "escalated" ||
-    state === "decided"
-  ) {
+  if (state === "pending_decision" || state === "escalated") {
     return "awaiting_decision";
+  }
+  if (state === "decided") return "awaiting_fix";
+  if (state === "closed") return "closed";
+  return "investigating";
+}
+
+export function labelForOpenWorkColumn(id: OpenWorkColumnId): string {
+  return OPEN_WORK_COLUMNS.find((c) => c.id === id)?.label ?? id;
+}
+
+/** Operator-board stage label from review state alone (no task_summary). */
+export function lifecycleLabelForReviewState(
+  state: ReviewState | string | null | undefined,
+): string {
+  return labelForOpenWorkColumn(
+    columnForReviewState(state as ReviewState | null | undefined),
+  );
+}
+
+function followThroughColumn(
+  summary: TaskSummary | null | undefined,
+): "awaiting_fix" | "ready_to_close" {
+  if (summary?.all_done) return "ready_to_close";
+  return "awaiting_fix";
+}
+
+export function columnForView(view: LiveAssetView): OpenWorkColumnId {
+  const state = view.review?.state;
+  if (!state) return "investigating";
+  if (
+    state === "opened" ||
+    state === "reopened" ||
+    state === "assessing"
+  ) {
+    return "investigating";
+  }
+  if (state === "pending_decision" || state === "escalated") {
+    return "awaiting_decision";
+  }
+  if (state === "decided") {
+    return followThroughColumn(view.detail?.task_summary);
   }
   if (state === "closed") return "closed";
   return "investigating";
@@ -47,8 +92,13 @@ export function fallbackNextAction(
     return "Investigate signal";
   }
   if (column === "awaiting_decision") {
-    if (state === "decided") return "Close review";
     return "Decide PROCEED / BLOCK";
+  }
+  if (column === "awaiting_fix") {
+    return "Wait for supervisor follow-through";
+  }
+  if (column === "ready_to_close") {
+    return "Close review";
   }
   return "None";
 }
@@ -63,6 +113,8 @@ export type WorkBadgeRisk =
 export type WorkStatusKind =
   | "investigating"
   | "awaiting_decision"
+  | "awaiting_fix"
+  | "ready_to_close"
   | "decided"
   | "halted"
   | "conditional"
@@ -78,6 +130,7 @@ export function workStatusForView(view: LiveAssetView): {
   const review = view.review;
   const state = review?.state;
   const outcome = view.detail?.decision?.outcome;
+  const column = columnForView(view);
 
   if (state === "closed") {
     if (outcome === "blocked") {
@@ -120,7 +173,33 @@ export function workStatusForView(view: LiveAssetView): {
     };
   }
 
-  if (state === "decided") {
+  if (column === "awaiting_fix") {
+    const badgeRisk: WorkBadgeRisk =
+      outcome === "blocked"
+        ? "blocking"
+        : outcome === "approved_with_conditions"
+          ? "elevated"
+          : "nominal";
+    const summary = view.detail?.task_summary;
+    const pending = summary
+      ? summary.open + summary.acknowledged
+      : null;
+    return {
+      kind: "awaiting_fix",
+      label:
+        outcome === "blocked"
+          ? "Awaiting fix · blocked"
+          : `Awaiting fix · ${(outcome ?? "decided").replaceAll("_", " ")}`,
+      badgeRisk,
+      nextAction:
+        pending != null && pending > 0
+          ? `${pending} HITL task${pending === 1 ? "" : "s"} outstanding`
+          : fallbackNextAction(column, state),
+      resolved: false,
+    };
+  }
+
+  if (column === "ready_to_close") {
     const badgeRisk: WorkBadgeRisk =
       outcome === "blocked"
         ? "blocking"
@@ -128,18 +207,17 @@ export function workStatusForView(view: LiveAssetView): {
           ? "elevated"
           : "nominal";
     return {
-      kind: "decided",
+      kind: "ready_to_close",
       label:
         outcome === "blocked"
-          ? "Decided · blocked"
-          : `Decided · ${(outcome ?? "unknown").replaceAll("_", " ")}`,
+          ? "Ready to close · blocked"
+          : `Ready to close · ${(outcome ?? "decided").replaceAll("_", " ")}`,
       badgeRisk,
       nextAction: "Close review",
       resolved: false,
     };
   }
 
-  const column = columnForReviewState(state);
   const displayRisk = openWorkDisplayRisk(
     view.risk_level,
     view.sensor_critical,

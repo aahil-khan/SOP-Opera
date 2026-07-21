@@ -15,8 +15,12 @@ import {
   useLiveAssetViews,
   useLiveStore,
 } from "@/lib/liveStore";
+import { columnForView } from "@/lib/openWork";
+import { countAssetsWithOps } from "@/lib/opsChips";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { buildFloorSpatialLinks } from "@/lib/riskHeatmap";
+import { useNewEntries } from "@/lib/useNewEntries";
+import { useNewReviewChime } from "@/lib/useNewReviewChime";
 import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
@@ -25,9 +29,44 @@ import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { ShiftGate, hasStartedShift } from "./ShiftGate";
 import { MapControls } from "./MapControls";
+import {
+  MapLayerToggle,
+  type MapLayerId,
+} from "./MapLayerToggle";
 import { MapViewport, type MapViewportHandle } from "./MapViewport";
 import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
 import styles from "./DigitalTwin.module.css";
+
+const MAP_LAYERS_STORAGE_KEY = "sop-opera-map-layers";
+const DEFAULT_ENABLED_LAYERS: MapLayerId[] = ["ops"];
+
+function readEnabledLayers(): Set<MapLayerId> {
+  if (typeof window === "undefined") return new Set(DEFAULT_ENABLED_LAYERS);
+  try {
+    const raw = localStorage.getItem(MAP_LAYERS_STORAGE_KEY);
+    if (!raw) return new Set(DEFAULT_ENABLED_LAYERS);
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return new Set(DEFAULT_ENABLED_LAYERS);
+    const next = new Set<MapLayerId>();
+    for (const id of parsed) {
+      if (id === "ops") next.add(id);
+    }
+    return next;
+  } catch {
+    return new Set(DEFAULT_ENABLED_LAYERS);
+  }
+}
+
+function writeEnabledLayers(enabled: Set<MapLayerId>) {
+  try {
+    localStorage.setItem(
+      MAP_LAYERS_STORAGE_KEY,
+      JSON.stringify([...enabled]),
+    );
+  } catch {
+    /* ignore */
+  }
+}
 
 type FloorEntry = {
   x: number;
@@ -69,6 +108,7 @@ export function DigitalTwin() {
   const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
   const assetPanelMode = useLiveStore((s) => s.assetPanelMode);
   const selectAsset = useLiveStore((s) => s.selectAsset);
+  const opsChipsByAsset = useLiveStore((s) => s.opsChipsByAsset);
 
   const mapRef = useRef<MapViewportHandle>(null);
   const floorTablistRef = useRef<HTMLDivElement>(null);
@@ -87,6 +127,9 @@ export function DigitalTwin() {
   /** Overview is diving into a floor before detail mounts. */
   const [overviewExiting, setOverviewExiting] = useState(false);
   const [floorSlider, setFloorSlider] = useState({ left: 0, width: 0 });
+  const [enabledLayers, setEnabledLayers] = useState<Set<MapLayerId>>(
+    () => new Set(DEFAULT_ENABLED_LAYERS),
+  );
   const lastFocusedRef = useRef<string | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
   const viewTransitionTimerRef = useRef<number | null>(null);
@@ -117,6 +160,25 @@ export function DigitalTwin() {
   useEffect(() => {
     setShiftGateOpen(!hasStartedShift());
   }, []);
+
+  useEffect(() => {
+    setEnabledLayers(readEnabledLayers());
+  }, []);
+
+  const toggleLayer = useCallback((id: MapLayerId) => {
+    setEnabledLayers((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      writeEnabledLayers(next);
+      return next;
+    });
+  }, []);
+
+  const opsAssetCount = useMemo(
+    () => countAssetsWithOps(opsChipsByAsset),
+    [opsChipsByAsset],
+  );
 
   const handleStartShift = useCallback(
     (attentionAssetId: string | null) => {
@@ -177,6 +239,47 @@ export function DigitalTwin() {
       activityByFloor: activity,
     };
   }, [views]);
+
+  /** Same entry keys as ReviewSidebar — green "new" cue on the map. */
+  const workEntryIds = useMemo(
+    () =>
+      views
+        .filter(
+          (v) =>
+            v.review != null ||
+            (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
+        )
+        .map((v) => v.review?.id ?? `signal:${v.asset.id}`),
+    [views],
+  );
+  const { isNew } = useNewEntries(workEntryIds);
+
+  const reviewIds = useMemo(
+    () => views.map((v) => v.review?.id).filter((id): id is string => Boolean(id)),
+    [views],
+  );
+  useNewReviewChime(reviewIds);
+
+  const { freshByAsset, freshByFloor } = useMemo(() => {
+    const byAsset: Record<string, boolean> = {};
+    const byFloor: Record<PlantFloor, boolean> = {
+      ground: false,
+      first: false,
+      second: false,
+    };
+    for (const v of views) {
+      const open =
+        v.review != null ||
+        (v.risk_level !== "nominal" && v.detail?.derived_facts?.length);
+      if (!open) continue;
+      if (columnForView(v) === "closed") continue;
+      const entryId = v.review?.id ?? `signal:${v.asset.id}`;
+      if (!isNew(entryId)) continue;
+      byAsset[v.asset.id] = true;
+      byFloor[floorOfAsset(v.asset.id, v.asset.floor)] = true;
+    }
+    return { freshByAsset: byAsset, freshByFloor: byFloor };
+  }, [views, isNew]);
 
   const selected = selectedAssetId
     ? findViewByAssetId(views, selectedAssetId)
@@ -426,6 +529,7 @@ export function DigitalTwin() {
           <FloorOverview
             riskByAsset={riskByAsset}
             activityByFloor={activityByFloor}
+            freshByFloor={freshByFloor}
             exiting={overviewExiting}
             onSelectFloor={zoomIntoFloor}
           />
@@ -445,9 +549,12 @@ export function DigitalTwin() {
                   riskByAsset={riskByAsset}
                   criticalByAsset={criticalByAsset}
                   resolvedByAsset={resolvedByAsset}
+                  freshByAsset={freshByAsset}
                   selectedAssetId={selectedAssetId}
                   onSelectAsset={selectAsset}
                   spatialLinks={floorSpatialLinks}
+                  opsChipsByAsset={opsChipsByAsset}
+                  showOpsLayer={enabledLayers.has("ops")}
                 />
               </div>
             </MapViewport>
@@ -468,13 +575,21 @@ export function DigitalTwin() {
         ) : null}
 
         {showMapControls ? (
-          <MapControls
-            onZoomIn={() => mapRef.current?.zoomIn()}
-            onZoomOut={() => mapRef.current?.zoomOut()}
-            onReset={() => mapRef.current?.resetView()}
-            onOverview={showOverview}
-            shiftForDrawer={Boolean(selected) && viewMode === "detail"}
-          />
+          <>
+            <MapLayerToggle
+              enabled={enabledLayers}
+              onToggle={toggleLayer}
+              opsCount={opsAssetCount}
+              shiftForDrawer={Boolean(selected) && viewMode === "detail"}
+            />
+            <MapControls
+              onZoomIn={() => mapRef.current?.zoomIn()}
+              onZoomOut={() => mapRef.current?.zoomOut()}
+              onReset={() => mapRef.current?.resetView()}
+              onOverview={showOverview}
+              shiftForDrawer={Boolean(selected) && viewMode === "detail"}
+            />
+          </>
         ) : null}
 
         {selected && viewMode === "detail" && slideDir !== "out" ? (
@@ -554,6 +669,9 @@ export function DigitalTwin() {
               }}
             >
               <span className={styles.floorTabLabel}>{FLOOR_LABELS[id]}</span>
+              {freshByFloor[id] ? (
+                <span className={styles.floorFresh} aria-label="New data" title="New data" />
+              ) : null}
               {activityByFloor[id] > 0 ? (
                 <span className={styles.floorBadge}>{activityByFloor[id]}</span>
               ) : null}

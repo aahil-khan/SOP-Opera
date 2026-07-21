@@ -137,6 +137,8 @@ const GAS_LEAK_REVIEW: Review = {
   state: "pending_decision",
   owner_id: SUPERVISOR,
   triggered_by: "gas_leak",
+  origin: "system",
+  raised_by_worker_id: null,
   created_at: "2026-07-14T06:02:00Z",
 };
 
@@ -208,6 +210,8 @@ const PERMIT_REVIEW: Review = {
   state: "pending_decision",
   owner_id: SUPERVISOR,
   triggered_by: "permit_conflict",
+  origin: "system",
+  raised_by_worker_id: null,
   created_at: "2026-07-14T06:01:30Z",
 };
 
@@ -358,6 +362,89 @@ export const SCENARIOS: Record<ScenarioName, ScenarioStep[]> = {
 };
 
 export const SCENARIO_NAMES = Object.keys(SCENARIOS) as ScenarioName[];
+
+/** Offline fixtures for the supervisor task board (live API is primary). */
+export const DEMO_SUPERVISOR_WORKER_ID =
+  "55555555-5555-5555-5555-555555555551";
+
+export const DEMO_SUPERVISOR_TASKS = [
+  {
+    id: "task-demo-unblock-1",
+    review_id: FIXTURE_REVIEW.id,
+    decision_id: "decision-demo-1",
+    assigned_worker_id: DEMO_SUPERVISOR_WORKER_ID,
+    task_type: "unblock" as const,
+    title: "Unblock machine (HITL)",
+    detail: "Decision outcome: blocked",
+    status: "open" as const,
+    created_by: "demo",
+    created_at: "2026-07-21T10:00:00Z",
+    acknowledged_at: null,
+    done_at: null,
+    done_note: null,
+    review_state: "decided",
+    asset_id: VESSEL_A,
+    asset_name: "Vessel A",
+    asset_zone: "coke-oven-battery",
+    asset_floor: "ground",
+    decision_outcome: "blocked",
+    decision_conditions: null,
+    decision_comments: null,
+    decision_submitted_at: "2026-07-21T09:55:00Z",
+  },
+  {
+    id: "task-demo-followup-1",
+    review_id: "review-demo-followup",
+    decision_id: "decision-demo-2",
+    assigned_worker_id: DEMO_SUPERVISOR_WORKER_ID,
+    task_type: "follow_up" as const,
+    title: "Follow up actions (HITL)",
+    detail: "Decision outcome: approved with conditions",
+    status: "acknowledged" as const,
+    created_by: "demo",
+    created_at: "2026-07-21T09:30:00Z",
+    acknowledged_at: "2026-07-21T09:40:00Z",
+    done_at: null,
+    done_note: null,
+    review_state: "decided",
+    asset_id: WALKWAY_3,
+    asset_name: "Walkway 3",
+    asset_zone: "coke-oven-battery",
+    asset_floor: "first",
+    decision_outcome: "approved_with_conditions",
+    decision_conditions: "Re-check isolation tags before restart",
+    decision_comments: null,
+    decision_submitted_at: "2026-07-21T09:25:00Z",
+  },
+];
+
+export const DEMO_RAISED_REVIEWS = [
+  {
+    review_id: "review-demo-raised",
+    asset_id: COMPRESSOR_B,
+    asset_name: "Compressor B",
+    asset_zone: "compressor-yard",
+    review_state: "pending_decision",
+    description: "Unusual vibration on the deck — louder than last shift.",
+    concern_type: "equipment",
+    raised_by_name: "Asha Rao",
+    created_at: "2026-07-21T08:15:00Z",
+  },
+];
+
+export const DEMO_SHARED_REVIEWS = [
+  {
+    review_id: "review-demo-shared",
+    asset_id: VESSEL_A,
+    asset_name: "Vessel A",
+    asset_zone: "coke-oven-battery",
+    review_state: "assessing",
+    description: "Gas smell near the valve manifold.",
+    concern_type: "safety_hazard",
+    raised_by_name: "Dev Patel",
+    created_at: "2026-07-21T08:45:00Z",
+  },
+];
 
 /** Pre-seed one review so ReviewList is non-empty before any scenario plays. */
 export function applySeedReview(

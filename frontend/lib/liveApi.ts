@@ -27,6 +27,22 @@ export interface ReviewDetail {
   derived_facts: DerivedFact[];
   decision: Decision | null;
   area_owner?: AreaOwner | null;
+  raised_by_worker_name?: string | null;
+  supervisor_report?: {
+    description: string;
+    concern_type: string;
+    reported_by_name: string;
+  } | null;
+  task_summary?: TaskSummary | null;
+}
+
+export interface TaskSummary {
+  total: number;
+  open: number;
+  acknowledged: number;
+  done: number;
+  cancelled: number;
+  all_done: boolean;
 }
 
 export interface AssessmentHistoryItem extends Omit<Assessment, "risk_level" | "summary"> {
@@ -51,6 +67,56 @@ export interface DecisionIn {
   outcome: DecisionOutcome;
   recommendation_dispositions: Record<string, "accepted" | "rejected">;
   conditions: string | null;
+  tagged_worker_ids: string[];
+}
+
+export interface ReviewTask {
+  id: string;
+  review_id: string;
+  decision_id: string | null;
+  assigned_worker_id: string;
+  task_type: "follow_up" | "unblock";
+  title: string;
+  detail: string | null;
+  status: "open" | "acknowledged" | "done" | "cancelled";
+  created_by: string;
+  created_at: string;
+  acknowledged_at: string | null;
+  done_at: string | null;
+  done_note: string | null;
+  review_state: string;
+  asset_id: string;
+  asset_name: string;
+  asset_zone: string;
+  asset_floor: string;
+  decision_outcome: string | null;
+  decision_conditions: string | null;
+  decision_comments: string | null;
+  decision_submitted_at: string | null;
+}
+
+export interface TaskAcknowledgeOut {
+  id: string;
+  status: "open" | "acknowledged" | "done" | "cancelled";
+  acknowledged_at: string;
+}
+
+export interface TaskDoneOut {
+  id: string;
+  status: "open" | "acknowledged" | "done" | "cancelled";
+  done_at: string;
+  done_note: string | null;
+}
+
+export interface ReviewComment {
+  id: string;
+  review_id: string;
+  author_kind: "user" | "worker";
+  author_id: string;
+  author_name: string;
+  body: string;
+  mentioned_worker_ids: string[];
+  created_at: string;
 }
 
 export interface ReportSummary {
@@ -120,6 +186,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       "Content-Type": "application/json",
       ...(init?.headers ?? {}),
     },
+    credentials: "include",
     cache: "no-store",
   });
   if (!res.ok) {
@@ -179,6 +246,22 @@ export function fetchReviewDetail(id: string): Promise<ReviewDetail> {
   return request<ReviewDetail>(`/reviews/${id}`);
 }
 
+export function fetchReviewComments(
+  reviewId: string,
+): Promise<ReviewComment[]> {
+  return request<ReviewComment[]>(`/reviews/${reviewId}/comments`);
+}
+
+export function postReviewComment(
+  reviewId: string,
+  body: { body: string; mentioned_worker_ids: string[] },
+): Promise<ReviewComment> {
+  return request<ReviewComment>(`/reviews/${reviewId}/comments`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function fetchReviewAssessments(
   id: string,
 ): Promise<AssessmentHistoryItem[]> {
@@ -197,6 +280,36 @@ export function postDecision(
 
 export function postCloseReview(reviewId: string): Promise<Review> {
   return request<Review>(`/reviews/${reviewId}/close`, { method: "POST" });
+}
+
+export function postReopenReview(
+  reviewId: string,
+  reason = "",
+): Promise<Review> {
+  return request<Review>(`/reviews/${reviewId}/reopen`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function postEscalateReview(
+  reviewId: string,
+  reason = "",
+): Promise<Review> {
+  return request<Review>(`/reviews/${reviewId}/escalate`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export function postDeEscalateReview(
+  reviewId: string,
+  reason = "",
+): Promise<Review> {
+  return request<Review>(`/reviews/${reviewId}/de-escalate`, {
+    method: "POST",
+    body: JSON.stringify({ reason }),
+  });
 }
 
 export function postRetryAssessment(
@@ -235,6 +348,69 @@ export function fetchNotifications(limit = 50): Promise<Notification[]> {
   return request<Notification[]>(`/notifications?limit=${limit}`);
 }
 
+export function fetchTasks(assignedWorkerId: string): Promise<ReviewTask[]> {
+  const qs = new URLSearchParams();
+  qs.set("assigned_worker_id", assignedWorkerId);
+  return request<ReviewTask[]>(`/tasks?${qs.toString()}`);
+}
+
+export function postAcknowledgeTask(
+  taskId: string,
+): Promise<TaskAcknowledgeOut> {
+  return request<TaskAcknowledgeOut>(`/tasks/${taskId}/acknowledge`, {
+    method: "POST",
+  });
+}
+
+export function postDoneTask(
+  taskId: string,
+  body: { done_note: string },
+): Promise<TaskDoneOut> {
+  return request<TaskDoneOut>(`/tasks/${taskId}/done`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
+export interface SupervisorReportIn {
+  asset_id: string;
+  triggered_by?: string;
+  owner_id?: string | null;
+  description: string;
+  concern_type: string;
+  raised_by_worker_id: string;
+  tagged_worker_ids?: string[];
+}
+
+export interface SharedReview {
+  review_id: string;
+  asset_id: string;
+  asset_name: string;
+  asset_zone: string;
+  review_state: string;
+  description: string;
+  concern_type: string;
+  raised_by_name: string;
+  created_at: string;
+}
+
+export function fetchRaisedReviews(): Promise<SharedReview[]> {
+  return request<SharedReview[]>("/reviews/raised-by-me");
+}
+
+export function fetchSharedReviews(): Promise<SharedReview[]> {
+  return request<SharedReview[]>("/reviews/shared-with-me");
+}
+
+export function postSupervisorReport(
+  body: SupervisorReportIn,
+): Promise<Review> {
+  return request<Review>(`/reviews`, {
+    method: "POST",
+    body: JSON.stringify(body),
+  });
+}
+
 export function fetchAssetOwner(assetId: string): Promise<AreaOwner | null> {
   return request<AreaOwner | null>(`/assets/${assetId}/owner`);
 }
@@ -243,8 +419,62 @@ export function fetchThresholds(): Promise<ThresholdsConfig> {
   return request<ThresholdsConfig>("/api/config/thresholds");
 }
 
+export interface ThresholdsConfigPatch {
+  sensors?: Partial<
+    Record<string, { elevated?: number; critical?: number }>
+  >;
+  rules?: Partial<{
+    vibration_anomaly_threshold: number;
+    effluent_ph_min: number;
+    effluent_ph_max: number;
+    tank_level_high_pct: number;
+    tank_level_low_pct: number;
+    weather_wind_hold_ms: number;
+    cert_expiry_warning_days: number;
+  }>;
+}
+
+export function putThresholds(
+  body: ThresholdsConfigPatch,
+): Promise<ThresholdsConfig> {
+  return request<ThresholdsConfig>("/api/config/thresholds", {
+    method: "PUT",
+    body: JSON.stringify(body),
+  });
+}
+
 export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
   return request<AiOpsSummary>("/ai-ops/summary");
+}
+
+export interface DetectorSummary {
+  name: string;
+  accuracy: number;
+  recall: number;
+  false_negative_rate: number;
+  precision: number;
+  tp: number;
+  fp: number;
+  tn: number;
+  fn: number;
+}
+
+export interface EvalSummary {
+  fn_reduction_pct: number;
+  hero_case_id: string;
+  hero_lead_time_seconds: number | null;
+  hero_t_forecast_seconds: number | null;
+  hero_t_compound_seconds: number | null;
+  hero_t_single_sensor_seconds: number | null;
+  single_sensor: DetectorSummary;
+  forecast: DetectorSummary;
+  compound: DetectorSummary;
+  case_count: number;
+  compound_only_catch_count: number;
+}
+
+export function fetchEvalSummary(): Promise<EvalSummary> {
+  return request<EvalSummary>("/api/eval/summary");
 }
 
 export function fetchShiftHandover(windowHours = 12): Promise<ShiftHandoverBrief> {

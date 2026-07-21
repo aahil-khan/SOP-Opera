@@ -9,10 +9,19 @@ import type {
 import {
   applySeedReview,
   buildBaselineRuntimes,
+  DEMO_RAISED_REVIEWS,
+  DEMO_SHARED_REVIEWS,
+  DEMO_SUPERVISOR_TASKS,
   SCENARIOS,
   type AssetRuntime,
   type ScenarioName,
 } from "./mockData";
+
+export {
+  DEMO_RAISED_REVIEWS,
+  DEMO_SHARED_REVIEWS,
+  DEMO_SUPERVISOR_TASKS,
+};
 
 const SUPERVISOR = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa";
 
@@ -127,6 +136,7 @@ export const useDemoStore = create<DemoState>((set, get) => ({
       outcome,
       recommendation_dispositions: dispositions,
       conditions,
+      comments: null,
       submitted_at: new Date().toISOString(),
     };
 

@@ -109,6 +109,22 @@ export function presentNotification(n: Notification): NotificationPresentation {
         severity: "error",
         toastable: /\bprior decision\b/i.test(n.summary),
       };
+    case "review.de_escalated":
+      return {
+        label: "De-escalated",
+        title: "Escalation resolved",
+        detail: n.summary,
+        severity: "info",
+        toastable: false,
+      };
+    case "supervisor_report.tagged":
+      return {
+        label: "Shared issue",
+        title: "Floor issue shared with you",
+        detail: n.summary,
+        severity: "info",
+        toastable: false,
+      };
     default:
       return {
         label: "Update",

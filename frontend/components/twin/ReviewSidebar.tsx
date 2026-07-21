@@ -16,7 +16,7 @@ import {
 import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
 import {
   OPEN_WORK_COLUMNS,
-  columnForReviewState,
+  columnForView,
   nextActionForView,
   ownerNameForView,
   workStatusForView,
@@ -203,27 +203,8 @@ export function ReviewSidebar({
     onResizingChange?.(resizing);
   }, [resizing, onResizingChange]);
   const [slider, setSlider] = useState({ left: 0, width: 0 });
-  const [tabScroll, setTabScroll] = useState({ left: false, right: false });
 
   const hasActiveFilter = searchQuery.trim().length > 0 || riskFilter !== "all";
-
-  const updateTabScroll = useCallback(() => {
-    const track = tablistRef.current;
-    if (!track) return;
-    const maxScroll = track.scrollWidth - track.clientWidth;
-    const left = track.scrollLeft > 1;
-    const right = maxScroll > 1 && track.scrollLeft < maxScroll - 1;
-    setTabScroll((prev) =>
-      prev.left === left && prev.right === right ? prev : { left, right },
-    );
-  }, []);
-
-  const scrollTabs = useCallback((direction: -1 | 1) => {
-    const track = tablistRef.current;
-    if (!track) return;
-    const amount = Math.max(100, Math.round(track.clientWidth * 0.7));
-    track.scrollBy({ left: direction * amount, behavior: "smooth" });
-  }, []);
 
   const views = useMemo(
     () =>
@@ -239,10 +220,12 @@ export function ReviewSidebar({
     const cols: Record<OpenWorkColumnId, LiveAssetView[]> = {
       investigating: [],
       awaiting_decision: [],
+      awaiting_fix: [],
+      ready_to_close: [],
       closed: [],
     };
     for (const v of views) {
-      cols[columnForReviewState(v.review?.state)].push(v);
+      cols[columnForView(v)].push(v);
     }
     for (const id of Object.keys(cols) as OpenWorkColumnId[]) {
       cols[id].sort((a, b) => arrivedAt(b) - arrivedAt(a));
@@ -290,7 +273,6 @@ export function ReviewSidebar({
         left: tab.offsetLeft,
         width: tab.offsetWidth,
       });
-      updateTabScroll();
     };
 
     update();
@@ -298,31 +280,10 @@ export function ReviewSidebar({
     const ro = new ResizeObserver(update);
     ro.observe(track);
     ro.observe(tab);
-    track.addEventListener("scroll", updateTabScroll, { passive: true });
     return () => {
       ro.disconnect();
-      track.removeEventListener("scroll", updateTabScroll);
     };
-  }, [activeColumn, byColumn, updateTabScroll, open]);
-
-  useEffect(() => {
-    const track = tablistRef.current;
-    const tab = tabRefs.current[activeColumn];
-    if (!track || !tab) return;
-
-    const tabLeft = tab.offsetLeft;
-    const tabRight = tabLeft + tab.offsetWidth;
-    const viewLeft = track.scrollLeft;
-    const viewRight = viewLeft + track.clientWidth;
-    if (tabLeft < viewLeft + 4) {
-      track.scrollTo({ left: Math.max(0, tabLeft - 8), behavior: "smooth" });
-    } else if (tabRight > viewRight - 4) {
-      track.scrollTo({
-        left: tabRight - track.clientWidth + 8,
-        behavior: "smooth",
-      });
-    }
-  }, [activeColumn]);
+  }, [activeColumn, byColumn, open, width]);
 
   return (
     <>
@@ -413,24 +374,7 @@ export function ReviewSidebar({
           </div>
         </header>
 
-        <div
-          className={styles.columnTabs}
-          aria-label="Work columns"
-          data-scroll-left={tabScroll.left ? "true" : undefined}
-          data-scroll-right={tabScroll.right ? "true" : undefined}
-        >
-          {tabScroll.left ? (
-            <button
-              type="button"
-              className={styles.columnTabArrow}
-              data-side="left"
-              aria-label="Scroll columns left"
-              title="Scroll left"
-              onClick={() => scrollTabs(-1)}
-            >
-              ‹
-            </button>
-          ) : null}
+        <div className={styles.columnTabs} aria-label="Work columns">
           <div
             ref={tablistRef}
             className={styles.columnTabTrack}
@@ -447,6 +391,7 @@ export function ReviewSidebar({
             />
             {OPEN_WORK_COLUMNS.map((col) => {
               const selected = activeColumn === col.id;
+              const count = byColumn[col.id].length;
               const colHasNew =
                 col.id !== "closed" &&
                 byColumn[col.id].some((v) =>
@@ -461,14 +406,17 @@ export function ReviewSidebar({
                   type="button"
                   role="tab"
                   aria-selected={selected}
+                  aria-label={`${col.label}, ${count}`}
+                  title={col.label}
                   tabIndex={selected ? 0 : -1}
                   className={styles.columnTab}
                   data-active={selected ? "true" : undefined}
+                  data-has-items={count > 0 ? "true" : undefined}
                   onClick={() => setActiveColumn(col.id)}
                 >
-                  <span className={styles.columnTabLabel}>{col.label}</span>
+                  <span className={styles.columnTabLabel}>{col.shortLabel}</span>
                   <span className={styles.columnTabCount}>
-                    {byColumn[col.id].length}
+                    {count}
                     {colHasNew ? (
                       <span className={styles.dot} aria-hidden="true" />
                     ) : null}
@@ -477,17 +425,10 @@ export function ReviewSidebar({
               );
             })}
           </div>
-          {tabScroll.right ? (
-            <button
-              type="button"
-              className={styles.columnTabArrow}
-              data-side="right"
-              aria-label="Scroll columns right"
-              title="Scroll right"
-              onClick={() => scrollTabs(1)}
-            >
-              ›
-            </button>
+          {activeColMeta ? (
+            <p className={styles.columnStageLabel} aria-live="polite">
+              {activeColMeta.label}
+            </p>
           ) : null}
         </div>
 

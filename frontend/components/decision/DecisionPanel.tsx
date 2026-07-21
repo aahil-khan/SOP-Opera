@@ -8,6 +8,9 @@ import type { DecisionOutcome } from "@/shared/enums";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { fetchReviewReports } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
+import type { AreaOwner } from "@/shared/schemas";
+import { fetchRoster } from "@/lib/authApi";
+import type { RosterEntry } from "@/lib/authTypes";
 import styles from "./DecisionPanel.module.css";
 
 interface DecisionPanelProps {
@@ -15,6 +18,7 @@ interface DecisionPanelProps {
   reviewState: string;
   assessment: AssessmentHistoryItem | null;
   existing: Decision | null;
+  areaOwner?: AreaOwner | null;
 }
 
 const OUTCOMES: {
@@ -46,9 +50,11 @@ const OUTCOMES: {
 function DecisionForm({
   reviewId,
   assessment,
+  zoneOwnerId,
 }: {
   reviewId: string;
   assessment: AssessmentHistoryItem;
+  zoneOwnerId: string | null;
 }) {
   const submitDecision = useLiveStore((s) => s.submitDecision);
   const blockingAssessment = assessment.risk_level === "blocking";
@@ -59,6 +65,39 @@ function DecisionForm({
   const [conditions, setConditions] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const [workers, setWorkers] = useState<RosterEntry[]>([]);
+  const [taggedWorkerIds, setTaggedWorkerIds] = useState<Set<string>>(
+    () => new Set(zoneOwnerId ? [zoneOwnerId] : []),
+  );
+
+  useEffect(() => {
+    setTaggedWorkerIds(new Set(zoneOwnerId ? [zoneOwnerId] : []));
+  }, [zoneOwnerId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchRoster()
+      .then((roster) => {
+        if (cancelled) return;
+        const workerEntries = roster.filter((r) => r.kind === "worker");
+        setWorkers(workerEntries);
+        // If we haven't set a locked zone owner yet, fall back to whatever exists.
+        if (zoneOwnerId) {
+          setTaggedWorkerIds((prev) => {
+            const next = new Set(prev);
+            next.add(zoneOwnerId);
+            return next;
+          });
+        }
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+    // Intentionally run once on mount.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
   const initialDispositions: Record<string, "accepted" | "rejected"> =
     Object.fromEntries(
       assessment.recommendations.map((rec) => [rec.id, "accepted" as const]),
@@ -84,6 +123,7 @@ function DecisionForm({
         outcome,
         recommendation_dispositions: dispositions,
         conditions: needsConditions ? conditions.trim() : null,
+        tagged_worker_ids: Array.from(taggedWorkerIds),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -152,6 +192,48 @@ function DecisionForm({
           </div>
         </section>
       )}
+
+      {workers.length > 0 ? (
+        <section className={styles.section} aria-labelledby="decision-tag-heading">
+          <p id="decision-tag-heading" className={styles.label}>
+            Notify people
+          </p>
+          <p className={styles.sectionHint}>
+            The zone supervisor is always included.
+          </p>
+          <div className={styles.tagList} role="list" aria-label="Notification recipients">
+            {workers.map((w) => {
+              const locked = zoneOwnerId ? w.id === zoneOwnerId : false;
+              const checked = taggedWorkerIds.has(w.id);
+              return (
+                <label
+                  key={w.id}
+                  className={styles.tagRow}
+                  data-locked={locked ? "true" : undefined}
+                >
+                  <input
+                    type="checkbox"
+                    checked={checked}
+                    disabled={locked}
+                    onChange={(e) => {
+                      const next = new Set(taggedWorkerIds);
+                      if (e.target.checked) next.add(w.id);
+                      else next.delete(w.id);
+                      setTaggedWorkerIds(next);
+                    }}
+                  />
+                  <span className={styles.tagName}>
+                    {w.name}{" "}
+                    <span className={styles.tagRole}>
+                      ({w.role})
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
 
       <section className={styles.section} aria-labelledby="decision-outcome-heading">
         <p id="decision-outcome-heading" className={styles.label}>
@@ -245,7 +327,10 @@ function ClosedReportLink({
   reviewId: string;
   outcome: DecisionOutcome | null | undefined;
 }) {
+  const reopenReview = useLiveStore((s) => s.reopenReview);
   const [report, setReport] = useState<Report | null>(null);
+  const [reopening, setReopening] = useState(false);
+  const [reopenError, setReopenError] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -275,6 +360,25 @@ function ClosedReportLink({
       ) : (
         <p className={styles.hint}>Generating report…</p>
       )}
+      <div className={styles.actionRow}>
+        <button
+          type="button"
+          className={`btn ${styles.secondaryAction}`}
+          disabled={reopening}
+          onClick={() => {
+            setReopening(true);
+            setReopenError(null);
+            void reopenReview(reviewId, "Operator reopen")
+              .catch((err) =>
+                setReopenError(err instanceof Error ? err.message : String(err)),
+              )
+              .finally(() => setReopening(false));
+          }}
+        >
+          {reopening ? "Reopening…" : "Reopen review"}
+        </button>
+      </div>
+      {reopenError && <p className={styles.error}>{reopenError}</p>}
     </div>
   );
 }
@@ -284,10 +388,14 @@ export function DecisionPanel({
   reviewState,
   assessment,
   existing,
+  areaOwner,
 }: DecisionPanelProps) {
   const closeReview = useLiveStore((s) => s.closeReview);
+  const reopenReview = useLiveStore((s) => s.reopenReview);
   const [closing, setClosing] = useState(false);
+  const [reopening, setReopening] = useState(false);
   const [closeError, setCloseError] = useState<string | null>(null);
+  const [reopenError, setReopenError] = useState<string | null>(null);
 
   const canDecide =
     (reviewState === "pending_decision" || reviewState === "escalated") &&
@@ -358,23 +466,44 @@ export function DecisionPanel({
             Machine is inactive in simulator until the lock window ends and the review is closed.
           </p>
         ) : null}
-        <button
-          type="button"
-          className={`btn btn-primary ${styles.submit}`}
-          disabled={closing}
-          onClick={() => {
-            setClosing(true);
-            setCloseError(null);
-            void closeReview(reviewId)
-              .catch((err) =>
-                setCloseError(err instanceof Error ? err.message : String(err)),
-              )
-              .finally(() => setClosing(false));
-          }}
-        >
-          {closing ? "Closing…" : "Close Review"}
-        </button>
+        <div className={styles.actionRow}>
+          <button
+            type="button"
+            className={`btn btn-primary ${styles.submit}`}
+            disabled={closing || reopening}
+            onClick={() => {
+              setClosing(true);
+              setCloseError(null);
+              void closeReview(reviewId)
+                .catch((err) =>
+                  setCloseError(err instanceof Error ? err.message : String(err)),
+                )
+                .finally(() => setClosing(false));
+            }}
+          >
+            {closing ? "Closing…" : "Close Review"}
+          </button>
+          <button
+            type="button"
+            className={`btn ${styles.secondaryAction}`}
+            disabled={closing || reopening}
+            onClick={() => {
+              setReopening(true);
+              setReopenError(null);
+              void reopenReview(reviewId, "Operator reopen")
+                .catch((err) =>
+                  setReopenError(
+                    err instanceof Error ? err.message : String(err),
+                  ),
+                )
+                .finally(() => setReopening(false));
+            }}
+          >
+            {reopening ? "Reopening…" : "Reopen"}
+          </button>
+        </div>
         {closeError && <p className={styles.error}>{closeError}</p>}
+        {reopenError && <p className={styles.error}>{reopenError}</p>}
       </div>
     );
   }
@@ -412,11 +541,97 @@ export function DecisionPanel({
           {new Date(existing.submitted_at).toLocaleTimeString()}.
         </p>
       ) : null}
+      <EscalationControls reviewId={reviewId} reviewState={reviewState} />
       <DecisionForm
         key={assessment.id}
         reviewId={reviewId}
         assessment={assessment}
+        zoneOwnerId={areaOwner?.worker_id ?? null}
       />
     </div>
+  );
+}
+
+function EscalationControls({
+  reviewId,
+  reviewState,
+}: {
+  reviewId: string;
+  reviewState: string;
+}) {
+  const escalateReview = useLiveStore((s) => s.escalateReview);
+  const deEscalateReview = useLiveStore((s) => s.deEscalateReview);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+
+  if (reviewState !== "pending_decision" && reviewState !== "escalated") {
+    return null;
+  }
+
+  const isEscalated = reviewState === "escalated";
+
+  async function onToggle() {
+    setBusy(true);
+    setError(null);
+    try {
+      if (isEscalated) {
+        await deEscalateReview(reviewId, reason.trim());
+      } else {
+        await escalateReview(reviewId, reason.trim() || "Operator escalation");
+      }
+      setReason("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <section className={styles.section} aria-labelledby="escalation-heading">
+      <p id="escalation-heading" className={styles.label}>
+        Escalation
+      </p>
+      {isEscalated ? (
+        <p className={styles.escalatedBanner} role="status">
+          This review is escalated — decide now or resolve the escalation.
+        </p>
+      ) : (
+        <p className={styles.sectionHint}>
+          Escalate when this needs senior attention before a decision.
+        </p>
+      )}
+      <label className={styles.conditionsLabel} htmlFor="escalation-reason">
+        Reason (optional)
+      </label>
+      <input
+        id="escalation-reason"
+        className={styles.escalationInput}
+        value={reason}
+        onChange={(e) => setReason(e.target.value)}
+        placeholder={
+          isEscalated ? "Why resolving escalation…" : "Why escalating…"
+        }
+        disabled={busy}
+      />
+      <div className={styles.actionRow}>
+        <button
+          type="button"
+          className={`btn ${styles.secondaryAction}`}
+          disabled={busy}
+          onClick={() => void onToggle()}
+        >
+          {busy
+            ? isEscalated
+              ? "Resolving…"
+              : "Escalating…"
+            : isEscalated
+              ? "Resolve escalation"
+              : "Escalate"}
+        </button>
+      </div>
+      {error ? <p className={styles.error}>{error}</p> : null}
+    </section>
   );
 }

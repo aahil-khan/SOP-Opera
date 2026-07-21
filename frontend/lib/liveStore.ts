@@ -10,6 +10,7 @@ import type {
   Review,
 } from "@/shared/schemas";
 import type { RiskLevel } from "@/shared/enums";
+import { riskForSupervisorConcern } from "@/lib/supervisorConcern";
 import {
   fetchAssets,
   fetchNotifications,
@@ -19,6 +20,9 @@ import {
   fetchReviews,
   fetchThresholds,
   postCloseReview,
+  postReopenReview,
+  postEscalateReview,
+  postDeEscalateReview,
   postDecision,
   postManualAssessment,
   postRetryAssessment,
@@ -33,6 +37,7 @@ import {
   showNotificationToast,
   showReassessmentToast,
 } from "@/lib/notificationToast";
+import { isDndEnabled } from "@/lib/dndMode";
 import {
   assetHasSensorCritical,
   DEFAULT_THRESHOLDS,
@@ -44,6 +49,15 @@ import {
 } from "@/lib/notificationPresentation";
 import type { SpatialLinkView } from "@/lib/spatialLinks";
 import { spatialLinksFromAssessment } from "@/lib/spatialLinks";
+import {
+  EMPTY_OPS_SUMMARY,
+  refreshOpsChipsByAsset,
+  refreshOpsSummary,
+  type AssetOpsChips,
+  type OpsSummary,
+} from "@/lib/opsChips";
+
+export type { OpsSummary };
 
 export type { SpatialLinkView };
 export { spatialLinksFromAssessment };
@@ -194,7 +208,8 @@ function ingestTelemetrySample(
       ...state.telemetryStatus.filter(
         (c) => !(c.asset_id === chip.asset_id && c.category === chip.category),
       ),
-    ].slice(0, 24);
+    // One entry per asset×category across the plant (~27×4); keep headroom.
+    ].slice(0, 120);
   } else if (!touchedNumeric) {
     /* ignore */
   }
@@ -296,6 +311,13 @@ interface LiveState {
   reviewDetails: Record<string, ReviewDetail>;
   assessmentsByReview: Record<string, AssessmentHistoryItem[]>;
   notifications: Notification[];
+  /** WebSocket-driven task change signal for supervisor dashboards. */
+  taskEventSeq: number;
+  /** Review/decision events for supervisor board refresh. */
+  boardEventSeq: number;
+  /** WebSocket-driven comment change signal for review threads. */
+  commentEventSeq: number;
+  lastCommentReviewId: string | null;
   /** Client-side unread ids (bootstrap history starts as read). */
   unreadNotificationIds: string[];
   /** Agent steps keyed by review id (null-scoped → `_unscoped`). */
@@ -311,8 +333,14 @@ interface LiveState {
   domainFocusRequest: DomainFocusRequest | null;
   /** Effective sensor/rule thresholds from GET /api/config/thresholds. */
   thresholdsConfig: ThresholdsConfig;
+  setThresholdsConfig: (config: ThresholdsConfig) => void;
+  refreshThresholds: () => Promise<ThresholdsConfig>;
   /** Sparse map — only assets with active sensor-critical readings/facts. */
   sensorCriticalByAsset: Record<string, boolean>;
+  /** Per-asset permit / isolation / workforce chips — patched on telemetry flush. */
+  opsChipsByAsset: Record<string, AssetOpsChips>;
+  /** Plant-wide ops KPI counters — patched with opsChipsByAsset. */
+  opsSummary: OpsSummary;
   bootstrapped: boolean;
   loading: boolean;
   error: string | null;
@@ -321,6 +349,9 @@ interface LiveState {
   loadReviewDetail: (id: string) => Promise<void>;
   submitDecision: (id: string, body: DecisionIn) => Promise<Decision>;
   closeReview: (id: string) => Promise<Review>;
+  reopenReview: (id: string, reason?: string) => Promise<Review>;
+  escalateReview: (id: string, reason?: string) => Promise<Review>;
+  deEscalateReview: (id: string, reason?: string) => Promise<Review>;
   retryAssessment: (
     id: string,
     provider?: "openai_compatible" | "ollama" | "mock" | null,
@@ -376,6 +407,15 @@ function latestComplete(
   );
 }
 
+function maxRisk(a: RiskLevel, b: RiskLevel): RiskLevel {
+  const rank: Record<RiskLevel, number> = {
+    nominal: 0,
+    elevated: 1,
+    blocking: 2,
+  };
+  return rank[a] >= rank[b] ? a : b;
+}
+
 function deriveRisk(
   review: Review | null,
   assessment: AssessmentHistoryItem | null,
@@ -409,10 +449,20 @@ function deriveRisk(
   }
 
   if (assessment?.status === "complete" && assessment.risk_level) {
-    return assessment.risk_level;
+    let risk = assessment.risk_level;
+    if (review.origin === "supervisor" && detail?.supervisor_report) {
+      risk = maxRisk(
+        risk,
+        riskForSupervisorConcern(detail.supervisor_report.concern_type),
+      );
+    }
+    return risk;
   }
   if (detail?.derived_facts?.some((f) => f.value === true || f.value === "true")) {
     return "elevated";
+  }
+  if (review.origin === "supervisor" && detail?.supervisor_report) {
+    return riskForSupervisorConcern(detail.supervisor_report.concern_type);
   }
   // Any other open review without a settled assessment still reads elevated.
   return "elevated";
@@ -546,6 +596,15 @@ export const useLiveStore = create<LiveState>((set, get) => {
     set((state) => {
       const hydrated = applyTelemetrySamples(state, batch);
       const merged = { ...state, ...hydrated };
+      const opsChipsByAsset = refreshOpsChipsByAsset(
+        state.opsChipsByAsset,
+        merged.telemetryStatus,
+        merged.telemetryBySource,
+      );
+      const opsSummary =
+        opsChipsByAsset === state.opsChipsByAsset
+          ? state.opsSummary
+          : refreshOpsSummary(state.opsSummary, opsChipsByAsset);
       return {
         ...hydrated,
         sensorCriticalByAsset: patchSensorCriticalForAssets(
@@ -553,6 +612,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
           merged,
           touched,
         ),
+        opsChipsByAsset,
+        opsSummary,
       };
     });
   };
@@ -579,6 +640,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
   reviews: [],
   reviewDetails: {},
   assessmentsByReview: {},
+    taskEventSeq: 0,
+    boardEventSeq: 0,
+    commentEventSeq: 0,
+    lastCommentReviewId: null,
   notifications: [],
   unreadNotificationIds: [],
   agentStepsByReview: {},
@@ -591,6 +656,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
   domainFocusRequest: null,
   thresholdsConfig: DEFAULT_THRESHOLDS,
   sensorCriticalByAsset: {},
+  opsChipsByAsset: {},
+  opsSummary: EMPTY_OPS_SUMMARY,
   bootstrapped: false,
   loading: false,
   error: null,
@@ -669,21 +736,35 @@ export const useLiveStore = create<LiveState>((set, get) => {
           reviews,
           reviewDetails: {},
         }),
+        ...(() => {
+          const opsChipsByAsset = refreshOpsChipsByAsset(
+            {},
+            hydrated.telemetryStatus,
+            hydrated.telemetryBySource,
+          );
+          return {
+            opsChipsByAsset,
+            opsSummary: refreshOpsSummary(EMPTY_OPS_SUMMARY, opsChipsByAsset),
+          };
+        })(),
         bootstrapped: true,
         loading: false,
         error: null,
       });
 
-      const active = reviews.filter((r) => r.state !== "closed");
-      await Promise.all(
-        active.slice(0, 12).map(async (r) => {
-          try {
-            await get().loadReviewDetail(r.id);
-          } catch {
-            /* best-effort */
-          }
-        }),
-      );
+      const active = reviews.filter((r) => r.state !== "closed").slice(0, 12);
+      for (let i = 0; i < active.length; i += 3) {
+        const chunk = active.slice(i, i + 3);
+        await Promise.all(
+          chunk.map(async (r) => {
+            try {
+              await get().loadReviewDetail(r.id);
+            } catch {
+              /* best-effort */
+            }
+          }),
+        );
+      }
     } catch (err) {
       set({
         loading: false,
@@ -701,13 +782,38 @@ export const useLiveStore = create<LiveState>((set, get) => {
     }
   },
 
+  setThresholdsConfig: (config) => {
+    const state = get();
+    set({
+      thresholdsConfig: config,
+      sensorCriticalByAsset: buildSensorCriticalMap(state.assets, {
+        ...state,
+        thresholdsConfig: config,
+      }),
+    });
+  },
+
+  refreshThresholds: async () => {
+    try {
+      const config = await fetchThresholds();
+      get().setThresholdsConfig(config);
+      return config;
+    } catch {
+      const fallback = DEFAULT_THRESHOLDS;
+      get().setThresholdsConfig(fallback);
+      return fallback;
+    }
+  },
+
   loadNotifications: async () => {
     try {
       const notifications = await fetchNotifications();
       const existing = new Set(get().notifications.map((n) => n.id));
-      const incomingUnread = notifications
-        .filter((n) => !existing.has(n.id) && isAlertNotification(n))
-        .map((n) => n.id);
+      const incomingUnread = isDndEnabled()
+        ? []
+        : notifications
+            .filter((n) => !existing.has(n.id) && isAlertNotification(n))
+            .map((n) => n.id);
       set((state) => ({
         notifications,
         unreadNotificationIds: [
@@ -760,6 +866,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
       telemetryBySource: {},
       telemetryStatus: [],
       sensorCriticalByAsset: {},
+      opsChipsByAsset: {},
+      opsSummary: EMPTY_OPS_SUMMARY,
     });
   },
 
@@ -801,6 +909,27 @@ export const useLiveStore = create<LiveState>((set, get) => {
     return review;
   },
 
+  reopenReview: async (id, reason = "") => {
+    const review = await postReopenReview(id, reason);
+    await get().loadReviewDetail(id);
+    await get().refreshOverview();
+    return review;
+  },
+
+  escalateReview: async (id, reason = "") => {
+    const review = await postEscalateReview(id, reason);
+    await get().loadReviewDetail(id);
+    await get().refreshOverview();
+    return review;
+  },
+
+  deEscalateReview: async (id, reason = "") => {
+    const review = await postDeEscalateReview(id, reason);
+    await get().loadReviewDetail(id);
+    await get().refreshOverview();
+    return review;
+  },
+
   retryAssessment: async (id, provider) => {
     await postRetryAssessment(id, provider);
     await get().loadReviewDetail(id);
@@ -815,6 +944,37 @@ export const useLiveStore = create<LiveState>((set, get) => {
   },
 
   handleRealtimeEvent: (type, payload) => {
+    if (type.startsWith("task.")) {
+      const reviewId =
+        typeof payload.review_id === "string" ? payload.review_id : null;
+      set((state) => ({
+        taskEventSeq: state.taskEventSeq + 1,
+        boardEventSeq: state.boardEventSeq + 1,
+      }));
+      if (reviewId) {
+        void get().loadReviewDetail(reviewId).catch(() => {});
+      }
+      return;
+    }
+
+    if (
+      type === "review.status_changed" ||
+      type === "decision.submitted" ||
+      type === "assessment.completed" ||
+      type === "assessment.failed"
+    ) {
+      set((state) => ({ boardEventSeq: state.boardEventSeq + 1 }));
+    }
+
+    if (type === "comment.created") {
+      const rid =
+        typeof payload.review_id === "string" ? (payload.review_id as string) : null;
+      set((state) => ({
+        commentEventSeq: state.commentEventSeq + 1,
+        lastCommentReviewId: rid,
+      }));
+      return;
+    }
     if (type === "agent.step") {
       const step = asAgentStep(payload);
       if (step) {
@@ -895,6 +1055,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
       void get().loadReviewDetail(reviewId).catch(() => {});
     }
     if (
+      !isDndEnabled() &&
       type === "review.status_changed" &&
       reviewId &&
       payload.state === "assessing" &&
@@ -916,15 +1077,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
             n,
             ...state.notifications.filter((x) => x.id !== n.id),
           ].slice(0, NOTIFICATION_CAP);
-          const unreadNotificationIds = isAlertNotification(n)
-            ? [n.id, ...state.unreadNotificationIds.filter((x) => x !== n.id)]
-            : state.unreadNotificationIds.filter((x) => x !== n.id);
+          const unreadNotificationIds =
+            !isDndEnabled() && isAlertNotification(n)
+              ? [n.id, ...state.unreadNotificationIds.filter((x) => x !== n.id)]
+              : state.unreadNotificationIds.filter((x) => x !== n.id);
           return {
             notifications,
             unreadNotificationIds,
           };
         });
-        if (presentNotification(n).toastable) {
+        if (!isDndEnabled() && presentNotification(n).toastable) {
           showNotificationToast(n, {
             onClear: () => get().dismissNotification(n.id),
             onOpen: n.review_id
@@ -1025,6 +1187,53 @@ export function useSensorCritical(assetId: string | null | undefined): boolean {
   return useLiveStore((s) =>
     assetId ? (s.sensorCriticalByAsset[assetId] ?? false) : false,
   );
+}
+
+export type AssetTelemetrySlice = {
+  series: Record<TelemetryMetricKey, TelemetryPoint[] | undefined>;
+  latest: TelemetrySample | undefined;
+  status: TelemetryStatusChip[];
+};
+
+function assetTelemetryRevision(
+  state: Pick<
+    LiveState,
+    "telemetrySeries" | "telemetryStatus" | "telemetryLatest"
+  >,
+  assetId: string,
+): string {
+  const metricSig = NUMERIC_METRICS.map((key) => {
+    const pts = state.telemetrySeries[ringKey(assetId, key)];
+    const last = pts?.[pts.length - 1];
+    return last ? `${last.t}:${last.v}:${pts.length}` : `:${pts?.length ?? 0}`;
+  }).join(";");
+  const statusSig = state.telemetryStatus
+    .filter((c) => c.asset_id === assetId)
+    .map((c) => `${c.category}:${c.label}:${c.ts}`)
+    .join("|");
+  const latest = state.telemetryLatest[assetId];
+  const latestSig = latest ? `${latest.ts}:${latest.category}` : "";
+  return `${metricSig}|${statusSig}|${latestSig}`;
+}
+
+/** One subscription for all metric rings + status chips on an asset. */
+export function useAssetTelemetrySlice(assetId: string): AssetTelemetrySlice {
+  const revision = useLiveStore((s) => assetTelemetryRevision(s, assetId));
+  return useMemo(() => {
+    const s = useLiveStore.getState();
+    const series = {} as Record<
+      TelemetryMetricKey,
+      TelemetryPoint[] | undefined
+    >;
+    for (const key of NUMERIC_METRICS) {
+      series[key] = s.telemetrySeries[ringKey(assetId, key)];
+    }
+    return {
+      series,
+      latest: s.telemetryLatest[assetId],
+      status: s.telemetryStatus.filter((c) => c.asset_id === assetId),
+    };
+  }, [assetId, revision]);
 }
 
 export function findViewByAssetId(
