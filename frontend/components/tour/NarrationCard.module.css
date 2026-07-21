@@ -1,0 +1,49 @@
+.card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3, 12px);
+  padding: var(--space-5, 20px);
+  border-radius: var(--radius-xl, 12px);
+  background: var(--surface-card);
+  border: 1px solid var(--border-default);
+  box-shadow:
+    var(--shadow-md, 0 4px 12px rgba(0, 0, 0, 0.28)),
+    0 0 0 1px color-mix(in srgb, var(--accent-ai) 22%, transparent),
+    0 12px 40px color-mix(in srgb, #000 45%, transparent);
+}
+
+.masthead {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2, 8px);
+}
+
+.mask {
+  font-size: var(--text-md, 0.9375rem);
+  line-height: 1;
+}
+
+.act {
+  font-family: var(--font-label);
+  font-size: var(--text-2xs, 0.6875rem);
+  font-weight: var(--weight-semibold, 600);
+  letter-spacing: var(--tracking-label, 0.06em);
+  text-transform: uppercase;
+  color: var(--accent-ai);
+}
+
+.title {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: var(--text-xl, 1.1875rem);
+  font-weight: var(--weight-bold, 700);
+  line-height: var(--leading-tight, 1.25);
+  color: var(--text-primary);
+}
+
+.body {
+  margin: 0;
+  font-size: var(--text-sm, 0.875rem);
+  line-height: var(--leading-relaxed, 1.55);
+  color: var(--text-secondary);
+}

@@ -8,6 +8,7 @@ import { AppShell } from "@/components/nav/AppShell";
 import { AppToaster } from "@/components/notifications/AppToaster";
 import { RealtimeProvider } from "@/components/RealtimeProvider";
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
+import { TourOverlay } from "@/components/tour/TourOverlay";
 import { DEFAULT_THEME, THEME_STORAGE_KEY } from "@/lib/theme";
 
 const satoshi = localFont({
@@ -101,6 +102,7 @@ export default function RootLayout({
           <RealtimeProvider>
             <AppShell>{children}</AppShell>
             <AppToaster />
+            <TourOverlay />
           </RealtimeProvider>
         </ThemeProvider>
       </body>

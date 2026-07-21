@@ -9,6 +9,10 @@
   --drawer-width: 380px;
   --drawer-width-expanded: 720px;
 
+  /* Stacking — the guided tour sits above all app chrome (nav, menus,
+     ShiftGate, toasts top out around 9999). No other z-index scale exists. */
+  --z-tour: 10000;
+
   /* Spacing (4px base) */
   --space-1: 4px;
   --space-2: 8px;

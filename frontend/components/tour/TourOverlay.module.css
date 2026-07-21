@@ -1,0 +1,52 @@
+.root {
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-tour, 10000);
+  /* The backdrop layer intercepts clicks; the card re-enables pointer events. */
+  pointer-events: none;
+}
+
+.cardAnchor {
+  position: fixed;
+  pointer-events: auto;
+  animation: tour-card-in var(--duration-slow, 400ms) var(--ease-out) both;
+}
+
+@keyframes tour-card-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px) scale(0.98);
+  }
+}
+
+/* Side placements travel from the anchor; keep their own transform when set
+   inline (top/left placement uses translate to sit above the target). */
+.cardAnchor[data-placement="center"] {
+  animation-name: tour-card-in-center;
+}
+
+@keyframes tour-card-in-center {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -46%) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cardAnchor {
+    animation: tour-fade-in var(--duration-normal, 200ms) ease both;
+  }
+  .cardAnchor[data-placement="center"] {
+    animation-name: none;
+  }
+}
+
+@keyframes tour-fade-in {
+  from {
+    opacity: 0;
+  }
+}

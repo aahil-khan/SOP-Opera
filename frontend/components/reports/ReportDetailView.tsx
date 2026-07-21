@@ -179,14 +179,17 @@ function Panel({
   title,
   count,
   children,
+  anchor,
 }: {
   id: string;
   title: string;
   count?: number;
   children: React.ReactNode;
+  /** Optional data-tour value so the guided tour can spotlight this panel. */
+  anchor?: string;
 }) {
   return (
-    <section id={id} className={styles.panel}>
+    <section id={id} className={styles.panel} data-tour={anchor}>
       <div className={styles.panelHeader}>
         <h2 className={styles.panelTitle}>{title}</h2>
         {count != null && <span className={styles.panelCount}>{count}</span>}
@@ -676,6 +679,7 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
               id="audit"
               title="Audit trail"
               count={auditTrail.length}
+              anchor="audit-chain"
             >
               <span
                 className={styles.chainChip}

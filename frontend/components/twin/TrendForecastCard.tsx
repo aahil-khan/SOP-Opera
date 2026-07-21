@@ -30,7 +30,11 @@ export function TrendForecastCard({
     forecast.rSquared != null;
 
   return (
-    <section className={styles.root} aria-labelledby="trend-forecast-heading">
+    <section
+      className={styles.root}
+      aria-labelledby="trend-forecast-heading"
+      data-tour="forecast"
+    >
       <header className={styles.header}>
         <span className={styles.eyebrow}>ML forecast</span>
         <h3 id="trend-forecast-heading" className={styles.title}>

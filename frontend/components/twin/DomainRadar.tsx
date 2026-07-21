@@ -316,7 +316,12 @@ export function DomainRadar({ view }: DomainRadarProps) {
   }, [pinned]);
 
   return (
-    <section className={styles.root} ref={rootRef} aria-label="Domain overview">
+    <section
+      className={styles.root}
+      ref={rootRef}
+      aria-label="Domain overview"
+      data-tour="domain-radar"
+    >
       <div className={styles.sectionHead}>
         <h3 className={styles.sectionTitle}>Domains</h3>
       </div>

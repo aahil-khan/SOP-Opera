@@ -516,6 +516,7 @@ export function DigitalTwin() {
         className={styles.stage}
         data-affected-inset={sidebarOpen ? "true" : undefined}
         data-resizing={sidebarResizing ? "true" : undefined}
+        data-tour="twin-map"
       >
         {viewMode === "overview" ? (
           <FloorOverview

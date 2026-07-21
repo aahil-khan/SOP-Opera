@@ -1,0 +1,69 @@
+/* Full-screen dim used for centered act cards (no element to reveal). */
+.fullDim {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  background: color-mix(in srgb, #000 62%, transparent);
+  backdrop-filter: blur(1.5px);
+  animation: dim-in var(--duration-normal, 200ms) var(--ease-out) both;
+}
+
+/*
+ * The spotlight cutout. A single giant spread shadow dims everything outside
+ * the box; the box itself stays clear. pointer-events:auto so the dimmed area
+ * still swallows clicks, but the transparent center lets the user see the
+ * highlighted feature underneath.
+ */
+.blocker {
+  position: fixed;
+  inset: 0;
+  pointer-events: auto;
+  background: transparent;
+}
+
+.hole {
+  position: fixed;
+  pointer-events: none;
+  border-radius: var(--radius-lg, 8px);
+  box-shadow:
+    0 0 0 9999px color-mix(in srgb, #000 62%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--accent-ai) 70%, transparent),
+    0 0 22px 4px color-mix(in srgb, var(--accent-ai) 45%, transparent);
+  transition:
+    top var(--duration-normal, 200ms) var(--ease-out),
+    left var(--duration-normal, 200ms) var(--ease-out),
+    width var(--duration-normal, 200ms) var(--ease-out),
+    height var(--duration-normal, 200ms) var(--ease-out);
+  animation: halo-pulse 2.4s ease-in-out infinite;
+}
+
+@keyframes dim-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes halo-pulse {
+  0%,
+  100% {
+    box-shadow:
+      0 0 0 9999px color-mix(in srgb, #000 62%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--accent-ai) 70%, transparent),
+      0 0 22px 4px color-mix(in srgb, var(--accent-ai) 40%, transparent);
+  }
+  50% {
+    box-shadow:
+      0 0 0 9999px color-mix(in srgb, #000 62%, transparent),
+      0 0 0 2px color-mix(in srgb, var(--accent-ai) 90%, transparent),
+      0 0 30px 7px color-mix(in srgb, var(--accent-ai) 60%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .hole {
+    animation: none;
+  }
+  .fullDim {
+    backdrop-filter: none;
+  }
+}

@@ -78,7 +78,7 @@ export function HandoverView() {
   // A settled handover is history — the next shift change starts a fresh one.
   if (!handover || settled) {
     return (
-      <div className={styles.page}>
+      <div className={styles.page} data-tour="handover">
         <PageHeader />
         {error && <p className={styles.error}>{error}</p>}
         <IdleHero loading={handoverLoading} />
@@ -100,7 +100,7 @@ export function HandoverView() {
   const outstanding = handover.required_total - handover.required_cleared;
 
   return (
-    <div className={styles.page}>
+    <div className={styles.page} data-tour="handover">
       <PageHeader role={role} />
       {error && <p className={styles.error}>{error}</p>}
 

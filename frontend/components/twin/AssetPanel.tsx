@@ -498,6 +498,7 @@ export function AssetPanel({
         <div
           className={styles.footer}
           data-single-action={assessmentInProgress || reviewClosed ? "true" : undefined}
+          data-tour="decision"
         >
           {!assessmentInProgress && !reviewClosed && (
             <button
