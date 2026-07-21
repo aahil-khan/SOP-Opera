@@ -316,6 +316,8 @@ interface LiveState {
   boardEventSeq: number;
   /** WebSocket-driven comment change signal for review threads. */
   commentEventSeq: number;
+  /** Closure-report freeze signal for the /reports register. */
+  reportEventSeq: number;
   lastCommentReviewId: string | null;
   /** Client-side unread ids (bootstrap history starts as read). */
   unreadNotificationIds: string[];
@@ -640,6 +642,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
     taskEventSeq: 0,
     boardEventSeq: 0,
     commentEventSeq: 0,
+    reportEventSeq: 0,
     lastCommentReviewId: null,
   notifications: [],
   unreadNotificationIds: [],
@@ -1030,6 +1033,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
         scheduleOverviewRefresh();
       }
       return;
+    }
+
+    if (type === "report.generated") {
+      set((state) => ({ reportEventSeq: state.reportEventSeq + 1 }));
     }
 
     const reviewId =

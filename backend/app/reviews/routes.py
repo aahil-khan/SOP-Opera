@@ -13,6 +13,7 @@ from app.assessment.orchestrator import enqueue_for_review
 from app.assessment.schemas import AssessmentOut, RetryIn
 from app.core.config import get_settings
 from app.db.session import get_session
+from app.reports.schemas import ReportSummaryOut
 from app.reviews.repository import (
     create_review,
     get_review,
@@ -472,7 +473,8 @@ async def close_review(
 async def get_review_reports(
     review_id: UUID,
     session: AsyncSession = Depends(get_session),
-) -> list[dict]:
+) -> list[ReportSummaryOut]:
+    """Version history for one review, newest first."""
     if await get_review(session, review_id) is None:
         raise HTTPException(status_code=404, detail="Review not found")
     from app.reports.service import list_reports_for_review

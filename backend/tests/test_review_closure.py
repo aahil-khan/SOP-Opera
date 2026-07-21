@@ -54,16 +54,31 @@ async def test_close_generates_one_report_and_increments_seq(client: AsyncClient
     close1 = await client.post(f"/reviews/{review_id}/close")
     assert close1.status_code == 200, close1.text
 
+    # /reviews/{id}/reports lists version *summaries*; the packet itself is on
+    # GET /reports/{id}.
     reports = await client.get(f"/reviews/{review_id}/reports")
     assert reports.status_code == 200
     body = reports.json()
     assert len(body) == 1
     assert body[0]["closure_event_seq"] == 1
-    content = body[0]["content"]
-    assert content["title"]
+    assert body[0]["version_label"] == "v1"
+    assert body[0]["is_current"] is True
+    assert body[0]["outcome"] == "blocked"
+
+    v1_id = body[0]["id"]
+    v1 = (await client.get(f"/reports/{v1_id}")).json()
+    assert v1["packet_version"] == 2
+    content = v1["content"]
+    assert content["header"]["title"]
     assert content["decision"]["outcome"] == "blocked"
-    assert content["evidence"]["frozen_assessment_id"]
-    assert content["assessment_snapshot"]["risk_level"]
+    assert content["assessment"]["risk_level"]
+    # The whole point of the rework: built from the decision-time snapshot.
+    assert content["meta"]["built_from"] == "frozen_evidence"
+    assert content["evidence"]["source"] == "frozen"
+    # And the freeze is verifiable.
+    assert v1["integrity"]["content_hash_status"] == "match"
+    v1_hash = v1["content_hash"]
+    assert v1_hash
 
     # Reopen → reassess → decide → close again should bump seq
     reopen = await client.post(
@@ -80,10 +95,25 @@ async def test_close_generates_one_report_and_increments_seq(client: AsyncClient
     close2 = await client.post(f"/reviews/{review_id}/close")
     assert close2.status_code == 200, close2.text
 
-    reports2 = await client.get(f"/reviews/{review_id}/reports")
-    assert len(reports2.json()) == 2
-    seqs = {r["closure_event_seq"] for r in reports2.json()}
-    assert seqs == {1, 2}
+    reports2 = (await client.get(f"/reviews/{review_id}/reports")).json()
+    assert len(reports2) == 2
+    assert {r["closure_event_seq"] for r in reports2} == {1, 2}
+
+    by_seq = {r["closure_event_seq"]: r for r in reports2}
+    assert by_seq[2]["is_current"] is True
+    assert by_seq[1]["is_current"] is False
+
+    # v1 must be byte-identical to what it was before the reopen. Reopening a
+    # closed review mints a new version; it never rewrites the frozen one.
+    v1_again = (await client.get(f"/reports/{v1_id}")).json()
+    assert v1_again["content_hash"] == v1_hash
+    assert v1_again["integrity"]["content_hash_status"] == "match"
+    assert v1_again["is_current"] is False
+    assert v1_again["superseded_by_report_id"] == by_seq[2]["id"]
+
+    v2 = (await client.get(f"/reports/{by_seq[2]['id']}")).json()
+    assert v2["supersedes_report_id"] == v1_id
+    assert len(v2["versions"]) == 2
 
 
 @pytest.mark.asyncio

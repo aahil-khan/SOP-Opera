@@ -145,12 +145,266 @@ export interface Asset {
   floor: "ground" | "first" | "second";
 }
 
+/**
+ * The frozen content of one closure report.
+ *
+ * Typed rather than `Record<string, unknown>` so the UI never has to defensively
+ * `String()`-cast Postgres output into prose. Mirrors `ReportPacket` in
+ * `backend/app/reports/packet.py` — the two are hand-kept in sync.
+ */
+export type PacketSource = "frozen" | "live" | "unavailable";
+
+export interface PacketPerson {
+  id?: string | null;
+  name: string;
+  role?: string | null;
+}
+
+export interface PacketAsset {
+  id: string;
+  name: string;
+  zone: string;
+  plant_id: string;
+  floor: string;
+}
+
+export interface PacketMeta {
+  packet_version: number;
+  report_id: string | null;
+  review_id: string;
+  closure_event_seq: number;
+  version_label: string;
+  report_ref: string;
+  supersedes_report_id: string | null;
+  frozen_at: string | null;
+  closed_by: string | null;
+  generator: string;
+  hash_algorithm: string;
+  evidence_id: string | null;
+  snapshot_hash: string | null;
+  /** frozen_evidence | live_fallback | legacy_v1 | unreadable_v2 */
+  built_from: string;
+  audit_tail_seq: number | null;
+}
+
+export interface PacketHeader {
+  title: string;
+  asset: PacketAsset;
+  review_state: string;
+  origin: string | null;
+  triggered_by: string | null;
+  opened_at: string | null;
+  closed_at: string | null;
+  duration_seconds: number | null;
+  owner: PacketPerson | null;
+  area_owner: PacketPerson | null;
+  raised_by: PacketPerson | null;
+  tagged_workers: PacketPerson[];
+  supervisor_report: {
+    description?: string | null;
+    concern_type?: string | null;
+  } | null;
+  outcome_headline: string;
+  risk_headline: string;
+}
+
+export interface PacketDisposition {
+  recommendation_id: string | null;
+  text: string;
+  rationale: string | null;
+  disposition: string | null;
+}
+
+export interface PacketDecision {
+  id: string;
+  outcome: string;
+  outcome_label: string;
+  conditions: string | null;
+  comments: string | null;
+  decided_by: PacketPerson | null;
+  submitted_at: string | null;
+  assessment_id: string | null;
+  time_to_decision_seconds: number | null;
+  dispositions: PacketDisposition[];
+}
+
+export interface PacketAssessment {
+  source: PacketSource;
+  id: string | null;
+  version: number | null;
+  assessment_type: string | null;
+  status: string | null;
+  risk_level: string | null;
+  summary: string | null;
+  created_at: string | null;
+  provider: string | null;
+  model: string | null;
+  confidence: number | null;
+  retrieval_mode: string | null;
+  retrieval_quality: string | null;
+  latency_ms: number | null;
+  cost_usd: number | null;
+  tokens_in: number | null;
+  tokens_out: number | null;
+  failure_reason: string | null;
+}
+
+export interface PacketFact {
+  id: string | null;
+  fact_type: string;
+  label: string;
+  value: unknown;
+  computed_at: string | null;
+  source_context_ids: string[];
+}
+
+export interface PacketContextEntry {
+  id: string | null;
+  category: string;
+  category_label: string;
+  /** One line of plain English — render this, not the payload. */
+  summary_line: string;
+  provider: string | null;
+  valid_from: string | null;
+  valid_until: string | null;
+  confidence: number | null;
+  payload: Record<string, unknown>;
+}
+
+export interface PacketEvidence {
+  source: PacketSource;
+  note: string | null;
+  snapshot_hash: string | null;
+  captured_at: string | null;
+  entries: PacketContextEntry[];
+}
+
+export interface PacketCitation {
+  source: string | null;
+  id: string | null;
+  code: string | null;
+  clause: string | null;
+  title: string | null;
+  snippet: string | null;
+  source_url: string | null;
+  cited_in_summary: boolean;
+}
+
+export interface PacketCitations {
+  source: PacketSource;
+  references: PacketCitation[];
+  cited: string[];
+  unsupported: string[];
+  ok: boolean;
+}
+
+export interface PacketTask {
+  id: string;
+  task_type: string;
+  title: string;
+  detail: string | null;
+  status: string;
+  assigned_worker_name: string | null;
+  created_by: string | null;
+  created_at: string | null;
+  acknowledged_at: string | null;
+  done_at: string | null;
+  done_note: string | null;
+}
+
+export interface PacketTasks {
+  source: PacketSource;
+  total: number;
+  open: number;
+  acknowledged: number;
+  done: number;
+  cancelled: number;
+  items: PacketTask[];
+}
+
+export interface PacketComment {
+  id: string;
+  author_kind: string | null;
+  author_name: string | null;
+  body: string;
+  created_at: string | null;
+}
+
+export interface PacketAuditEntry {
+  seq: number | null;
+  recorded_at: string | null;
+  entity_type: string | null;
+  event_type: string;
+  event_label: string;
+  actor: string | null;
+  prev_hash: string | null;
+  entry_hash: string | null;
+}
+
+export interface PacketTimelineEvent {
+  ts: string | null;
+  label: string;
+  actor: string | null;
+  detail: string | null;
+}
+
+export interface ReportPacket {
+  meta: PacketMeta;
+  header: PacketHeader;
+  decision: PacketDecision | null;
+  assessment: PacketAssessment | null;
+  reasoning_factors: Record<string, unknown>[];
+  recommendations: PacketDisposition[];
+  facts: PacketFact[];
+  evidence: PacketEvidence;
+  citations: PacketCitations;
+  tasks: PacketTasks;
+  discussion: PacketComment[];
+  audit_trail: PacketAuditEntry[];
+  timeline: PacketTimelineEvent[];
+}
+
+/**
+ * Whether the packet still is what it was when frozen. Recomputed on every read
+ * — an integrity claim frozen at write time proves nothing about the period since.
+ */
+export interface ReportIntegrity {
+  content_hash_stored: string | null;
+  content_hash_recomputed: string | null;
+  content_hash_status: "match" | "mismatch" | "not_recorded";
+  snapshot_hash: string | null;
+  chain_intact: boolean;
+  chain_entries_checked: number;
+  chain_breaks: Record<string, unknown>[];
+  verified_at: string | null;
+}
+
+export interface ReportVersionRef {
+  id: string;
+  closure_event_seq: number;
+  version_label: string;
+  generated_at: string;
+  is_current: boolean;
+  outcome: string | null;
+  content_hash: string | null;
+}
+
 export interface Report {
   id: string;
   review_id: string;
   closure_event_seq: number;
-  content: Record<string, unknown>;
+  version_label: string;
+  is_current: boolean;
+  packet_version: number;
+  supersedes_report_id: string | null;
+  superseded_by_report_id: string | null;
   generated_at: string;
+  frozen_at: string | null;
+  closed_by: string | null;
+  content_hash: string | null;
+  content: ReportPacket;
+  integrity: ReportIntegrity;
+  versions: ReportVersionRef[];
 }
 
 export interface Notification {

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { NotificationCenter } from "@/components/notifications/NotificationCenter";
@@ -13,6 +13,9 @@ import styles from "./SupervisorNav.module.css";
 
 export function SupervisorNav() {
   const router = useRouter();
+  const pathname = usePathname();
+  const onReports = pathname.startsWith("/reports");
+  const onSupervisor = pathname.startsWith("/supervisor");
   // Cookie is only available in the browser — start null so SSR and the
   // first client render match, then hydrate from the cookie after mount.
   const [actor, setActor] = useState<Actor | null>(null);
@@ -38,9 +41,16 @@ export function SupervisorNav() {
       </Link>
 
       <div className={styles.tabs} role="tablist">
-        <span className={styles.tab} data-active="true">
+        <Link
+          href="/supervisor"
+          className={styles.tab}
+          data-active={onSupervisor}
+        >
           Supervisor
-        </span>
+        </Link>
+        <Link href="/reports" className={styles.tab} data-active={onReports}>
+          Reports
+        </Link>
       </div>
 
       <span className={styles.spacer} />

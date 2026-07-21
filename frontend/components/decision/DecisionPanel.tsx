@@ -375,7 +375,7 @@ function ClosedReportLink({
         <p className={styles.hint}>
           Closure report ready —{" "}
           <Link href={`/reports/${report.id}`} className={styles.reportLink}>
-            {(report.content?.title as string) ??
+            {report.content?.header?.title ??
               `Report #${report.closure_event_seq}`}
           </Link>
         </p>

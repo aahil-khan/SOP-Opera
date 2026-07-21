@@ -256,6 +256,19 @@ async def transition_review(
             outcome=str((extra_payload or {}).get("outcome") or "unknown"),
         )
 
+    # Freeze the closure report inside this transaction, not after it. Generating
+    # it post-commit meant a failure here left a `closed` review with no report
+    # and nothing to retry; now the close either happens with its packet or does
+    # not happen at all.
+    report_id: UUID | None = None
+    report_seq: int | None = None
+    if new_state == "closed":
+        from app.reports.service import freeze_report_on_closure
+
+        report_id, report_seq = await freeze_report_on_closure(
+            session, updated, actor=actor
+        )
+
     await session.commit()
     await manager.broadcast(
         "review.status_changed",
@@ -286,7 +299,14 @@ async def transition_review(
         demo_controller.mark_review_closed(
             review_id=updated.id, asset_id=updated.asset_id
         )
-        from app.reports.service import generate_report_on_closure
+        # Announced only once the freeze is durable, and always after
+        # review.status_changed so the UI sees the states in order.
+        if report_id is not None and report_seq is not None:
+            from app.reports.service import broadcast_report_generated
 
-        await generate_report_on_closure(session, updated)
+            await broadcast_report_generated(
+                report_id=report_id,
+                review_id=updated.id,
+                closure_event_seq=report_seq,
+            )
     return updated

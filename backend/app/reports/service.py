@@ -1,327 +1,313 @@
-"""Report generation on review closure."""
+"""
+Closure reports — one immutable, versioned audit packet per close event.
+
+Freeze rule: a report is frozen at `closed` and never mutated afterwards.
+Reopening a closed review does not touch its report; the next close mints a new
+version that *supersedes* the previous one. `is_current` is derived from the
+highest sequence number per review rather than stored, so superseding v1 never
+writes to v1.
+
+The packet is now written inside the closing transaction (see
+`reviews/repository.py::transition_review`). Previously the close committed first
+and report generation ran afterwards in its own transaction, so a failure in
+between left a `closed` review with no report and nothing to retry it. Doing both
+in one unit of work makes the failure mode "the close did not happen", which the
+operator can simply repeat.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
 from datetime import datetime, timezone
+from typing import Any, Mapping
 from uuid import UUID
 
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.audit.service import record_audit
+from app.audit.service import record_audit, verify_audit_chain
 from app.realtime.connection_manager import manager
-from shared.python.schemas import Review
+from app.reports import repository as repo
+from app.reports.packet import (
+    PACKET_VERSION,
+    ReportPacket,
+    build_packet,
+    hydrate_packet,
+    normalize_content,
+    packet_hash,
+    report_ref,
+    version_label,
+)
+from app.reports.schemas import (
+    ReportIntegrity,
+    ReportOut,
+    ReportSummaryOut,
+    ReportVersionRef,
+)
 
 logger = logging.getLogger(__name__)
 
 
-def _iso(value: object) -> str | None:
-    if value is None:
-        return None
-    if hasattr(value, "isoformat"):
-        return value.isoformat()  # type: ignore[no-any-return]
-    return str(value)
+class ReportGenerationError(RuntimeError):
+    """Raised when a closure report cannot be frozen."""
 
 
-async def generate_report_on_closure(
-    session: AsyncSession, review: Review
-) -> UUID:
-    """Build and persist a closure report. Caller owns the transaction context."""
-    asset_result = await session.execute(
-        text(
-            """
-            SELECT id, name, zone, plant_id, floor FROM assets
-            WHERE id = CAST(:id AS uuid)
-            """
-        ),
-        {"id": str(review.asset_id)},
-    )
-    asset_row = asset_result.first()
-    asset = (
-        {
-            "id": str(asset_row._mapping["id"]),
-            "name": asset_row._mapping["name"],
-            "zone": asset_row._mapping["zone"],
-            "plant_id": asset_row._mapping["plant_id"],
-            "floor": asset_row._mapping["floor"] or "ground",
-        }
-        if asset_row
-        else {
-            "id": str(review.asset_id),
-            "name": "unknown",
-            "zone": "unknown",
-            "plant_id": "unknown",
-            "floor": "ground",
-        }
+async def freeze_report_on_closure(
+    session: AsyncSession, review, *, actor: str
+) -> tuple[UUID, int]:
+    """
+    Build and persist the frozen packet for one closure.
+
+    Does not commit and does not broadcast — the caller owns both, so that the
+    state change and the report land atomically and no client is told about a
+    report that was rolled back.
+    """
+    closure_event_seq = await repo.next_closure_seq(session, review.id)
+    supersedes = await repo.latest_report_id(session, review.id)
+    frozen_at = datetime.now(timezone.utc)
+
+    packet: ReportPacket = await build_packet(
+        session,
+        review,
+        actor=actor,
+        closure_event_seq=closure_event_seq,
+        supersedes_report_id=supersedes,
+        frozen_at=frozen_at,
     )
 
-    seq_result = await session.execute(
-        text(
-            """
-            SELECT COUNT(*) AS n FROM reports
-            WHERE review_id = CAST(:review_id AS uuid)
-            """
-        ),
-        {"review_id": str(review.id)},
-    )
-    closure_event_seq = int(seq_result.scalar_one()) + 1
+    content = normalize_content(packet.model_dump(mode="json"))
+    content_hash = packet_hash(content)
 
-    assessment_result = await session.execute(
-        text(
-            """
-            SELECT a.id, a.risk_level, a.summary, a.version,
-                   m.provider, m.retrieval_mode, m.retrieval_quality, m.confidence
-            FROM assessments a
-            LEFT JOIN assessment_metadata m ON m.assessment_id = a.id
-            WHERE a.review_id = CAST(:review_id AS uuid)
-              AND a.status = 'complete'
-            ORDER BY a.version DESC, a.created_at DESC
-            LIMIT 1
-            """
-        ),
-        {"review_id": str(review.id)},
-    )
-    assessment_row = assessment_result.first()
-    recommendations: list[dict] = []
-    assessment_snapshot: dict | None = None
-    if assessment_row:
-        am = assessment_row._mapping
-        recs = await session.execute(
-            text(
-                """
-                SELECT id, text, rationale, disposition
-                FROM recommendations
-                WHERE assessment_id = CAST(:aid AS uuid)
-                ORDER BY id
-                """
-            ),
-            {"aid": str(am["id"])},
+    try:
+        report_id = await repo.insert_report(
+            session,
+            review_id=review.id,
+            closure_event_seq=closure_event_seq,
+            content=content,
+            content_hash=content_hash,
+            packet_version=PACKET_VERSION,
+            supersedes_report_id=supersedes,
+            closed_by=actor,
+            frozen_at=frozen_at,
+            evidence_id=UUID(packet.meta.evidence_id) if packet.meta.evidence_id else None,
+            snapshot_hash=packet.meta.snapshot_hash,
         )
-        recommendations = [
-            {
-                "id": str(r._mapping["id"]),
-                "text": r._mapping["text"],
-                "rationale": r._mapping["rationale"],
-                "disposition": r._mapping["disposition"],
-            }
-            for r in recs.fetchall()
-        ]
-        assessment_snapshot = {
-            "id": str(am["id"]),
-            "risk_level": am["risk_level"],
-            "summary": am["summary"],
-            "version": am["version"],
-            "recommendations": recommendations,
-            "metadata": {
-                "provider": am["provider"],
-                "retrieval_mode": am["retrieval_mode"],
-                "retrieval_quality": am["retrieval_quality"],
-                "confidence": am["confidence"],
-            },
-        }
-
-    decision_result = await session.execute(
-        text(
-            """
-            SELECT id, assessment_id, decided_by, outcome, conditions, comments, submitted_at
-            FROM decisions
-            WHERE review_id = CAST(:review_id AS uuid)
-            ORDER BY submitted_at DESC
-            LIMIT 1
-            """
-        ),
-        {"review_id": str(review.id)},
-    )
-    decision_row = decision_result.first()
-    decision_snap: dict | None = None
-    if decision_row:
-        dm = decision_row._mapping
-        decision_snap = {
-            "id": str(dm["id"]),
-            "assessment_id": str(dm["assessment_id"]),
-            "decided_by": str(dm["decided_by"]),
-            "outcome": dm["outcome"],
-            "conditions": dm["conditions"],
-            "comments": dm.get("comments"),
-            "submitted_at": _iso(dm["submitted_at"]),
-        }
-
-    evidence_result = await session.execute(
-        text(
-            """
-            SELECT id, decision_id, frozen_context_ids, frozen_assessment_id, captured_at
-            FROM evidence
-            WHERE review_id = CAST(:review_id AS uuid)
-            ORDER BY captured_at DESC
-            LIMIT 1
-            """
-        ),
-        {"review_id": str(review.id)},
-    )
-    evidence_row = evidence_result.first()
-    evidence_snap: dict | None = None
-    if evidence_row:
-        em = evidence_row._mapping
-        evidence_snap = {
-            "id": str(em["id"]),
-            "decision_id": str(em["decision_id"]),
-            "frozen_context_ids": [str(x) for x in (em["frozen_context_ids"] or [])],
-            "frozen_assessment_id": str(em["frozen_assessment_id"]),
-            "captured_at": _iso(em["captured_at"]),
-        }
-
-    now = datetime.now(timezone.utc)
-    outcome = decision_snap["outcome"] if decision_snap else "unknown"
-    title = f"Closure Report — {asset['name']} ({outcome.replace('_', ' ')})"
-    content = {
-        "title": title,
-        "asset": asset,
-        "assessment_snapshot": assessment_snapshot,
-        "decision": decision_snap,
-        "evidence": evidence_snap,
-        "closure_event_seq": closure_event_seq,
-        "generated_at": now.isoformat(),
-        "review": {
-            "id": str(review.id),
-            "state": review.state,
-            "triggered_by": review.triggered_by,
-            "owner_id": str(review.owner_id),
-        },
-    }
-
-    insert = await session.execute(
-        text(
-            """
-            INSERT INTO reports (review_id, closure_event_seq, content)
-            VALUES (
-                CAST(:review_id AS uuid),
-                :seq,
-                CAST(:content AS jsonb)
-            )
-            RETURNING id, generated_at
-            """
-        ),
-        {
-            "review_id": str(review.id),
-            "seq": closure_event_seq,
-            "content": json.dumps(content),
-        },
-    )
-    rm = insert.one()._mapping
-    report_id = rm["id"]
+    except Exception as exc:  # pragma: no cover - surfaced as a 500 by the route
+        raise ReportGenerationError(
+            f"Could not freeze closure report for review {review.id}: {exc}"
+        ) from exc
 
     await record_audit(
         session,
         entity_type="report",
         entity_id=report_id,
         event_type="report.generated",
-        actor="system:closure",
+        actor=actor,
         payload={
             "review_id": str(review.id),
             "closure_event_seq": closure_event_seq,
-            "outcome": outcome,
+            "outcome": packet.decision.outcome if packet.decision else None,
+            "content_hash": content_hash,
+            "supersedes_report_id": str(supersedes) if supersedes else None,
+            "built_from": packet.meta.built_from,
         },
     )
 
-    # Notify on close (deterministic template).
     from app.notifications.service import notify_review_closed
 
-    await notify_review_closed(
-        session, review_id=review.id, owner_id=review.owner_id
+    await notify_review_closed(session, review_id=review.id, owner_id=review.owner_id)
+
+    logger.info(
+        "report %s frozen for review %s (seq=%d, built_from=%s)",
+        report_id,
+        review.id,
+        closure_event_seq,
+        packet.meta.built_from,
     )
+    return report_id, closure_event_seq
 
-    await session.commit()
 
+async def broadcast_report_generated(
+    *, report_id: UUID, review_id: UUID, closure_event_seq: int
+) -> None:
     await manager.broadcast(
         "report.generated",
         {
             "report_id": str(report_id),
-            "review_id": str(review.id),
+            "review_id": str(review_id),
             "closure_event_seq": closure_event_seq,
         },
     )
-    logger.info(
-        "report %s generated for review %s (seq=%d)",
-        report_id,
-        review.id,
-        closure_event_seq,
-    )
-    return report_id
 
 
-def _row_to_out(m: object) -> dict:
-    mapping = m  # type: ignore[assignment]
-    content = mapping["content"]  # type: ignore[index]
-    if isinstance(content, str):
-        content = json.loads(content)
-    return {
-        "id": str(mapping["id"]),  # type: ignore[index]
-        "review_id": str(mapping["review_id"]),  # type: ignore[index]
-        "closure_event_seq": mapping["closure_event_seq"],  # type: ignore[index]
-        "content": content,
-        "generated_at": _iso(mapping["generated_at"]),  # type: ignore[index]
-    }
+# --------------------------------------------------------------------------
+# Reads
+# --------------------------------------------------------------------------
+
+def _content_of(row: Mapping) -> dict:
+    raw = row.get("content")
+    if isinstance(raw, str):
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+    return raw or {}
 
 
-def _to_summary(row_dict: dict) -> dict:
-    content = row_dict.get("content") or {}
-    asset = content.get("asset") or {}
-    decision = content.get("decision") or {}
-    assessment = content.get("assessment_snapshot") or {}
-    return {
-        "id": row_dict["id"],
-        "review_id": row_dict["review_id"],
-        "closure_event_seq": row_dict["closure_event_seq"],
-        "generated_at": row_dict["generated_at"],
-        "title": content.get("title"),
-        "asset_name": asset.get("name"),
-        "outcome": decision.get("outcome"),
-        "risk_level": assessment.get("risk_level"),
-    }
-
-
-async def list_reports(session: AsyncSession) -> list[dict]:
-    result = await session.execute(
-        text(
-            """
-            SELECT id, review_id, closure_event_seq, content, generated_at
-            FROM reports
-            ORDER BY generated_at DESC
-            """
+def _version_refs(rows: list[dict[str, Any]]) -> list[ReportVersionRef]:
+    return [
+        ReportVersionRef(
+            id=r["id"],
+            closure_event_seq=int(r["closure_event_seq"]),
+            version_label=version_label(int(r["closure_event_seq"])),
+            generated_at=r["generated_at"],
+            is_current=bool(r.get("is_current")),
+            outcome=((_content_of(r).get("decision") or {}) or {}).get("outcome"),
+            content_hash=r.get("content_hash"),
         )
+        for r in rows
+    ]
+
+
+async def get_report(session: AsyncSession, report_id: UUID) -> ReportOut | None:
+    row = await repo.select_report(session, report_id)
+    if row is None:
+        return None
+
+    raw = _content_of(row)
+    packet = hydrate_packet(raw, row=row)
+    versions_rows = await repo.select_versions_for_review(session, row["review_id"])
+    versions = _version_refs(versions_rows)
+
+    # The successor is derived, never stored: writing a `superseded_by` back onto
+    # v1 would mean mutating an already-frozen row.
+    seq = int(row["closure_event_seq"])
+    successor = next(
+        (v.id for v in versions if v.closure_event_seq == seq + 1),
+        None,
     )
-    return [_to_summary(_row_to_out(row._mapping)) for row in result.fetchall()]
+
+    stored_hash = row.get("content_hash")
+    recomputed = packet_hash(raw) if stored_hash else None
+    if not stored_hash:
+        status = "not_recorded"
+    elif recomputed == stored_hash:
+        status = "match"
+    else:
+        status = "mismatch"
+
+    chain = await verify_audit_chain(session, entity_id=row["review_id"])
+    chain_dict = chain.as_dict()
+
+    return ReportOut(
+        id=row["id"],
+        review_id=row["review_id"],
+        closure_event_seq=seq,
+        version_label=version_label(seq),
+        is_current=bool(row.get("is_current")),
+        packet_version=int(row.get("packet_version") or 1),
+        supersedes_report_id=row.get("supersedes_report_id"),
+        superseded_by_report_id=successor,
+        generated_at=row["generated_at"],
+        frozen_at=row.get("frozen_at"),
+        closed_by=row.get("closed_by"),
+        content_hash=stored_hash,
+        content=packet,
+        integrity=ReportIntegrity(
+            content_hash_stored=stored_hash,
+            content_hash_recomputed=recomputed,
+            content_hash_status=status,  # type: ignore[arg-type]
+            snapshot_hash=row.get("snapshot_hash"),
+            chain_intact=bool(chain_dict.get("intact")),
+            chain_entries_checked=int(chain_dict.get("entries_checked") or 0),
+            chain_breaks=list(chain_dict.get("breaks") or []),
+            verified_at=datetime.now(timezone.utc),
+        ),
+        versions=versions,
+    )
+
+
+def _to_summary(row: Mapping) -> ReportSummaryOut:
+    content = _content_of(row)
+    seq = int(row["closure_event_seq"])
+    review_id = row["review_id"]
+
+    # v2 shape first; fall back to the v1 keys so old rows still list.
+    header = content.get("header") or {}
+    asset = header.get("asset") or content.get("asset") or {}
+    decision = content.get("decision") or {}
+    assessment = content.get("assessment") or content.get("assessment_snapshot") or {}
+    evidence = content.get("evidence") or {}
+    citations = content.get("citations") or {}
+    tasks = content.get("tasks") or {}
+    decided_by = decision.get("decided_by") or {}
+
+    return ReportSummaryOut(
+        id=row["id"],
+        review_id=review_id,
+        closure_event_seq=seq,
+        version_label=version_label(seq),
+        report_ref=(content.get("meta") or {}).get("report_ref")
+        or report_ref(review_id, seq),
+        is_current=bool(row.get("is_current")),
+        packet_version=int(row.get("packet_version") or 1),
+        generated_at=row["generated_at"],
+        frozen_at=row.get("frozen_at"),
+        closed_by=row.get("closed_by"),
+        title=header.get("title") or content.get("title"),
+        asset_name=asset.get("name"),
+        asset_zone=asset.get("zone"),
+        outcome=decision.get("outcome"),
+        outcome_label=decision.get("outcome_label"),
+        risk_level=assessment.get("risk_level"),
+        decided_by_name=decided_by.get("name"),
+        open_tasks=int(tasks.get("open") or 0),
+        citation_count=len(citations.get("references") or []),
+        evidence_count=len(evidence.get("entries") or []),
+        content_hash=row.get("content_hash"),
+    )
+
+
+async def list_reports(
+    session: AsyncSession,
+    *,
+    review_id: UUID | None = None,
+    include_superseded: bool = False,
+    outcome: str | None = None,
+    risk_level: str | None = None,
+    limit: int = 200,
+    offset: int = 0,
+) -> list[ReportSummaryOut]:
+    rows = await repo.select_reports(
+        session,
+        review_id=review_id,
+        include_superseded=include_superseded,
+        outcome=outcome,
+        risk_level=risk_level,
+        limit=limit,
+        offset=offset,
+    )
+    return [_to_summary(r) for r in rows]
 
 
 async def list_reports_for_review(
     session: AsyncSession, review_id: UUID
-) -> list[dict]:
-    result = await session.execute(
-        text(
-            """
-            SELECT id, review_id, closure_event_seq, content, generated_at
-            FROM reports
-            WHERE review_id = CAST(:review_id AS uuid)
-            ORDER BY closure_event_seq DESC
-            """
-        ),
-        {"review_id": str(review_id)},
-    )
-    return [_row_to_out(row._mapping) for row in result.fetchall()]
+) -> list[ReportSummaryOut]:
+    """Full version history for one review, newest first."""
+    rows = await repo.select_versions_for_review(session, review_id)
+    return [_to_summary(r) for r in reversed(rows)]
 
 
-async def get_report(session: AsyncSession, report_id: UUID) -> dict | None:
-    result = await session.execute(
-        text(
-            """
-            SELECT id, review_id, closure_event_seq, content, generated_at
-            FROM reports
-            WHERE id = CAST(:id AS uuid)
-            """
-        ),
-        {"id": str(report_id)},
+async def load_packets(
+    session: AsyncSession, *, include_superseded: bool = False
+) -> list[ReportOut]:
+    """Hydrated packets for the cross-review analyst export."""
+    rows = await repo.select_reports(
+        session, include_superseded=include_superseded, limit=1000
     )
-    row = result.first()
-    return _row_to_out(row._mapping) if row else None
+    out: list[ReportOut] = []
+    for row in rows:
+        report = await get_report(session, row["id"])
+        if report is not None:
+            out.append(report)
+    return out
