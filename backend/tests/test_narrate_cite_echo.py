@@ -45,7 +45,7 @@ def _base_state(**overrides) -> AgentState:
         "spatial_links": [],
         "trend_forecasts": [],
         "incident_echoes": [],
-        "shift_handover_note": None,
+        "carried_handover_items": [],
         "verdict": None,
         "grounded_fact_types": [],
         "provider_name": "mock",

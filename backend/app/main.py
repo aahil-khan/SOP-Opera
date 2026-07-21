@@ -81,7 +81,7 @@ from app.reports.routes import router as reports_router  # noqa: E402
 from app.notifications.routes import router as notifications_router  # noqa: E402
 from app.ai_ops.routes import router as ai_ops_router  # noqa: E402
 from app.graph.routes import router as graph_router  # noqa: E402
-from app.agents.routes import router as agents_router  # noqa: E402
+from app.handover.routes import router as handover_router  # noqa: E402
 from app.config.routes import router as config_router  # noqa: E402
 from app.eval.routes import router as eval_router  # noqa: E402
 from app.context.ingest_routes import router as ingest_router  # noqa: E402
@@ -98,7 +98,7 @@ app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(ai_ops_router)
 app.include_router(graph_router)
-app.include_router(agents_router)
+app.include_router(handover_router)
 app.include_router(config_router)
 app.include_router(eval_router)
 app.include_router(ingest_router)

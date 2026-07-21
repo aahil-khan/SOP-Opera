@@ -13,6 +13,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import run_agent_assessment
+from app.handover.repository import fetch_unacknowledged_for_asset
 from app.agents.routing import should_load_plant_neighborhood
 from app.ai_ops.events import record_ai_ops_event
 from app.assessment.orchestrator import PROMPT_VERSION
@@ -526,6 +527,30 @@ async def run_assessment_job(
                 for e in plant_views
             ]
 
+        # Handover carry-forward for the Shift Handover Agent. Loaded here rather
+        # than in the node because graph nodes are pure — they never touch the DB.
+        carried_handover_items = [
+            {
+                "id": str(row["id"]),
+                "handover_id": str(row["handover_id"]),
+                "title": row["title"],
+                "detail": row.get("detail"),
+                "risk_level": row.get("risk_level"),
+                "item_type": row.get("item_type"),
+                "incoming_actor_name": row.get("incoming_actor_name"),
+                "outgoing_actor_name": row.get("outgoing_actor_name"),
+                "hours_outstanding": (
+                    (datetime.now(timezone.utc) - row["issued_at"]).total_seconds()
+                    / 3600.0
+                    if row.get("issued_at")
+                    else None
+                ),
+            }
+            for row in await fetch_unacknowledged_for_asset(
+                session, asset_id=review.asset_id
+            )
+        ]
+
         generation = None
         agent_trace: list = []
         spatial_links: list = []
@@ -549,6 +574,7 @@ async def run_assessment_job(
                     retrieved_references=enriched_refs,
                     provider_name=provider_name,
                     plant_context_entries=plant_context_entries,
+                    carried_handover_items=carried_handover_items,
                 )
                 last_error = None
                 break

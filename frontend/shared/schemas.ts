@@ -161,3 +161,90 @@ export interface Notification {
   recipient_ids: string[];
   created_at: string;
 }
+
+/**
+ * Shift handover — a custody transfer between panel operators.
+ *
+ * A handover is `draft` while the outgoing operator edits it, `issued` once
+ * handed to the incoming operator, and `accepted` only after every item marked
+ * `requires_ack` has been acknowledged or queried. `expired` marks one that was
+ * superseded before it was accepted — its pending items are the gaps.
+ */
+export type HandoverState = "draft" | "issued" | "accepted" | "expired";
+
+export type HandoverItemType =
+  | "open_review"
+  | "active_fact"
+  | "open_task"
+  | "decision_condition"
+  | "note";
+
+export type HandoverAckState = "pending" | "acknowledged" | "queried";
+
+/** Whether the brief prose came from a model or the deterministic template. */
+export type HandoverNarrationMode = "llm" | "deterministic";
+
+export interface HandoverItem {
+  id: string;
+  item_type: HandoverItemType;
+  position: number;
+  review_id: string | null;
+  asset_id: string | null;
+  asset_name: string | null;
+  task_id: string | null;
+  title: string;
+  detail: string | null;
+  risk_level: string;
+  hazard_dimensions: string[];
+  requires_ack: boolean;
+  ack_state: HandoverAckState;
+  ack_note: string | null;
+  acknowledged_by: string | null;
+  acknowledged_by_name: string | null;
+  acknowledged_at: string | null;
+  source: "auto" | "manual";
+}
+
+export interface Handover {
+  id: string;
+  state: HandoverState;
+  outgoing_actor_id: string;
+  outgoing_actor_name: string;
+  incoming_actor_id: string;
+  incoming_actor_name: string;
+  window_start: string;
+  window_end: string;
+  brief: string | null;
+  narration_mode: HandoverNarrationMode;
+  issued_at: string | null;
+  accepted_at: string | null;
+  created_at: string;
+  items: HandoverItem[];
+  required_total: number;
+  required_cleared: number;
+  attention_asset_id: string | null;
+  /** Which side of this handover the requester is on; supervisors are observers. */
+  viewer_role: "outgoing" | "incoming" | "observer";
+}
+
+export interface HandoverGap {
+  handover_id: string;
+  item_id: string;
+  asset_id: string | null;
+  asset_name: string | null;
+  title: string;
+  risk_level: string;
+  incoming_actor_name: string;
+  issued_at: string | null;
+  hours_outstanding: number;
+}
+
+export interface HandoverMetrics {
+  handovers_total: number;
+  handovers_accepted: number;
+  required_items_total: number;
+  required_items_cleared: number;
+  coverage_pct: number;
+  median_ack_minutes: number | null;
+  unacknowledged_crossings: number;
+}

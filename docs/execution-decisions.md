@@ -57,7 +57,7 @@ The most important technical question judges will ask.
 | Layer | Responsibility |
 | --- | --- |
 | **Rules (deterministic tools)** | Produce facts — thirteen rules spanning process, people, and environment. Agents call these; they do not invent safety facts. |
-| **LangGraph agents** | SCADA / Permit / Maintenance / Workforce / Spatial / Incident Pattern / Shift Handover → Orchestrator fuses into compound verdict |
+| **LangGraph agents** | SCADA / Permit / Maintenance / Workforce / Spatial / Shift Handover run pre-verdict (their facts reach the gate) → Orchestrator fuses into compound verdict → Incident Pattern enriches on elevated/blocking |
 | **Knowledge graph** | Asset–permit–zone relationships + spatial radius (NEAR / ABOVE) |
 | **Retrieval (hybrid)** | RAG (pgvector) + quality gate + deterministic SQL fallback for regs / SOPs / incidents |
 | **LangSmith** | Optional per-agent traces, latency, tokens, cost (AI Ops) |

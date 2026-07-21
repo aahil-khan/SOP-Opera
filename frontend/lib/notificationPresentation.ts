@@ -153,6 +153,22 @@ export function presentNotification(n: Notification): NotificationPresentation {
         severity: "info",
         toastable: false,
       };
+    case "handover.issued":
+      return {
+        label: "Handover",
+        title: "Shift handover issued to you",
+        detail: n.summary,
+        severity: "warning",
+        toastable: true,
+      };
+    case "handover.accepted":
+      return {
+        label: "Handover",
+        title: "Your handover was accepted",
+        detail: n.summary,
+        severity: "info",
+        toastable: false,
+      };
     default:
       return {
         label: "Update",
@@ -169,6 +185,9 @@ export function notificationOpenHref(
   n: Notification,
   actorKind: "user" | "worker" | string | null | undefined,
 ): string | null {
+  if (n.event_type.startsWith("handover.")) {
+    return "/handover";
+  }
   if (!n.review_id) return null;
   if (actorKind === "worker") {
     return `/supervisor?review=${n.review_id}`;

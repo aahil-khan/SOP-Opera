@@ -9,7 +9,7 @@ import pytest
 
 from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.agents.nodes.incident_pattern import incident_pattern_agent
-from app.agents.nodes.shift_handover import _mock_brief, shift_handover_agent
+from app.agents.nodes.shift_handover import shift_handover_agent
 from app.agents.state import AgentState
 from shared.python.schemas import DerivedFact
 
@@ -39,7 +39,7 @@ def _base_state(**overrides) -> AgentState:
         "agent_trace": [],
         "spatial_links": [],
         "incident_echoes": [],
-        "shift_handover_note": None,
+        "carried_handover_items": [],
         "verdict": None,
         "grounded_fact_types": [],
         "provider_name": "mock",
@@ -103,22 +103,49 @@ async def test_incident_pattern_uses_retrieved_refs():
     assert out["incident_echoes"][0]["retrieval_path"] == "rag"
 
 
+CARRIED = [
+    {
+        "id": str(uuid4()),
+        "handover_id": str(uuid4()),
+        "title": "Vessel A - review pending decision",
+        "risk_level": "blocking",
+        "item_type": "open_review",
+        "incoming_actor_name": "Arun (Panel Operator - B)",
+        "hours_outstanding": 9.5,
+    }
+]
+
+
 @pytest.mark.asyncio
-async def test_shift_handover_in_graph_note():
-    out = await shift_handover_agent(_base_state(fact_types=["elevated_gas", "zone_occupied"]))
-    assert out["shift_handover_note"]
-    assert "elevated_gas" in out["shift_handover_note"]
+async def test_shift_handover_reports_unacknowledged_carry_forward():
+    out = await shift_handover_agent(_base_state(carried_handover_items=CARRIED))
+    obs = out["observations"][0]
+    assert obs["fact_types"] == ["unacknowledged_handover"]
+    assert obs["local_risk"] == "elevated"
+    assert "Arun" in obs["observation"]
+    assert "never been acknowledged" in obs["observation"]
+    assert obs["detail"]["carried_count"] == 1
 
 
-def test_mock_brief_structure():
-    brief = _mock_brief(
-        asset_summaries=["Vessel A [sensor] gas_reading=25"],
-        open_reviews=["Vessel A state=pending_decision"],
-        active_facts=["Vessel A:elevated_gas"],
-        window_hours=12,
-    )
-    assert "Shift Safety Brief" in brief
-    assert "elevated_gas" in brief
+@pytest.mark.asyncio
+async def test_shift_handover_reports_nothing_when_carry_forward_is_clear():
+    """A clear handover must not emit the signal, or every asset looks stale."""
+    out = await shift_handover_agent(_base_state(carried_handover_items=[]))
+    obs = out["observations"][0]
+    assert obs["fact_types"] == []
+    assert obs["local_risk"] == "nominal"
+
+
+@pytest.mark.asyncio
+async def test_shift_handover_ranks_worst_carried_item_first():
+    carried = [
+        {**CARRIED[0], "risk_level": "elevated", "title": "lower risk"},
+        {**CARRIED[0], "risk_level": "blocking", "title": "worst item"},
+    ]
+    out = await shift_handover_agent(_base_state(carried_handover_items=carried))
+    obs = out["observations"][0]
+    assert "worst item" in obs["observation"]
+    assert obs["detail"]["carried_count"] == 2
 
 
 @pytest.mark.asyncio
@@ -161,6 +188,7 @@ async def test_full_graph_includes_incident_and_handover():
         ],
         retrieved_references=[],
         provider_name="mock",
+        carried_handover_items=CARRIED,
     )
     agents = {s["agent"] for s in trace}
     assert "incident_pattern" in agents

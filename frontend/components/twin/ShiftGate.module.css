@@ -81,3 +81,30 @@
 .skip:hover {
   color: var(--text-primary);
 }
+
+.brief {
+  margin: 0 0 var(--space-3);
+  padding: var(--space-3);
+  border: 1px solid color-mix(in srgb, var(--accent-ai) 28%, var(--border-muted));
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent-ai) 6%, var(--surface-canvas));
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+}
+
+.idle {
+  margin: 0;
+  padding: var(--space-5) 0;
+  text-align: center;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+/* Says why the primary action is unavailable, instead of a silent disabled button. */
+.blockedReason {
+  margin: 0;
+  margin-right: auto;
+  font-size: var(--text-xs);
+  color: var(--status-elevated);
+}

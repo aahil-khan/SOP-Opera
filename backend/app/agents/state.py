@@ -37,8 +37,9 @@ class AgentState(TypedDict):
     trend_forecasts: list[dict[str, Any]]
     # Incident Pattern Agent echoes
     incident_echoes: list[dict[str, Any]]
-    # Shift handover note from in-graph agent
-    shift_handover_note: str | None
+    # Unacknowledged handover items on this asset, preloaded by the pipeline (it
+    # holds the session) so the shift-handover node stays pure like every other.
+    carried_handover_items: list[dict[str, Any]]
     # Final structured assessment (orchestrator fills)
     verdict: dict[str, Any] | None
     grounded_fact_types: list[str]  # rule-tool confirmed facts used for BLOCK

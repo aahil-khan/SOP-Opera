@@ -16,6 +16,15 @@ logger = logging.getLogger(__name__)
 DEPT_ID = "dddddddd-dddd-dddd-dddd-dddddddddddd"
 OWNER_ID = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
 
+# Panel operators hold the twin and hand custody to each other at shift change.
+# The supervisor (OWNER_ID) decides; nobody hands a decision-maker a shift, so
+# the handover parties are these two rather than the supervisor.
+# (id, name, role)
+OPERATORS = [
+    ("bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb", "Meera (Panel Operator · A)", "panel_operator"),
+    ("cccccccc-cccc-cccc-cccc-cccccccccccc", "Arun (Panel Operator · B)", "panel_operator"),
+]
+
 # (id, name, zone, floor)
 ASSETS = [
     # Ground floor — existing plant process areas
@@ -183,6 +192,19 @@ async def seed_minimal(session: AsyncSession | None = None) -> None:
                 "role": "decision_maker",
             },
         )
+
+        for operator_id, operator_name, operator_role in OPERATORS:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO users (id, name, role)
+                    VALUES (CAST(:id AS uuid), :name, :role)
+                    ON CONFLICT (id) DO UPDATE
+                      SET name = EXCLUDED.name, role = EXCLUDED.role
+                    """
+                ),
+                {"id": operator_id, "name": operator_name, "role": operator_role},
+            )
 
         for worker_id, name, certs in WORKERS:
             await session.execute(

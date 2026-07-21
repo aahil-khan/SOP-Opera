@@ -31,6 +31,7 @@ from app.agents.routing import (
     select_source_agents,
     should_run_enrichment,
     should_run_predictive_trend,
+    should_run_shift_handover,
     should_run_spatial,
 )
 from app.agents.state import AgentState
@@ -66,6 +67,10 @@ def _fan_out_analysis(state: AgentState) -> list[Send]:
         sends.append(Send("spatial", state))
     if should_run_predictive_trend(state):
         sends.append(Send("predictive_trend", state))
+    # Pre-verdict, unlike the enrichment agents: an unacknowledged carry-forward
+    # is an input to the risk policy, so it has to reach the orchestrator.
+    if should_run_shift_handover(state):
+        sends.append(Send("shift_handover", state))
     if not sends:
         sends.append(Send("join_analysis", state))
     return sends
@@ -73,10 +78,7 @@ def _fan_out_analysis(state: AgentState) -> list[Send]:
 
 def _fan_out_enrichment(state: AgentState) -> list[Send] | Any:
     if should_run_enrichment(state):
-        return [
-            Send("incident_pattern", state),
-            Send("shift_handover", state),
-        ]
+        return [Send("incident_pattern", state)]
     return END
 
 
@@ -104,18 +106,18 @@ def build_graph():
     builder.add_conditional_edges(
         "join_sources",
         _fan_out_analysis,
-        ["spatial", "predictive_trend", "join_analysis"],
+        ["spatial", "predictive_trend", "shift_handover", "join_analysis"],
     )
     builder.add_edge("spatial", "join_analysis")
     builder.add_edge("predictive_trend", "join_analysis")
+    builder.add_edge("shift_handover", "join_analysis")
     builder.add_edge("join_analysis", "orchestrator")
     builder.add_conditional_edges(
         "orchestrator",
         _fan_out_enrichment,
-        ["incident_pattern", "shift_handover", END],
+        ["incident_pattern", END],
     )
     builder.add_edge("incident_pattern", END)
-    builder.add_edge("shift_handover", END)
     return builder.compile()
 
 
@@ -170,6 +172,7 @@ async def run_agent_assessment(
     retrieved_references: list[RetrievedReference],
     provider_name: str | None = None,
     plant_context_entries: list[dict[str, Any]] | None = None,
+    carried_handover_items: list[dict[str, Any]] | None = None,
 ) -> tuple[
     ProviderGeneration,
     list[dict[str, Any]],
@@ -207,7 +210,7 @@ async def run_agent_assessment(
         "spatial_links": [],
         "trend_forecasts": [],
         "incident_echoes": [],
-        "shift_handover_note": None,
+        "carried_handover_items": list(carried_handover_items or []),
         "verdict": None,
         "grounded_fact_types": [],
         "provider_name": _provider_override,

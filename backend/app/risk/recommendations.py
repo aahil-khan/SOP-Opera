@@ -78,6 +78,10 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
         "Increase monitoring and pre-stage isolation before thresholds are crossed.",
         "OLS trend projects a threshold crossing inside the forecast window.",
     ),
+    "unacknowledged_handover": (
+        "Walk this hazard through with the outgoing operator and acknowledge the handover item before authorizing work.",
+        "A hazard on this asset crossed a shift boundary without the incoming operator acknowledging it.",
+    ),
     "supervisor_safety_hazard": (
         "Treat as an active safety hazard — verify controls and hold work until the operator decides.",
         "A supervisor reported an immediate safety concern from the floor.",

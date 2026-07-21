@@ -117,9 +117,22 @@ def should_run_predictive_trend(state: dict[str, Any]) -> bool:
 
 
 def should_run_enrichment(state: dict[str, Any]) -> bool:
-    """Run incident/handover only when the orchestrator verdict is elevated or blocking."""
+    """Run incident pattern only when the orchestrator verdict is elevated or blocking."""
     verdict = state.get("verdict") or {}
     return verdict.get("risk_level") in ("elevated", "blocking")
+
+
+def should_run_shift_handover(state: dict[str, Any]) -> bool:
+    """
+    Run the handover check only when this asset actually carried something.
+
+    Unlike the other analysis agents this gate reads preloaded DB rows rather
+    than facts, because the question — did the incoming operator ever read this
+    hazard — has no answer in the telemetry. The node runs pre-verdict, so an
+    empty carry-forward must skip it rather than emit a nominal observation the
+    orchestrator would then have to narrate.
+    """
+    return bool(state.get("carried_handover_items"))
 
 
 def should_load_plant_neighborhood(
@@ -144,5 +157,6 @@ __all__ = [
     "should_load_plant_neighborhood",
     "should_run_enrichment",
     "should_run_predictive_trend",
+    "should_run_shift_handover",
     "should_run_spatial",
 ]

@@ -373,3 +373,76 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding
 -- more than one worker process a supervisor's "retry with provider X" could be
 -- read by a process that never saw it. It belongs on the job.
 ALTER TABLE assessments ADD COLUMN IF NOT EXISTS provider_override TEXT;
+
+-- Shift handover — a custody transfer between panel operators.
+--
+-- The incident premise this product is built on is information that existed but
+-- never reached the person who could act on it, and the shift boundary is where
+-- that fails most often. A handover is therefore an accountable act like a
+-- decision: a named outgoing operator issues a carry-forward list to a named
+-- incoming operator, who must acknowledge every high-risk item before taking
+-- custody. Audit entries for it are hash-chained like everything else.
+CREATE TABLE IF NOT EXISTS handovers (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    -- Actors are polymorphic (users | workers, see auth/schemas.ActorMeOut), so
+    -- these cannot be foreign keys. The name is snapshotted for the same reason
+    -- evidence snapshots context: a later roster edit must not rewrite who was
+    -- accountable at the moment custody changed hands.
+    outgoing_actor_id UUID NOT NULL,
+    outgoing_actor_name TEXT NOT NULL,
+    outgoing_actor_kind TEXT NOT NULL DEFAULT 'user',
+    incoming_actor_id UUID NOT NULL,
+    incoming_actor_name TEXT NOT NULL,
+    incoming_actor_kind TEXT NOT NULL DEFAULT 'user',
+    state TEXT NOT NULL DEFAULT 'draft', -- draft | issued | accepted | expired
+    window_start TIMESTAMPTZ NOT NULL,
+    window_end TIMESTAMPTZ NOT NULL,
+    brief TEXT,
+    narration_mode TEXT NOT NULL DEFAULT 'deterministic', -- llm | deterministic
+    issued_at TIMESTAMPTZ,
+    accepted_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS handover_items (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    handover_id UUID NOT NULL REFERENCES handovers(id) ON DELETE CASCADE,
+    position INT NOT NULL DEFAULT 0,
+    -- open_review | active_fact | open_task | decision_condition | note
+    item_type TEXT NOT NULL,
+    -- The item snapshots its own title/detail, so these are links, not the
+    -- record. ON DELETE SET NULL keeps the handover intact if the referenced
+    -- row is ever removed (there is no such path in production; this matters
+    -- only for test cleanup, which deletes reviews wholesale).
+    review_id UUID REFERENCES reviews(id) ON DELETE SET NULL,
+    asset_id UUID REFERENCES assets(id) ON DELETE SET NULL,
+    task_id UUID REFERENCES review_tasks(id) ON DELETE SET NULL,
+    title TEXT NOT NULL,
+    detail TEXT,
+    risk_level TEXT NOT NULL DEFAULT 'nominal',
+    hazard_dimensions TEXT[] NOT NULL DEFAULT '{}',
+    requires_ack BOOLEAN NOT NULL DEFAULT FALSE,
+    ack_state TEXT NOT NULL DEFAULT 'pending', -- pending | acknowledged | queried
+    ack_note TEXT,
+    acknowledged_by UUID,
+    acknowledged_by_name TEXT,
+    acknowledged_at TIMESTAMPTZ,
+    source TEXT NOT NULL DEFAULT 'auto', -- auto | manual
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_handover_items_handover ON handover_items(handover_id);
+CREATE INDEX IF NOT EXISTS idx_handover_items_asset ON handover_items(asset_id);
+CREATE INDEX IF NOT EXISTS idx_handovers_state ON handovers(state);
+
+-- At most one handover in flight at a time. Two operators ending their shift
+-- concurrently would otherwise each compose a list from the same window and
+-- split custody in half, with neither list complete.
+--
+-- `(state IS NOT NULL)` is `true` for every row (state is NOT NULL), so this is
+-- a unique index over a single constant value restricted to active rows — i.e.
+-- "at most one". A bare constant is not a legal index expression, hence the
+-- roundabout predicate.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_handovers_active
+    ON handovers((state IS NOT NULL))
+    WHERE state IN ('draft', 'issued');

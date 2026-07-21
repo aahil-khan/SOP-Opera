@@ -48,7 +48,7 @@ const AGENT_ROLES: Record<string, string> = {
   predictive_trend: "Projects sensor trends toward thresholds",
   spatial: "Correlates nearby hazards by distance/floor",
   incident_pattern: "Matches known incident patterns",
-  shift_handover: "Reads shift handover notes",
+  shift_handover: "Checks carry-forward from the previous shift",
   orchestrator: "Synthesizes findings into a verdict",
   sim_orchestrator: "Synthesizes findings into a verdict",
 };
@@ -80,7 +80,7 @@ const PIPELINE_PHASES: {
     id: "analysis",
     title: "Analysis",
     blurb: "Neighborhood & forecast",
-    agents: ["spatial", "predictive_trend"],
+    agents: ["spatial", "predictive_trend", "shift_handover"],
   },
   {
     id: "verdict",
@@ -92,7 +92,7 @@ const PIPELINE_PHASES: {
     id: "enrichment",
     title: "Enrichment",
     blurb: "Post-verdict context",
-    agents: ["incident_pattern", "shift_handover"],
+    agents: ["incident_pattern"],
   },
 ];
 

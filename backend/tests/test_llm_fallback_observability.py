@@ -34,7 +34,7 @@ def _base_state(**overrides) -> AgentState:
         "agent_trace": [],
         "spatial_links": [],
         "incident_echoes": [],
-        "shift_handover_note": None,
+        "carried_handover_items": [],
         "verdict": None,
         "grounded_fact_types": [],
         "provider_name": "openai_compatible",

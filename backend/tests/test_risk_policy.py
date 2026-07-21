@@ -190,3 +190,39 @@ def test_dimensions_for_is_additive():
 def test_is_blocking_compound_matches_classify():
     facts = ["elevated_gas", "incomplete_isolation", "zone_occupied"]
     assert is_blocking_compound(facts) is classify(facts).is_blocking
+
+
+# --- Unacknowledged handover ------------------------------------------------
+#
+# A hazard that crossed a shift boundary unread is a barrier failure, but the
+# barrier is paperwork. It must escalate and must never block, or a missed
+# acknowledgement could stop the plant with no sensor supporting it.
+
+
+def test_unacknowledged_handover_escalates_nominal_to_elevated():
+    v = classify(["unacknowledged_handover"])
+    assert v.level == "elevated"
+    assert v.triggered_rule == "unacknowledged_handover"
+    assert "unacknowledged_handover" in v.signals
+
+
+def test_unacknowledged_handover_alone_never_blocks():
+    v = classify(["unacknowledged_handover"])
+    assert not v.is_blocking
+    assert not v.grounded_facts
+
+
+def test_unacknowledged_handover_cannot_complete_a_pathway():
+    """It supplies no hazard dimension, so it cannot stand in for a failed control."""
+    with_gap = classify(["elevated_gas", "over_temperature", "unacknowledged_handover"])
+    without = classify(["elevated_gas", "over_temperature"])
+    assert with_gap.level == without.level
+    assert with_gap.dimensions == without.dimensions
+
+
+def test_unacknowledged_handover_is_reported_alongside_a_grounded_block():
+    v = classify(["critical_gas", "unacknowledged_handover"])
+    assert v.is_blocking
+    assert v.triggered_rule == "single_sensor_critical"
+    assert "crossed a shift boundary unacknowledged" in v.rationale
+    assert "unacknowledged_handover" not in v.grounded_facts
