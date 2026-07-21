@@ -138,18 +138,26 @@ def scenario_timeline_cases(scenario_name: str) -> list[EvalCase]:
 
 # --- Parameter sweep --------------------------------------------------------
 
+# One representative per band, with the boundary value itself used for the
+# critical band rather than a value comfortably above it. Sampling exactly on a
+# threshold is deliberate. An
+# off-by-one between the rule engine and the statutory criteria (`>` vs `>=`) is
+# invisible unless the sweep samples the boundary, and one was hiding here: gas
+# at exactly the action level with personnel present was a silent false negative.
 GAS_LEVELS: tuple[tuple[str, float], ...] = (
     ("clean", 8.0),
     ("low", 15.0),
+    ("action-exact", 20.0),
     ("elevated", 25.0),
     ("high", 42.0),
-    ("critical", 55.0),
+    ("critical-exact", 50.0),
 )
 TRAJECTORIES: tuple[str, ...] = ("flat", "rising")
 TEMP_LEVELS: tuple[tuple[str, float], ...] = (
     ("normal", 60.0),
+    ("elevated-exact", 80.0),
     ("elevated", 90.0),
-    ("critical", 130.0),
+    ("critical-exact", 120.0),
 )
 
 # Mutually exclusive permit configurations: (name, [(permit_id, work_type)], isolated_ids)

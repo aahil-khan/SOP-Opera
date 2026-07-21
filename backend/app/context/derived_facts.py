@@ -56,7 +56,11 @@ def rule_elevated_gas(
         for e in entries
         if e.category == "sensor"
         and isinstance(e.payload.get("gas_reading"), (int, float))
-        and float(e.payload["gas_reading"]) > threshold
+        # At-or-above: an action level of 20 ppm means act *at* 20 ppm. This was
+        # `>`, which disagreed with rule_critical_gas (`>=`) and with the statutory
+        # criteria in eval/hazard_ground_truth.py, so a reading exactly on the
+        # threshold was a silent false negative.
+        and float(e.payload["gas_reading"]) >= threshold
     ]
     if not hits:
         return None
@@ -274,7 +278,8 @@ def rule_over_temperature(
         for e in entries
         if e.category == "sensor"
         and isinstance(e.payload.get("temp_reading"), (int, float))
-        and float(e.payload["temp_reading"]) > threshold
+        # At-or-above, matching rule_critical_temperature and the ground truth.
+        and float(e.payload["temp_reading"]) >= threshold
     ]
     if not hits:
         return None

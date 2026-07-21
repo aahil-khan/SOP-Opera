@@ -190,3 +190,58 @@ def test_dimensions_for_is_additive():
 def test_is_blocking_compound_matches_classify():
     facts = ["elevated_gas", "incomplete_isolation", "zone_occupied"]
     assert is_blocking_compound(facts) is classify(facts).is_blocking
+
+
+# --- Threshold boundaries ---------------------------------------------------
+#
+# An off-by-one between the rule engine and the statutory criteria is invisible
+# unless something samples exactly on the threshold. One was hiding here:
+# `rule_elevated_gas` used `>` while `rule_critical_gas` and the ground truth
+# used `>=`, so gas at exactly the action level with personnel present was a
+# silent false negative.
+
+
+def test_elevated_and_critical_rules_agree_on_at_or_above():
+    """Both bands must treat the threshold itself as inside the band."""
+    import inspect
+
+    from app.context import derived_facts as df
+
+    for fn in (df.rule_elevated_gas, df.rule_critical_gas,
+               df.rule_over_temperature, df.rule_critical_temperature):
+        src = inspect.getsource(fn)
+        assert ">= threshold" in src, (
+            f"{fn.__name__} does not use >= on its threshold; a reading exactly "
+            "on the action level would be missed"
+        )
+
+
+def test_detector_catches_every_statutory_case_at_the_exact_threshold():
+    """No stop-work case may be missed because a reading sits on the boundary."""
+    from datetime import datetime, timedelta, timezone
+    from uuid import UUID, uuid4
+
+    from app.context.derived_facts import ContextEntryView
+    from app.core.config import get_settings
+    from app.eval.detectors import compound_alarm
+    from app.eval.hazard_ground_truth import label
+
+    s = get_settings()
+    now = datetime(2026, 1, 15, 8, tzinfo=timezone.utc)
+    asset = UUID(int=1)
+
+    def entry(category, payload):
+        return ContextEntryView(
+            uuid4(), asset, category, payload, "test",
+            now, now + timedelta(hours=4), 1.0,
+        )
+
+    worker = entry("worker_location", {"worker_id": "w", "zone": "hazardous"})
+    for level in (s.gas_elevated_threshold, s.gas_critical_threshold):
+        for extra in ([], [worker]):
+            entries = [entry("sensor", {"gas_reading": float(level)})] + extra
+            if label(entries).dangerous:
+                assert compound_alarm(entries), (
+                    f"missed a stop-work case at exactly {level} ppm "
+                    f"(worker present: {bool(extra)})"
+                )
