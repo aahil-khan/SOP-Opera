@@ -74,12 +74,19 @@ export function EvalScorecardView() {
       {summary && (
         <>
           <div className={styles.heroStats} aria-label="Key metrics">
+            {/* Raw counts, not the FN-reduction ratio. That ratio is pinned at
+                100% whenever compound FN is zero, so it restates one number
+                rather than adding one — and a bare "100%" reads as a red flag.
+                It stays available as a column in the comparison table. */}
             <div className={styles.heroStat} data-tone="success">
               <span className={styles.heroValue}>
-                {summary.fn_reduction_pct.toFixed(1)}%
+                {summary.single_sensor.fn} → {summary.compound.fn}
               </span>
               <span className={styles.heroLabel}>
-                FN reduction vs single-sensor
+                Stop-work cases missed — single-sensor vs compound (of{" "}
+                {summary.positive_count ??
+                  summary.single_sensor.tp + summary.single_sensor.fn}
+                )
               </span>
               <span className={styles.heroHint}>
                 Fewer missed stop-work cases, scored on the same labeled set
@@ -97,16 +104,21 @@ export function EvalScorecardView() {
                 would fire
               </span>
             </div>
+            {/* Deliberately shows the cost, not another win. While compound FN is
+                zero, "cases only compound catches" is identical to single-sensor's
+                miss count — the same number twice. Precision is the counterweight
+                that answers "so you just alarm on everything?". */}
             <div className={styles.heroStat}>
               <span className={styles.heroValue}>
-                {summary.compound_only_catch_count}
+                {pct(summary.compound.precision)}
               </span>
               <span className={styles.heroLabel}>
-                Cases only compound catches
+                Compound precision — {summary.compound.fp} false positives, all
+                stricter than the statutory minimum
               </span>
               <span className={styles.heroHint}>
-                Stop-work cases where single-sensor and forecast both stay
-                silent
+                The cost of catching every stop-work case — not another win
+                metric
               </span>
             </div>
           </div>
@@ -299,6 +311,7 @@ export function EvalScorecardView() {
                     <th>Accuracy</th>
                     <th>Recall</th>
                     <th>FN rate</th>
+                    <th>Missed</th>
                     <th>Precision</th>
                   </tr>
                 </thead>
@@ -320,11 +333,21 @@ export function EvalScorecardView() {
                       <td>{pct(d.accuracy)}</td>
                       <td>{pct(d.recall)}</td>
                       <td>{pct(d.false_negative_rate)}</td>
+                      <td>
+                        {d.fn} / {d.tp + d.fn}
+                      </td>
                       <td>{pct(d.precision)}</td>
                     </tr>
                   ))}
                 </tbody>
               </table>
+              <p className={styles.caption}>
+                All three detectors scored on the same labels.{" "}
+                {summary.fn_reduction_pct.toFixed(0)}% false-negative reduction
+                is the ratio of the first two FN rates — it is pinned at 100%
+                whenever the compound engine misses nothing, so read the raw
+                counts rather than the ratio.
+              </p>
             </div>
           </section>
 
