@@ -29,6 +29,14 @@ class ScenarioStep(BaseModel):
     confidence: float = Field(default=1.0, ge=0.0, le=1.0)
     delay_seconds: float | None = None  # None → settings.simulator_default_step_delay_seconds
     valid_for_hours: float = 4.0
+    t_offset_minutes: float | None = None
+    """
+    Physical process time of this step, in minutes from scenario start.
+
+    Distinct from `delay_seconds`, which is demo playback pacing. A gas excursion
+    that develops over 30 minutes of plant time is replayed in ~30 seconds; only
+    `t_offset_minutes` is meaningful for lead-time measurement.
+    """
 
 
 class ScenarioFile(BaseModel):
