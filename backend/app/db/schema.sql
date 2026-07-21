@@ -332,3 +332,44 @@ UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';
 -- against its source text rather than taken on trust.
 ALTER TABLE regulations ADD COLUMN IF NOT EXISTS clause TEXT;
 ALTER TABLE regulations ADD COLUMN IF NOT EXISTS source_url TEXT;
+
+-- Tamper-evident audit chain. Each entry hashes its own content together with the
+-- previous entry's hash, so altering or removing any row invalidates every hash
+-- after it. `seq` gives the chain a total order independent of clock skew.
+ALTER TABLE audit_entries ADD COLUMN IF NOT EXISTS seq BIGSERIAL;
+ALTER TABLE audit_entries ADD COLUMN IF NOT EXISTS prev_hash TEXT;
+ALTER TABLE audit_entries ADD COLUMN IF NOT EXISTS entry_hash TEXT;
+CREATE INDEX IF NOT EXISTS idx_audit_entries_seq ON audit_entries(seq);
+
+-- Evidence froze context *ids* only, so a later edit to a context row silently
+-- changed what a recorded decision appeared to rest on. Snapshot the content too.
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS frozen_context_snapshot JSONB NOT NULL DEFAULT '[]'::jsonb;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS frozen_assessment_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb;
+ALTER TABLE evidence ADD COLUMN IF NOT EXISTS snapshot_hash TEXT;
+
+-- Assessment queue scalability.
+-- `claimed_at` gives claims a lease: a worker that dies mid-job (or throws after
+-- generation) leaves a `generating` row that would otherwise sit stranded until
+-- the next process restart, with its review stuck in `assessing` forever.
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS claimed_at TIMESTAMPTZ;
+
+-- The claim and the periodic supersede sweep both filter on status; without this
+-- they sequential-scan the table on every poll tick.
+CREATE INDEX IF NOT EXISTS idx_assessments_status ON assessments(status);
+
+-- Make "never double-run" true at the database rather than by convention.
+-- `enqueue_for_review` was a check-then-insert with no constraint behind it, so
+-- two concurrent transitions could both pass the check and insert.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_assessments_active_per_review
+    ON assessments(review_id)
+    WHERE status IN ('pending', 'generating');
+
+-- Every RAG query is `ORDER BY embedding <=> $1`, which is a full scan without
+-- an ANN index. Cheap at seed size, O(corpus) forever.
+CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_embedding
+    ON knowledge_chunks USING ivfflat (embedding vector_cosine_ops) WITH (lists = 100);
+
+-- Provider override lived in a module-level dict on the orchestrator, so with
+-- more than one worker process a supervisor's "retry with provider X" could be
+-- read by a process that never saw it. It belongs on the job.
+ALTER TABLE assessments ADD COLUMN IF NOT EXISTS provider_override TEXT;
