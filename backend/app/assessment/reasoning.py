@@ -433,7 +433,7 @@ def format_predicted_trend_detail(
 
 def _generic_fact_detail(fact_type: str, headline: str, asset_name: str) -> str:
     """Operator-facing fallback — never expose internal 'derived fact' jargon."""
-    from app.assessment.providers.mock import FACT_RECOMMENDATIONS
+    from app.risk.recommendations import FACT_RECOMMENDATIONS
 
     _text, rationale = FACT_RECOMMENDATIONS.get(fact_type, ("", ""))
     if rationale:

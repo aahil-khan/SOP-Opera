@@ -1,17 +1,17 @@
-"""Deterministic mock AI provider — zero I/O, schema-valid every time."""
+"""
+Fact -> recommended action mapping.
+
+Each derived fact type maps to (recommendation, rationale). These are the
+supervisor-facing actions attached to an assessment; the LLM narrates the
+situation but does not invent the required action, so the same fact always
+yields the same instruction.
+
+Previously lived in `assessment/providers/mock.py` alongside a deterministic
+"AI provider" that nothing called; that package has been removed, but this
+mapping is live and is used by the orchestrator agent and the reasoning layer.
+"""
 
 from __future__ import annotations
-
-from uuid import UUID
-
-from shared.python.schemas import DerivedFact, RecommendationIn, RetrievedReference
-
-from app.assessment.schemas import AssessmentResult, ProviderGeneration
-
-from app.reviews.concerns import BLOCKING_SUPERVISOR_FACTS, SUPERVISOR_FACT_TYPES
-
-COMPOUND_TRIO = frozenset({"elevated_gas", "permit_conflict", "zone_occupied"})
-CRITICAL_SENSOR_FACTS = frozenset({"critical_gas", "critical_temperature"})
 
 FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
     "elevated_gas": (
@@ -103,72 +103,3 @@ FACT_RECOMMENDATIONS: dict[str, tuple[str, str]] = {
         "A supervisor flagged an issue that needs operator review.",
     ),
 }
-
-
-def _risk_level(fact_types: set[str]) -> str:
-    if fact_types & CRITICAL_SENSOR_FACTS:
-        return "blocking"
-    if fact_types & BLOCKING_SUPERVISOR_FACTS:
-        return "blocking"
-    if fact_types & SUPERVISOR_FACT_TYPES:
-        return "elevated"
-    if COMPOUND_TRIO.issubset(fact_types) or len(fact_types) >= 3:
-        return "blocking"
-    if len(fact_types) >= 1:
-        return "elevated"
-    return "nominal"
-
-
-class MockProvider:
-    async def generate_assessment(
-        self,
-        derived_facts: list[DerivedFact],
-        context_refs: list[UUID],
-        retrieved_references: list[RetrievedReference] | None,
-        *,
-        repair_hint: str | None = None,
-    ) -> ProviderGeneration:
-        fact_types = {f.fact_type for f in derived_facts}
-        risk = _risk_level(fact_types)
-        summary = (
-            f"Assessment found {len(fact_types)} active condition"
-            f"{'' if len(fact_types) == 1 else 's'}"
-            f"{(': ' + ', '.join(sorted(ft.replace('_', ' ') for ft in fact_types))) if fact_types else ''}."
-            f" Risk classified as {risk}."
-        )
-        if repair_hint:
-            summary += " Repair pass applied."
-
-        recommendations: list[RecommendationIn] = []
-        for ft in sorted(fact_types):
-            text, rationale = FACT_RECOMMENDATIONS.get(
-                ft,
-                (
-                    f"Review and mitigate '{ft.replace('_', ' ')}'.",
-                    f"{ft.replace('_', ' ').title()} requires supervisor action.",
-                ),
-            )
-            recommendations.append(RecommendationIn(text=text, rationale=rationale))
-        if not recommendations:
-            recommendations.append(
-                RecommendationIn(
-                    text="Continue routine monitoring; no elevated facts detected.",
-                    rationale="No elevated conditions at assessment time.",
-                )
-            )
-
-        result = AssessmentResult(
-            summary=summary,
-            risk_level=risk,  # type: ignore[arg-type]
-            recommendations=recommendations,
-            confidence=0.92 if fact_types else 0.7,
-        )
-        return ProviderGeneration(
-            result=result,
-            provider="mock",
-            model="mock-v1",
-            input_tokens=120 + 20 * len(fact_types),
-            output_tokens=80 + 15 * len(recommendations),
-            estimated_cost_usd=0.0,
-            latency_ms=5,
-        )

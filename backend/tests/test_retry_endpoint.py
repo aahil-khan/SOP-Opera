@@ -47,27 +47,25 @@ async def client(monkeypatch):
     await seed_embeddings()
     await _cleanup_vessel()
 
-    # First attempt always fails; retry (with an explicit provider override) succeeds.
-    class BoomOnceProvider:
-        async def generate_assessment(self, *args, **kwargs):
+    # The first assessment job must fail outright, then the retry must succeed.
+    #
+    # The pipeline retries internally up to `assessment_max_retries`, so failing a
+    # single call is not enough — attempt 2 would succeed and the job would never
+    # reach `failed`, leaving the retry endpoint nothing to retry. Fail every
+    # attempt of the first job instead, and let the retried job run for real.
+    from app.agents.graph import run_agent_assessment as real_run_agent_assessment
+    from app.core.config import get_settings
+
+    attempts_per_job = get_settings().assessment_max_retries + 1
+    state = {"calls": 0}
+
+    async def flaky_run(*args, **kwargs):
+        state["calls"] += 1
+        if state["calls"] <= attempts_per_job:
             raise RuntimeError("forced failure for retry test")
+        return await real_run_agent_assessment(*args, **kwargs)
 
-    from app.assessment.providers.mock import MockProvider
-
-    real_get_provider_targets = [
-        "app.assessment.providers.get_provider",
-        "app.assessment.pipeline.get_provider",
-    ]
-    state = {"first_call": True}
-
-    def flaky_get_provider(name=None):
-        if state["first_call"]:
-            state["first_call"] = False
-            return BoomOnceProvider()
-        return MockProvider()
-
-    for target in real_get_provider_targets:
-        monkeypatch.setattr(target, flaky_get_provider)
+    monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", flaky_run)
 
     from app.main import app
     from app.assessment.orchestrator import orchestrator

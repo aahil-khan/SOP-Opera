@@ -12,7 +12,7 @@ from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
 from app.assessment.citations import check_citations, strip_unsupported
-from app.assessment.providers.mock import FACT_RECOMMENDATIONS
+from app.risk.recommendations import FACT_RECOMMENDATIONS
 from app.reviews.concerns import SUPERVISOR_FACT_TYPES
 from app.risk import policy as risk_policy
 from app.assessment.schemas import AssessmentResult
@@ -86,11 +86,19 @@ def _recommendations(
 
 
 def _indian_reg_priority(r: dict[str, Any]) -> int:
+    """
+    Surface statutory provisions ahead of advisory standards.
+
+    A reference carrying a primary-source URL can be checked against the text it
+    claims to quote, so it is the one worth putting in front of the model. The
+    code-prefix fallback covers SOPs, which have no source URL of their own.
+    """
+    if r.get("source_url"):
+        return 0
     code = str(r.get("code") or r.get("title") or "")
     if (
         code.startswith("OISD")
-        or code.startswith("DGMS")
-        or code.startswith("Factory Act")
+        or code.startswith("Factories Act")
         or code.startswith("SOP-OISD")
         or code.startswith("SOP-Factory Act")
     ):

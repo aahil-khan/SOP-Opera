@@ -44,19 +44,11 @@ async def client(monkeypatch):
     await seed_embeddings()
     await _cleanup_vessel()
 
-    # Force provider to always fail so we exercise failed → manual path
-    class BoomProvider:
-        async def generate_assessment(self, *args, **kwargs):
-            raise RuntimeError("forced provider failure for test")
+    # Force generation to always fail so we exercise the failed → manual path.
+    async def boom(*args, **kwargs):
+        raise RuntimeError("forced generation failure for test")
 
-    monkeypatch.setattr(
-        "app.assessment.providers.get_provider",
-        lambda name=None: BoomProvider(),
-    )
-    monkeypatch.setattr(
-        "app.assessment.pipeline.get_provider",
-        lambda name=None: BoomProvider(),
-    )
+    monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", boom)
 
     from app.main import app
     from app.assessment.orchestrator import orchestrator

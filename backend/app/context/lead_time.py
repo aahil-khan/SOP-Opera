@@ -7,7 +7,7 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
-from app.assessment.providers.mock import CRITICAL_SENSOR_FACTS
+from app.risk.policy import CRITICAL_SENSOR_FACTS
 from app.context.derived_facts import ContextEntryView
 from app.core.config import get_settings
 

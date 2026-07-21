@@ -92,14 +92,10 @@ async def _failure_reason_for(assessment_id: str) -> str | None:
 
 @pytest.mark.asyncio
 async def test_provider_error_failure_reason(client: AsyncClient, monkeypatch):
-    class BoomProvider:
-        async def generate_assessment(self, *args, **kwargs):
-            raise RuntimeError("network down")
+    async def boom(*args, **kwargs):
+        raise RuntimeError("network down")
 
-    monkeypatch.setattr(
-        "app.assessment.pipeline.get_provider",
-        lambda name=None: BoomProvider(),
-    )
+    monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", boom)
 
     review_id = await _trigger(client)
     assessments = await _wait_for_assessment(client, review_id)
@@ -109,26 +105,14 @@ async def test_provider_error_failure_reason(client: AsyncClient, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_validation_failure_reason(client: AsyncClient, monkeypatch):
-    class BadSchemaProvider:
-        async def generate_assessment(self, *args, **kwargs):
-            from app.assessment.schemas import AssessmentResult
+    async def bad_schema(*args, **kwargs):
+        # Force a pydantic ValidationError matching pipeline classification.
+        raise ValidationError.from_exception_data(
+            "AssessmentResult",
+            [{"type": "missing", "loc": ("summary",), "input": {}}],
+        )
 
-            # Force a pydantic ValidationError matching pipeline classification.
-            raise ValidationError.from_exception_data(
-                "AssessmentResult",
-                [
-                    {
-                        "type": "missing",
-                        "loc": ("summary",),
-                        "input": {},
-                    }
-                ],
-            )
-
-    monkeypatch.setattr(
-        "app.assessment.pipeline.get_provider",
-        lambda name=None: BadSchemaProvider(),
-    )
+    monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", bad_schema)
 
     review_id = await _trigger(client)
     assessments = await _wait_for_assessment(client, review_id)
