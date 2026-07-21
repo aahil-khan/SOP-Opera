@@ -395,12 +395,30 @@ async def get_review_detail(
     )
 
 
+DEFAULT_REVIEW_LIST_LIMIT = 200
+MAX_REVIEW_LIST_LIMIT = 1000
+
+
+def _clamp_review_limit(limit: int | None) -> int:
+    if limit is None:
+        return DEFAULT_REVIEW_LIST_LIMIT
+    return max(1, min(int(limit), MAX_REVIEW_LIST_LIMIT))
+
+
 async def list_reviews(
     session: AsyncSession,
     *,
     state: str | None = None,
     asset_id: UUID | None = None,
+    limit: int | None = None,
 ) -> list[Review]:
+    """
+    Most-recent reviews first, bounded.
+
+    This is the single most-called endpoint — every connected client refetches it
+    on every domain event — and it previously returned every review ever created.
+    The worker-scoped variants below already had a LIMIT; this one was missed.
+    """
     clauses = ["1=1"]
     params: dict = {}
     if state:
@@ -424,9 +442,10 @@ async def list_reviews(
             FROM reviews
             WHERE {where}
             ORDER BY created_at DESC
+            LIMIT :limit
             """
         ),
-        params,
+        {**params, "limit": _clamp_review_limit(limit)},
     )
     out: list[Review] = []
     for row in result.fetchall():

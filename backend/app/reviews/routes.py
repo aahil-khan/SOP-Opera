@@ -276,9 +276,12 @@ async def post_review(
 async def get_reviews(
     state: str | None = Query(default=None),
     asset_id: UUID | None = Query(default=None),
+    limit: int | None = Query(default=None, ge=1, le=1000),
     session: AsyncSession = Depends(get_session),
 ) -> list[Review]:
-    return await list_reviews(session, state=state, asset_id=asset_id)
+    return await list_reviews(
+        session, state=state, asset_id=asset_id, limit=limit
+    )
 
 
 @router.get("/raised-by-me", response_model=list[SharedReviewOut])
@@ -345,13 +348,18 @@ async def post_review_comment(
     session: AsyncSession = Depends(get_session),
     actor=Depends(get_current_actor),
 ) -> ReviewCommentOut:
-    return await create_review_comment(
-        session,
-        review_id=review_id,
-        author=actor,
-        body=body.body,
-        mentioned_worker_ids=body.mentioned_worker_ids,
-    )
+    if await get_review(session, review_id) is None:
+        raise HTTPException(status_code=404, detail="Review not found")
+    try:
+        return await create_review_comment(
+            session,
+            review_id=review_id,
+            author=actor,
+            body=body.body,
+            mentioned_worker_ids=body.mentioned_worker_ids,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.get("/{review_id}/assessments", response_model=list[AssessmentOut])

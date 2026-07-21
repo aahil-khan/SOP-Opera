@@ -67,6 +67,7 @@ export interface DecisionIn {
   outcome: DecisionOutcome;
   recommendation_dispositions: Record<string, "accepted" | "rejected">;
   conditions: string | null;
+  comments?: string | null;
   tagged_worker_ids: string[];
 }
 

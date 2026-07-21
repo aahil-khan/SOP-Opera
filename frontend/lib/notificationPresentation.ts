@@ -36,6 +36,18 @@ export function isAlertNotification(n: Notification): boolean {
 }
 
 /**
+ * Mentions, thread replies, tags, decisions, elevated risk — inbox but no toast.
+ */
+export function isUpdateNotification(n: Notification): boolean {
+  return !isAlertNotification(n);
+}
+
+/** Anything that belongs in the Activity bell (alerts or updates). */
+export function isInboxNotification(n: Notification): boolean {
+  return isAlertNotification(n) || isUpdateNotification(n);
+}
+
+/**
  * Maps machine event_type (+ summary hints) to human-facing copy.
  * Never expose raw event_type strings in the UI.
  */
@@ -117,6 +129,30 @@ export function presentNotification(n: Notification): NotificationPresentation {
         severity: "info",
         toastable: false,
       };
+    case "comment.mentioned":
+      return {
+        label: "Mentioned",
+        title: "You were mentioned",
+        detail: n.summary,
+        severity: "info",
+        toastable: false,
+      };
+    case "comment.replied":
+      return {
+        label: "Thread reply",
+        title: "New comment on your review",
+        detail: n.summary,
+        severity: "info",
+        toastable: false,
+      };
+    case "task.unblocked":
+      return {
+        label: "Unblocked",
+        title: "Asset unblocked",
+        detail: n.summary,
+        severity: "info",
+        toastable: false,
+      };
     default:
       return {
         label: "Update",
@@ -126,4 +162,17 @@ export function presentNotification(n: Notification): NotificationPresentation {
         toastable: false,
       };
   }
+}
+
+/** Deep-link target for a notification, by actor kind. */
+export function notificationOpenHref(
+  n: Notification,
+  actorKind: "user" | "worker" | string | null | undefined,
+): string | null {
+  if (!n.review_id) return null;
+  if (actorKind === "worker") {
+    return `/supervisor?review=${n.review_id}`;
+  }
+  // Operator deep-link opens twin full-review via /reviews/[id].
+  return `/reviews/${n.review_id}`;
 }

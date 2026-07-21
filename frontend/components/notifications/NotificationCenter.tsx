@@ -11,6 +11,9 @@ import {
 import { dismissAllNotificationToasts } from "@/lib/notificationToast";
 import {
   isAlertNotification,
+  isInboxNotification,
+  isUpdateNotification,
+  notificationOpenHref,
   presentNotification,
 } from "@/lib/notificationPresentation";
 import type { Notification } from "@/shared/schemas";
@@ -20,8 +23,68 @@ import styles from "./NotificationCenter.module.css";
 const EMPTY_NOTIFICATIONS: Notification[] = [];
 const EMPTY_UNREAD_IDS: string[] = [];
 
+type InboxTab = "alerts" | "updates";
+
+function NotificationRow({
+  n,
+  unread,
+  actorKind,
+  onOpen,
+  onDismiss,
+}: {
+  n: Notification;
+  unread: boolean;
+  actorKind: string | null | undefined;
+  onOpen: () => void;
+  onDismiss: () => void;
+}) {
+  const presentation = presentNotification(n);
+  const href = notificationOpenHref(n, actorKind);
+  return (
+    <li
+      className={styles.item}
+      data-unread={unread ? "true" : undefined}
+      data-severity={presentation.severity}
+    >
+      <div className={styles.body}>
+        <div className={styles.row}>
+          <span className={styles.label} data-severity={presentation.severity}>
+            {presentation.label}
+          </span>
+          <span className={styles.time}>{relativeTime(n.created_at)}</span>
+        </div>
+        <p className={styles.summary}>{presentation.detail}</p>
+        {href && (
+          <Link
+            href={href}
+            className={styles.link}
+            onClick={() => {
+              onOpen();
+              onDismiss();
+              if (actorKind !== "worker" && n.review_id) {
+                void focusReviewAssetOnTwin(n.review_id);
+              }
+            }}
+          >
+            Open
+          </Link>
+        )}
+      </div>
+      <button
+        type="button"
+        className={styles.dismiss}
+        aria-label="Dismiss"
+        onClick={onDismiss}
+      >
+        ×
+      </button>
+    </li>
+  );
+}
+
 export function NotificationCenter() {
   const [open, setOpen] = useState(false);
+  const [tab, setTab] = useState<InboxTab>("alerts");
   const rootRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
 
@@ -40,7 +103,7 @@ export function NotificationCenter() {
     for (const notif of s.notifications) {
       if (!unread.has(notif.id)) continue;
       if (actorId != null && !notif.recipient_ids.includes(actorId)) continue;
-      if (isAlertNotification(notif)) n += 1;
+      if (isInboxNotification(notif)) n += 1;
     }
     return n;
   });
@@ -62,6 +125,8 @@ export function NotificationCenter() {
       : notifications;
 
   const alerts = visibleNotifications.filter(isAlertNotification);
+  const updates = visibleNotifications.filter(isUpdateNotification);
+  const inboxCount = alerts.length + updates.length;
 
   useEffect(() => {
     hydrateDnd();
@@ -70,7 +135,7 @@ export function NotificationCenter() {
   useEffect(() => {
     if (!open) return;
     markRead();
-  }, [open, alerts.length, markRead]);
+  }, [open, inboxCount, markRead]);
 
   useEffect(() => {
     if (!open) return;
@@ -98,6 +163,10 @@ export function NotificationCenter() {
     }
     setDndEnabled(next);
   };
+
+  const list = tab === "alerts" ? alerts : updates;
+  const emptyLabel =
+    tab === "alerts" ? "No recent alerts" : "No mentions or updates";
 
   return (
     <div className={styles.root} ref={rootRef}>
@@ -176,7 +245,7 @@ export function NotificationCenter() {
               >
                 {dndEnabled ? "DND on" : "DND off"}
               </button>
-              {alerts.length > 0 && (
+              {inboxCount > 0 && (
                 <button
                   type="button"
                   className={styles.clearAll}
@@ -195,64 +264,49 @@ export function NotificationCenter() {
             </p>
           )}
 
-          {alerts.length === 0 ? (
-            <p className={styles.empty}>No recent alerts</p>
+          <div className={styles.tabs} role="tablist" aria-label="Activity sections">
+            <button
+              type="button"
+              role="tab"
+              className={styles.tab}
+              aria-selected={tab === "alerts"}
+              data-active={tab === "alerts" ? "true" : undefined}
+              onClick={() => setTab("alerts")}
+            >
+              Alerts
+              {alerts.length > 0 && (
+                <span className={styles.tabCount}>{alerts.length}</span>
+              )}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              className={styles.tab}
+              aria-selected={tab === "updates"}
+              data-active={tab === "updates" ? "true" : undefined}
+              onClick={() => setTab("updates")}
+            >
+              Mentions & updates
+              {updates.length > 0 && (
+                <span className={styles.tabCount}>{updates.length}</span>
+              )}
+            </button>
+          </div>
+
+          {list.length === 0 ? (
+            <p className={styles.empty}>{emptyLabel}</p>
           ) : (
             <ul className={styles.list}>
-              {alerts.map((n) => {
-                const unread = !dndEnabled && unreadIds.includes(n.id);
-                const presentation = presentNotification(n);
-                return (
-                  <li
-                    key={n.id}
-                    className={styles.item}
-                    data-unread={unread ? "true" : undefined}
-                    data-severity={presentation.severity}
-                  >
-                    <div className={styles.body}>
-                      <div className={styles.row}>
-                        <span
-                          className={styles.label}
-                          data-severity={presentation.severity}
-                        >
-                          {presentation.label}
-                        </span>
-                        <span className={styles.time}>
-                          {relativeTime(n.created_at)}
-                        </span>
-                      </div>
-                      <p className={styles.summary}>{presentation.detail}</p>
-                      {n.review_id && (
-                        <Link
-                          href={
-                            actor?.kind === "worker"
-                              ? `/supervisor?review=${n.review_id}`
-                              : "/operator"
-                          }
-                          className={styles.link}
-                          onClick={() => {
-                            setOpen(false);
-                            dismissNotification(n.id);
-                            if (actor?.kind !== "worker") {
-                              void focusReviewAssetOnTwin(n.review_id!);
-                            }
-                          }}
-                        >
-                          Open
-                        </Link>
-                      )}
-                    </div>
-                    <button
-                      type="button"
-                      className={styles.dismiss}
-                      aria-label="Dismiss"
-                      onClick={() => dismissNotification(n.id)}
-                    >
-                      ×
-                    </button>
-                  </li>
-                );
-              })}
+              {list.map((n) => (
+                <NotificationRow
+                  key={n.id}
+                  n={n}
+                  unread={!dndEnabled && unreadIds.includes(n.id)}
+                  actorKind={actor?.kind}
+                  onOpen={() => setOpen(false)}
+                  onDismiss={() => dismissNotification(n.id)}
+                />
+              ))}
             </ul>
           )}
         </div>

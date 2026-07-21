@@ -7,7 +7,7 @@ from pydantic import BaseModel, Field
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.schemas import ActorMeOut
+from app.auth.schemas import ActorKind, ActorMeOut
 from app.notifications.service import create_notification
 from app.realtime.connection_manager import manager
 
@@ -28,6 +28,41 @@ class ReviewCommentOut(BaseModel):
     body: str
     mentioned_worker_ids: list[UUID]
     created_at: str
+
+
+def reply_recipient_ids(
+    *,
+    author_kind: ActorKind,
+    author_id: UUID,
+    owner_id: UUID | None,
+    raised_by_worker_id: UUID | None,
+    mentioned_worker_ids: list[UUID],
+) -> list[UUID]:
+    """
+    Cross-party thread reply targets (excludes author and anyone already mentioned).
+
+    - Worker post → notify review owner (operator)
+    - Operator post → notify raised_by supervisor when set
+    """
+    mentioned = set(mentioned_worker_ids)
+    recipients: list[UUID] = []
+
+    if author_kind == "worker":
+        if (
+            owner_id is not None
+            and owner_id != author_id
+            and owner_id not in mentioned
+        ):
+            recipients.append(owner_id)
+    elif author_kind == "user":
+        if (
+            raised_by_worker_id is not None
+            and raised_by_worker_id != author_id
+            and raised_by_worker_id not in mentioned
+        ):
+            recipients.append(raised_by_worker_id)
+
+    return recipients
 
 
 async def list_review_comments(
@@ -82,7 +117,26 @@ async def create_review_comment(
     body: str,
     mentioned_worker_ids: list[UUID] | None = None,
 ) -> ReviewCommentOut:
-    mentioned_worker_ids = mentioned_worker_ids or []
+    mentioned_worker_ids = list(mentioned_worker_ids or [])
+    # Never notify the author about their own comment.
+    if author.kind == "worker":
+        mentioned_worker_ids = [w for w in mentioned_worker_ids if w != author.id]
+
+    review_row = await session.execute(
+        text(
+            """
+            SELECT owner_id, raised_by_worker_id
+            FROM reviews
+            WHERE id = CAST(:rid AS uuid)
+            """
+        ),
+        {"rid": str(review_id)},
+    )
+    review = review_row.first()
+    if review is None:
+        raise ValueError(f"Review {review_id} not found")
+    owner_id = review._mapping["owner_id"]
+    raised_by_worker_id = review._mapping["raised_by_worker_id"]
 
     result = await session.execute(
         text(
@@ -146,6 +200,27 @@ async def create_review_comment(
         )
         await session.commit()
 
+    reply_ids = reply_recipient_ids(
+        author_kind=author.kind,
+        author_id=author.id,
+        owner_id=UUID(str(owner_id)) if owner_id is not None else None,
+        raised_by_worker_id=(
+            UUID(str(raised_by_worker_id))
+            if raised_by_worker_id is not None
+            else None
+        ),
+        mentioned_worker_ids=mentioned_worker_ids,
+    )
+    if reply_ids:
+        await create_notification(
+            session,
+            review_id=review_id,
+            event_type="comment.replied",
+            summary=f"New comment · {author.name}",
+            recipient_ids=reply_ids,
+        )
+        await session.commit()
+
     return ReviewCommentOut(
         id=comment["id"],
         review_id=comment["review_id"],
@@ -158,4 +233,3 @@ async def create_review_comment(
         ],
         created_at=payload["created_at"],
     )
-

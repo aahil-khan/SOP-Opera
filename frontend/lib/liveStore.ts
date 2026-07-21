@@ -36,13 +36,14 @@ import {
   showReassessmentToast,
 } from "@/lib/notificationToast";
 import { isDndEnabled } from "@/lib/dndMode";
+import { getActorFromCookie } from "@/lib/actorCookie";
 import {
   assetHasSensorCritical,
   DEFAULT_THRESHOLDS,
   type ThresholdsConfig,
 } from "@/lib/sensorThresholds";
 import {
-  isAlertNotification,
+  isInboxNotification,
   presentNotification,
 } from "@/lib/notificationPresentation";
 import type { SpatialLinkView } from "@/lib/spatialLinks";
@@ -805,10 +806,18 @@ export const useLiveStore = create<LiveState>((set, get) => {
     try {
       const notifications = await fetchNotifications();
       const existing = new Set(get().notifications.map((n) => n.id));
+      const actorId = getActorFromCookie()?.id ?? null;
       const incomingUnread = isDndEnabled()
         ? []
         : notifications
-            .filter((n) => !existing.has(n.id) && isAlertNotification(n))
+            .filter((n) => {
+              if (existing.has(n.id)) return false;
+              if (!isInboxNotification(n)) return false;
+              if (actorId != null && !n.recipient_ids.includes(actorId)) {
+                return false;
+              }
+              return true;
+            })
             .map((n) => n.id);
       set((state) => ({
         notifications,
@@ -1054,13 +1063,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
     if (type === "notification.created") {
       const n = asNotification(payload);
       if (n) {
+        const actorId = getActorFromCookie()?.id ?? null;
+        const forMe =
+          actorId == null || n.recipient_ids.includes(actorId);
         set((state) => {
           const notifications = [
             n,
             ...state.notifications.filter((x) => x.id !== n.id),
           ].slice(0, NOTIFICATION_CAP);
           const unreadNotificationIds =
-            !isDndEnabled() && isAlertNotification(n)
+            forMe && !isDndEnabled() && isInboxNotification(n)
               ? [n.id, ...state.unreadNotificationIds.filter((x) => x !== n.id)]
               : state.unreadNotificationIds.filter((x) => x !== n.id);
           return {
@@ -1068,7 +1080,11 @@ export const useLiveStore = create<LiveState>((set, get) => {
             unreadNotificationIds,
           };
         });
-        if (!isDndEnabled() && presentNotification(n).toastable) {
+        if (
+          forMe &&
+          !isDndEnabled() &&
+          presentNotification(n).toastable
+        ) {
           showNotificationToast(n, {
             onClear: () => get().dismissNotification(n.id),
             onOpen: n.review_id

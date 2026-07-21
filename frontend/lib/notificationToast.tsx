@@ -3,8 +3,10 @@
 import Link from "next/link";
 import { toast, type TypeOptions } from "react-toastify";
 import type { Notification } from "@/shared/schemas";
+import { getActorFromCookie } from "@/lib/actorCookie";
 import { isDndEnabled } from "@/lib/dndMode";
 import {
+  notificationOpenHref,
   notificationToastId,
   presentNotification,
   type NotificationSeverity,
@@ -30,13 +32,13 @@ function autoCloseMs(
 function ToastBody({
   title,
   detail,
-  reviewId,
+  href,
   onOpen,
   onDismiss,
 }: {
   title: string;
   detail: string;
-  reviewId: string | null;
+  href: string | null;
   onOpen?: () => void;
   onDismiss?: () => void;
 }) {
@@ -47,9 +49,9 @@ function ToastBody({
         <p className={styles.description}>{detail}</p>
       ) : null}
       <div className={styles.actions}>
-        {reviewId ? (
+        {href ? (
           <Link
-            href="/operator"
+            href={href}
             className={styles.action}
             onClick={() => {
               onOpen?.();
@@ -79,6 +81,13 @@ export function showNotificationToast(
   options?: { onClear?: () => void; onOpen?: () => void },
 ): void {
   if (isDndEnabled()) return;
+  const actor = getActorFromCookie();
+  if (
+    actor?.id != null &&
+    !n.recipient_ids.includes(actor.id)
+  ) {
+    return;
+  }
   const presentation = presentNotification(n);
   if (!presentation.toastable) return;
 
@@ -87,12 +96,13 @@ export function showNotificationToast(
   const isCritical =
     n.event_type === "assessment.completed" &&
     /\bcritical\b/i.test(n.summary);
+  const href = notificationOpenHref(n, actor?.kind);
 
   toast(
     <ToastBody
       title={presentation.title}
       detail={presentation.detail}
-      reviewId={n.review_id}
+      href={href}
       onOpen={options?.onOpen}
       onDismiss={
         options?.onClear
@@ -140,7 +150,7 @@ export function showReassessmentToast(options: {
     <ToastBody
       title="Situation updated — reassessment started"
       detail="New signals arrived while this case was open. Hold any decision until the updated recommendation is ready."
-      reviewId={options.reviewId}
+      href={`/reviews/${options.reviewId}`}
       onOpen={options.onOpen}
       onDismiss={() => toast.dismiss(toastId)}
     />,

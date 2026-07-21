@@ -34,14 +34,10 @@ async def test_notifications_on_decision_and_close(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_notifications_on_assessment_failed(client: AsyncClient, monkeypatch):
-    class BoomProvider:
-        async def generate_assessment(self, *args, **kwargs):
-            raise RuntimeError("forced failure")
+    async def boom(*args, **kwargs):
+        raise RuntimeError("forced failure")
 
-    monkeypatch.setattr(
-        "app.assessment.pipeline.get_provider",
-        lambda name=None: BoomProvider(),
-    )
+    monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", boom)
 
     now = datetime.now(timezone.utc)
     until = (now + timedelta(hours=4)).isoformat()
