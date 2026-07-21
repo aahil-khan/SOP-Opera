@@ -18,6 +18,8 @@ import { useLiveStore } from "@/lib/liveStore";
 import { HandoverLedger } from "./HandoverLedger";
 import styles from "./Handover.module.css";
 
+type Tone = "good" | "warn" | "bad" | "neutral";
+
 /**
  * Shift handover — the page.
  *
@@ -78,7 +80,8 @@ export function HandoverView() {
     return (
       <div className={styles.page}>
         <PageHeader />
-        {error && <p className="text-error">{error}</p>}
+        {error && <p className={styles.error}>{error}</p>}
+        <IdleHero loading={handoverLoading} />
         {handover && settled && <SettledSummary handover={handover} />}
         <StartHandover
           actorId={actor?.id ?? null}
@@ -98,42 +101,62 @@ export function HandoverView() {
 
   return (
     <div className={styles.page}>
-      <PageHeader />
-      {error && <p className="text-error">{error}</p>}
+      <PageHeader role={role} />
+      {error && <p className={styles.error}>{error}</p>}
+
+      <ActiveHero handover={handover} outstanding={outstanding} />
 
       <div className={styles.columns}>
         <main className={styles.ledgerColumn}>
           {handover.brief && (
             <section className={styles.brief}>
               <header className={styles.briefHeader}>
-                <span className="section-label">Shift narration</span>
-                <span className={styles.modeChip}>
+                <h2 className={styles.briefTitle}>Shift narration</h2>
+                <span
+                  className={styles.modeChip}
+                  title={
+                    handover.narration_mode === "llm"
+                      ? "Brief written by the configured chat model"
+                      : handover.narration_mode === "fallback"
+                        ? "A model is configured, but the call failed or returned empty — template used instead. Check API logs for 'handover narration failed'."
+                        : "AI_PROVIDER is mock (or unset) — no model was contacted"
+                  }
+                >
                   {handover.narration_mode === "llm"
                     ? "model narration"
-                    : "deterministic narration · no LLM configured"}
+                    : handover.narration_mode === "fallback"
+                      ? "template narration · LLM call fell back"
+                      : "template narration · no LLM configured"}
                 </span>
               </header>
               <p className={styles.briefText}>{handover.brief}</p>
             </section>
           )}
 
-          <HandoverLedger
-            items={handover.items}
-            canAcknowledge={canAcknowledge}
-            canEdit={canEdit}
-            busyItemId={busyItemId}
-            onSelectAsset={showOnTwin}
-            onAcknowledge={(itemId, state, note) =>
-              run(
-                () =>
-                  acknowledgeHandoverItem(handover.id, itemId, state, note),
-                itemId,
-              )
-            }
-            onRemove={(itemId) =>
-              run(() => removeHandoverItem(handover.id, itemId), itemId)
-            }
-          />
+          <section className={styles.panel}>
+            <header className={styles.panelHeader}>
+              <h2 className={styles.panelTitle}>Carry-forward ledger</h2>
+            </header>
+            <div className={styles.panelBody}>
+              <HandoverLedger
+                items={handover.items}
+                canAcknowledge={canAcknowledge}
+                canEdit={canEdit}
+                busyItemId={busyItemId}
+                onSelectAsset={showOnTwin}
+                onAcknowledge={(itemId, state, note) =>
+                  run(
+                    () =>
+                      acknowledgeHandoverItem(handover.id, itemId, state, note),
+                    itemId,
+                  )
+                }
+                onRemove={(itemId) =>
+                  run(() => removeHandoverItem(handover.id, itemId), itemId)
+                }
+              />
+            </div>
+          </section>
 
           {canEdit && (
             <AddNote
@@ -155,7 +178,7 @@ export function HandoverView() {
           <PartyStrip handover={handover} role={role} />
 
           <div className={styles.progress}>
-            <span className="section-label">Acknowledgement</span>
+            <p className={styles.progressLabel}>Acknowledgement</p>
             <p className={styles.progressCount}>
               {handover.required_cleared} of {handover.required_total} cleared
             </p>
@@ -168,13 +191,11 @@ export function HandoverView() {
           {canEdit && (
             <button
               type="button"
-              className="btn btn-primary"
+              className={styles.primaryCtrl}
               onClick={() => run(() => issueHandover(handover.id))}
               disabled={busy}
             >
-              {busy
-                ? "Issuing…"
-                : `Issue to ${handover.incoming_actor_name}`}
+              {busy ? "Issuing…" : `Issue to ${handover.incoming_actor_name}`}
             </button>
           )}
 
@@ -182,13 +203,12 @@ export function HandoverView() {
             <>
               <button
                 type="button"
-                className="btn btn-primary"
+                className={styles.primaryCtrl}
                 onClick={() => run(() => acceptHandover(handover.id))}
                 disabled={busy || outstanding > 0}
               >
                 {busy ? "Accepting…" : "Accept shift"}
               </button>
-              {/* State the blocker rather than leaving a dead button. */}
               {outstanding > 0 && (
                 <p className={styles.blockedReason}>
                   {outstanding} item{outstanding === 1 ? "" : "s"} still need
@@ -220,17 +240,105 @@ export function HandoverView() {
   );
 }
 
-function PageHeader() {
+function PageHeader({ role }: { role?: string }) {
   return (
     <header className={styles.header}>
-      <p className="section-label">Shift custody</p>
-      <h1 className={styles.title}>Handover</h1>
-      <p className={styles.meta}>
-        Everything the outgoing operator is still holding, transferred to a named
-        incoming operator who has to acknowledge each hazard before taking the
-        plant. Every step is recorded in the audit chain.
-      </p>
+      <div className={styles.headerText}>
+        <h1 className={styles.title}>Shift handover</h1>
+        <p className={styles.subtitle}>
+          Everything the outgoing operator is still holding, transferred to a
+          named incoming operator who must acknowledge each hazard before taking
+          the plant.
+        </p>
+      </div>
+      {role && role !== "observer" && (
+        <div className={styles.headerControls}>
+          <span className={styles.roleChip}>You are {role}</span>
+        </div>
+      )}
     </header>
+  );
+}
+
+function HeroStat({
+  value,
+  label,
+  hint,
+  tone = "neutral",
+}: {
+  value: string;
+  label: string;
+  hint: string;
+  tone?: Tone;
+}) {
+  return (
+    <div className={styles.hero} data-tone={tone} title={hint}>
+      <span className={styles.heroValue}>{value}</span>
+      <span className={styles.heroLabel}>{label}</span>
+      <span className={styles.heroHint}>{hint}</span>
+    </div>
+  );
+}
+
+function IdleHero({ loading }: { loading: boolean }) {
+  const dash = loading ? "…" : "—";
+  return (
+    <div className={styles.heroRow} aria-label="Key metrics">
+      <HeroStat value={dash} label="State" hint="No active custody transfer" />
+      <HeroStat value={dash} label="Required" hint="Items that must be acknowledged" />
+      <HeroStat value={dash} label="Cleared" hint="Acknowledgements already signed" />
+      <HeroStat value={dash} label="Outstanding" hint="Still blocking acceptance" />
+    </div>
+  );
+}
+
+function ActiveHero({
+  handover,
+  outstanding,
+}: {
+  handover: Handover;
+  outstanding: number;
+}) {
+  const stateTone: Tone =
+    handover.state === "accepted"
+      ? "good"
+      : handover.state === "expired"
+        ? "bad"
+        : "warn";
+  const clearTone: Tone =
+    handover.required_total === 0
+      ? "good"
+      : outstanding === 0
+        ? "good"
+        : "warn";
+  const outTone: Tone = outstanding === 0 ? "good" : outstanding > 3 ? "bad" : "warn";
+
+  return (
+    <div className={styles.heroRow} aria-label="Key metrics">
+      <HeroStat
+        value={handover.state}
+        label="State"
+        hint={`${handover.outgoing_actor_name} → ${handover.incoming_actor_name}`}
+        tone={stateTone}
+      />
+      <HeroStat
+        value={String(handover.required_total)}
+        label="Required"
+        hint="Items that must be acknowledged before custody transfers"
+      />
+      <HeroStat
+        value={String(handover.required_cleared)}
+        label="Cleared"
+        hint="Acknowledgements already signed by the incoming operator"
+        tone={clearTone}
+      />
+      <HeroStat
+        value={String(outstanding)}
+        label="Outstanding"
+        hint="Still blocking Accept shift"
+        tone={outTone}
+      />
+    </div>
   );
 }
 
@@ -248,13 +356,16 @@ function PartyStrip({
         <span className={styles.partyName}>{handover.outgoing_actor_name}</span>
       </div>
       <span className={styles.partyArrow} aria-hidden="true">
-        →
+        ↓
       </span>
       <div className={styles.party} data-you={role === "incoming"}>
         <span className={styles.partyRole}>Incoming</span>
         <span className={styles.partyName}>{handover.incoming_actor_name}</span>
       </div>
-      <span className="badge" data-risk={badgeRiskForState(handover.state)}>
+      <span
+        className={`badge ${styles.stateBadge}`}
+        data-risk={badgeRiskForState(handover.state)}
+      >
         {handover.state}
       </span>
     </div>
@@ -361,7 +472,7 @@ function StartHandover({
         </label>
         <button
           type="button"
-          className="btn btn-primary"
+          className={styles.primaryCtrl}
           disabled={!incomingId || busy}
           onClick={() => onStart(incomingId, hours)}
         >
@@ -388,7 +499,7 @@ function AddNote({
 
   return (
     <section className={styles.addNote}>
-      <h2 className={`section-label ${styles.groupLabel}`}>Add a note</h2>
+      <h2 className={styles.panelTitle}>Add a note</h2>
       <p className={styles.addNoteMeta}>
         Anything the system cannot see — a smell, a contractor still on site, a
         gauge you do not trust.
@@ -417,7 +528,7 @@ function AddNote({
         </label>
         <button
           type="button"
-          className="btn"
+          className={styles.ctrl}
           disabled={!title.trim() || busy}
           onClick={() => {
             onAdd(title.trim(), detail.trim() || null, requiresAck);

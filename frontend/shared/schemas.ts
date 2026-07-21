@@ -435,8 +435,13 @@ export type HandoverItemType =
 
 export type HandoverAckState = "pending" | "acknowledged" | "queried";
 
-/** Whether the brief prose came from a model or the deterministic template. */
-export type HandoverNarrationMode = "llm" | "deterministic";
+/**
+ * How the brief prose was produced.
+ * - `llm` — live model returned usable text
+ * - `deterministic` — AI_PROVIDER=mock; template only, no model contacted
+ * - `fallback` — a model is configured, but the call failed/empty so the template ran
+ */
+export type HandoverNarrationMode = "llm" | "deterministic" | "fallback";
 
 export interface HandoverItem {
   id: string;

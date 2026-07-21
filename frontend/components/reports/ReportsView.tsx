@@ -284,7 +284,7 @@ export function ReportsView() {
         </p>
       </div>
 
-      {error && <p className="text-error">{error}</p>}
+      {error && <p className={styles.error}>{error}</p>}
 
       <section className={styles.panel}>
         <div className={styles.panelHeader}>

@@ -347,6 +347,14 @@
   white-space: nowrap;
 }
 
+/* Explicit display beats the UA [hidden] rule — keep these truly gone. */
+.tooltipRisk[hidden],
+.tooltipOps[hidden],
+.tooltipFresh[hidden],
+.tooltipSep[hidden] {
+  display: none;
+}
+
 .tooltipRisk {
   letter-spacing: 0.06em;
   text-transform: uppercase;

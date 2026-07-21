@@ -5,10 +5,15 @@ The model never chooses what carries — `composer.py` does that. This module on
 turns the chosen list into a paragraph, which is the same division the assessment
 pipeline keeps between the LLM's `summary` and the policy's `risk_level`.
 
-The returned `narration_mode` says which path produced the text. The previous
-implementation reported `provider: "langgraph:<label>"` even when its LLM call
-had failed and a hardcoded template had run instead, so a supervisor could not
-tell a written brief from a canned one. Reporting the fallback is the point.
+The returned `narration_mode` says which path produced the text:
+
+- `llm` — a live model returned usable prose
+- `deterministic` — `AI_PROVIDER=mock` (or unknown); no model was contacted
+- `fallback` — a model is configured, but the call failed or returned empty, so
+  the template ran instead
+
+Reporting the fallback is the point: a supervisor must be able to tell a written
+brief from a canned one.
 """
 
 from __future__ import annotations
@@ -32,8 +37,27 @@ def _describe(items: list[dict[str, Any]]) -> tuple[list[str], list[str]]:
     )
 
 
+def _text_from_response(result: Any) -> str | None:
+    """Pull plain text from a LangChain message (string or content-block list)."""
+    content = getattr(result, "content", None)
+    if isinstance(content, str) and content.strip():
+        return content.strip()
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if isinstance(block, str) and block.strip():
+                parts.append(block.strip())
+            elif isinstance(block, dict):
+                text = block.get("text")
+                if isinstance(text, str) and text.strip():
+                    parts.append(text.strip())
+        joined = "\n".join(parts).strip()
+        return joined or None
+    return None
+
+
 def deterministic_brief(items: list[dict[str, Any]], *, window_hours: int) -> str:
-    """Template narration — the default, since AI_PROVIDER is `mock` by default."""
+    """Template narration — used for mock provider and as LLM fallback."""
     required, awareness = _describe(items)
     if not items:
         return (
@@ -93,10 +117,10 @@ async def narrate(
     )
     try:
         result = await chat.ainvoke(prompt)
-        content = getattr(result, "content", None)
-        if isinstance(content, str) and content.strip():
-            return content.strip(), "llm", provider, model
+        text = _text_from_response(result)
+        if text:
+            return text, "llm", provider, model
         logger.warning("handover narration returned empty content; using template")
     except Exception:  # noqa: BLE001 - any provider failure degrades to template
         logger.warning("handover narration failed; using template", exc_info=True)
-    return fallback, "deterministic", provider, model
+    return fallback, "fallback", provider, model

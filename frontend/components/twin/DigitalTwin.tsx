@@ -26,11 +26,7 @@ import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
 import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
-import { MapControls } from "./MapControls";
-import {
-  MapLayerToggle,
-  type MapLayerId,
-} from "./MapLayerToggle";
+import { MapControls, type MapLayerId } from "./MapControls";
 import { MapViewport, type MapViewportHandle } from "./MapViewport";
 import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
 import styles from "./DigitalTwin.module.css";
@@ -571,21 +567,16 @@ export function DigitalTwin() {
         ) : null}
 
         {showMapControls ? (
-          <>
-            <MapLayerToggle
-              enabled={enabledLayers}
-              onToggle={toggleLayer}
-              opsCount={opsAssetCount}
-              shiftForDrawer={Boolean(selected) && viewMode === "detail"}
-            />
-            <MapControls
-              onZoomIn={() => mapRef.current?.zoomIn()}
-              onZoomOut={() => mapRef.current?.zoomOut()}
-              onReset={() => mapRef.current?.resetView()}
-              onOverview={showOverview}
-              shiftForDrawer={Boolean(selected) && viewMode === "detail"}
-            />
-          </>
+          <MapControls
+            onZoomIn={() => mapRef.current?.zoomIn()}
+            onZoomOut={() => mapRef.current?.zoomOut()}
+            onReset={() => mapRef.current?.resetView()}
+            onOverview={showOverview}
+            opsEnabled={enabledLayers.has("ops")}
+            onToggleOps={() => toggleLayer("ops")}
+            opsCount={opsAssetCount}
+            shiftForDrawer={Boolean(selected) && viewMode === "detail"}
+          />
         ) : null}
 
         {selected && viewMode === "detail" && slideDir !== "out" ? (

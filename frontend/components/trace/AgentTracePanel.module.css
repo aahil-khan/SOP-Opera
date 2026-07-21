@@ -235,10 +235,8 @@
 .flowCanvas {
   position: relative;
   flex: 1 1 auto;
-  width: 168px;
-  max-width: 100%;
+  width: 100%;
   min-height: 0;
-  margin: 0 auto;
   touch-action: none;
   user-select: none;
   overflow-x: hidden;
@@ -253,7 +251,7 @@
 
 .flowInner {
   position: relative;
-  margin: 0 auto;
+  width: 100%;
 }
 
 .flowCanvas:active {

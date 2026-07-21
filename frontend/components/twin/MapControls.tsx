@@ -2,11 +2,17 @@
 
 import styles from "./MapControls.module.css";
 
+export type MapLayerId = "ops";
+
 interface MapControlsProps {
   onZoomIn: () => void;
   onZoomOut: () => void;
   onReset: () => void;
   onOverview?: () => void;
+  /** When set, show an Ops layer toggle in this stack. */
+  opsEnabled?: boolean;
+  onToggleOps?: () => void;
+  opsCount?: number;
   shiftForDrawer?: boolean;
 }
 
@@ -15,8 +21,13 @@ export function MapControls({
   onZoomOut,
   onReset,
   onOverview,
+  opsEnabled,
+  onToggleOps,
+  opsCount = 0,
   shiftForDrawer = false,
 }: MapControlsProps) {
+  const showOps = typeof onToggleOps === "function";
+
   return (
     <div
       className={styles.controls}
@@ -88,6 +99,27 @@ export function MapControls({
               opacity="0.9"
             />
           </svg>
+        </button>
+      ) : null}
+      {showOps ? (
+        <button
+          type="button"
+          className={`${styles.btn} ${styles.btnOps}`}
+          data-active={opsEnabled ? "true" : undefined}
+          aria-pressed={opsEnabled}
+          title={
+            opsEnabled
+              ? "Hide ops chips (permits, isolation, occupancy)"
+              : "Show ops chips (permits, isolation, occupancy)"
+          }
+          onClick={onToggleOps}
+        >
+          <span className={styles.opsLabel}>Ops</span>
+          {opsCount > 0 ? (
+            <span className={styles.opsCount} aria-label={`${opsCount} assets`}>
+              {opsCount}
+            </span>
+          ) : null}
         </button>
       ) : null}
     </div>

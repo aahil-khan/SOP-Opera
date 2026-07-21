@@ -400,12 +400,10 @@ type SimNode = FlowNodeModel & {
   freqY: number;
 };
 
-const FLOW_W = 168;
 const FLOW_PAD_X = 56;
 const FLOW_PAD_Y = 32;
 /** Minimum vertical spacing so bubble pills do not overlap */
 const FLOW_MIN_ROW_GAP = 32;
-const FLOW_MAX_ROW_GAP = 48;
 const FLOW_MAX_PULL = 20;
 const FLOW_SPRING = 0.12;
 const FLOW_DAMP = 0.82;
@@ -413,6 +411,7 @@ const FLOW_DAMP = 0.82;
 const FLOW_IDLE_AMP_X = 2.2;
 const FLOW_IDLE_AMP_Y = 2.4;
 const FLOW_HIT_RADIUS = 40;
+const FLOW_FALLBACK_W = 168;
 
 function flowAccent(agent: string, tone: string): string {
   if (tone === "risk") return "var(--status-elevated)";
@@ -446,7 +445,9 @@ function RubberFlowGraph({
   const visibleRef = useRef(true);
   const viewportHRef = useRef(280);
   const contentHRef = useRef(280);
+  const flowWRef = useRef(FLOW_FALLBACK_W);
   const [viewportH, setViewportH] = useState(280);
+  const [flowW, setFlowW] = useState(FLOW_FALLBACK_W);
 
   const structureKey = nodes
     .map((n) => `${n.agent}:${n.count}:${n.tone}`)
@@ -457,18 +458,18 @@ function RubberFlowGraph({
       ? viewportH
       : FLOW_PAD_Y * 2 + (nCount - 1) * FLOW_MIN_ROW_GAP;
   const contentH = Math.max(viewportH, minContentH);
+  // Spread nodes across the full canvas height (and width via measured flowW).
   const rowGap =
-    nCount <= 1
-      ? 0
-      : Math.min(
-          FLOW_MAX_ROW_GAP,
-          (contentH - FLOW_PAD_Y * 2) / (nCount - 1),
-        );
+    nCount <= 1 ? 0 : (contentH - FLOW_PAD_Y * 2) / (nCount - 1);
   const scrollable = contentH > viewportH + 1;
 
   useEffect(() => {
     contentHRef.current = contentH;
   }, [contentH]);
+
+  useEffect(() => {
+    flowWRef.current = flowW;
+  }, [flowW]);
 
   const paint = useCallback(() => {
     const sim = simRef.current;
@@ -497,15 +498,21 @@ function RubberFlowGraph({
     }
   }, []);
 
-  // Fill the flow column height (matched to the detail pane via CSS).
+  // Fill the flow column (matched to the detail pane via CSS).
   useEffect(() => {
     const el = wrapRef.current;
     if (!el) return;
     const update = () => {
-      const h = Math.floor(el.getBoundingClientRect().height);
+      const rect = el.getBoundingClientRect();
+      const h = Math.floor(rect.height);
+      const w = Math.floor(rect.width);
       if (h > 0) {
         viewportHRef.current = h;
         setViewportH(h);
+      }
+      if (w > 0) {
+        flowWRef.current = w;
+        setFlowW(w);
       }
     };
     update();
@@ -516,8 +523,8 @@ function RubberFlowGraph({
 
   useEffect(() => {
     const next: SimNode[] = nodes.map((n, i) => {
-      const stagger = ((i % 3) - 1) * 6;
-      const homeX = FLOW_W / 2 + stagger;
+      const stagger = ((i % 3) - 1) * Math.min(10, flowW * 0.04);
+      const homeX = flowW / 2 + stagger;
       const homeY = FLOW_PAD_Y + i * rowGap;
       const prev = simRef.current.find((p) => p.agent === n.agent);
       return {
@@ -542,7 +549,7 @@ function RubberFlowGraph({
     });
     // Paint after React commits the new bubble/edge elements.
     requestAnimationFrame(() => paint());
-  }, [structureKey, nodes, rowGap, paint]);
+  }, [structureKey, nodes, rowGap, flowW, paint]);
 
   useEffect(() => {
     const el = wrapRef.current;
@@ -567,6 +574,8 @@ function RubberFlowGraph({
         const t = (now - t0Ref.current) / 1000;
         const dragging = dragRef.current?.agent ?? null;
         const h = contentHRef.current;
+        const w = flowWRef.current;
+        const clampPadX = Math.min(FLOW_PAD_X, Math.max(24, w / 2 - 8));
         for (const n of simRef.current) {
           if (n.agent === dragging) continue;
 
@@ -582,7 +591,7 @@ function RubberFlowGraph({
           n.x += n.vx;
           n.y += n.vy;
 
-          n.x = Math.min(FLOW_W - FLOW_PAD_X, Math.max(FLOW_PAD_X, n.x));
+          n.x = Math.min(w - clampPadX, Math.max(clampPadX, n.x));
           n.y = Math.min(h - 20, Math.max(20, n.y));
         }
         paint();
@@ -654,7 +663,9 @@ function RubberFlowGraph({
           x = n.homeX + dx * s;
           y = n.homeY + dy * s;
         }
-        n.x = Math.min(FLOW_W - FLOW_PAD_X, Math.max(FLOW_PAD_X, x));
+        const w = flowWRef.current;
+        const clampPadX = Math.min(FLOW_PAD_X, Math.max(24, w / 2 - 8));
+        n.x = Math.min(w - clampPadX, Math.max(clampPadX, x));
         n.y = Math.min(h - 20, Math.max(20, y));
         paint();
         return;
@@ -726,8 +737,8 @@ function RubberFlowGraph({
   const sim = simRef.current.length === nodes.length
     ? simRef.current
     : nodes.map((n, i) => {
-        const stagger = ((i % 3) - 1) * 6;
-        const homeX = FLOW_W / 2 + stagger;
+        const stagger = ((i % 3) - 1) * Math.min(10, flowW * 0.04);
+        const homeX = flowW / 2 + stagger;
         const homeY = FLOW_PAD_Y + i * rowGap;
         return {
           ...n,
@@ -759,11 +770,11 @@ function RubberFlowGraph({
       >
         <div
           className={styles.flowInner}
-          style={{ height: contentH, width: FLOW_W }}
+          style={{ height: contentH, width: flowW }}
         >
           <svg
             className={styles.flowSvg}
-            width={FLOW_W}
+            width={flowW}
             height={contentH}
             aria-hidden
           >

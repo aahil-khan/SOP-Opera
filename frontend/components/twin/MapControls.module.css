@@ -6,6 +6,7 @@
   display: flex;
   flex-direction: column;
   gap: 1px;
+  width: 40px;
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   overflow: hidden;
@@ -29,7 +30,8 @@
 }
 
 .btn {
-  width: 36px;
+  width: 100%;
+  min-width: 36px;
   height: 36px;
   display: flex;
   align-items: center;
@@ -84,4 +86,46 @@
 
 .btnOverview:hover svg {
   transform: scale(1.08);
+}
+
+.btnOps {
+  flex-direction: column;
+  gap: 2px;
+  padding: 0 6px;
+  color: var(--text-secondary);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.btnOps:hover {
+  color: var(--accent-selection);
+}
+
+.btnOps[data-active="true"] {
+  color: var(--text-primary);
+  background: color-mix(in srgb, var(--accent-selection) 12%, var(--surface-panel));
+}
+
+.opsLabel {
+  line-height: 1;
+}
+
+.opsCount {
+  min-width: 1rem;
+  padding: 0 3px;
+  border-radius: 999px;
+  font-size: 0.5625rem;
+  font-weight: var(--weight-semibold);
+  letter-spacing: 0;
+  text-transform: none;
+  line-height: 1.2;
+  color: var(--text-muted);
+  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
+}
+
+.btnOps[data-active="true"] .opsCount {
+  color: var(--accent-selection);
+  background: color-mix(in srgb, var(--accent-selection) 16%, transparent);
 }

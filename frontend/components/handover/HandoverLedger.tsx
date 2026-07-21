@@ -66,7 +66,7 @@ export function HandoverLedger({
     <div className={compact ? styles.ledgerCompact : styles.ledger}>
       {required.length > 0 && (
         <section className={styles.group}>
-          <h2 className={`section-label ${styles.groupLabel}`}>
+          <h2 className={styles.groupLabel}>
             Must acknowledge
             <span className={styles.count}>{required.length}</span>
           </h2>
@@ -89,7 +89,7 @@ export function HandoverLedger({
 
       {awareness.length > 0 && (
         <section className={styles.group}>
-          <h2 className={`section-label ${styles.groupLabel}`}>
+          <h2 className={styles.groupLabel}>
             For awareness
             <span className={styles.count}>{awareness.length}</span>
           </h2>

@@ -213,7 +213,7 @@ HandoverItemType = Literal[
     "open_review", "active_fact", "open_task", "decision_condition", "note"
 ]
 HandoverAckState = Literal["pending", "acknowledged", "queried"]
-HandoverNarrationMode = Literal["llm", "deterministic"]
+HandoverNarrationMode = Literal["llm", "deterministic", "fallback"]
 
 
 class HandoverItem(BaseModel):
