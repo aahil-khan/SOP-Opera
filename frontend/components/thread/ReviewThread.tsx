@@ -10,6 +10,11 @@ import {
   type ReviewComment,
 } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
+import {
+  insertMention,
+  parseMentionedWorkerIds,
+  removeMention,
+} from "@/lib/threadMentions";
 import styles from "./ReviewThread.module.css";
 
 export function ReviewThread({ reviewId }: { reviewId: string }) {
@@ -25,6 +30,7 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
     () => new Set(),
   );
   const [busy, setBusy] = useState(false);
+  const [rosterError, setRosterError] = useState<string | null>(null);
 
   const actorId = getActorFromCookie()?.id ?? null;
 
@@ -32,6 +38,12 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
     () => workerRoster.filter((w) => w.id !== actorId),
     [workerRoster, actorId],
   );
+
+  const workerNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const w of workerRoster) map.set(w.id, w.name);
+    return map;
+  }, [workerRoster]);
 
   async function refresh() {
     setLoading(true);
@@ -64,22 +76,52 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
       .then((roster) => {
         if (cancelled) return;
         setWorkerRoster(roster.filter((r) => r.kind === "worker"));
+        setRosterError(null);
       })
-      .catch(() => {});
+      .catch((e) => {
+        if (cancelled) return;
+        setRosterError(e instanceof Error ? e.message : String(e));
+      });
     return () => {
       cancelled = true;
     };
   }, []);
 
+  /** Keep chip selection in sync when the user types/deletes @Names. */
+  useEffect(() => {
+    if (mentionedWorkerOptions.length === 0) return;
+    const fromText = parseMentionedWorkerIds(draft, mentionedWorkerOptions);
+    setMentionedWorkerIds((prev) => {
+      const next = new Set(fromText);
+      if (next.size === prev.size && [...next].every((id) => prev.has(id))) {
+        return prev;
+      }
+      return next;
+    });
+  }, [draft, mentionedWorkerOptions]);
+
+  function toggleMention(worker: RosterEntry) {
+    const selected = mentionedWorkerIds.has(worker.id);
+    if (selected) {
+      setDraft((d) => removeMention(d, worker.name));
+    } else {
+      setDraft((d) => insertMention(d, worker.name));
+    }
+  }
+
   async function onPost() {
     const body = draft.trim();
     if (!body) return;
+    const fromText = parseMentionedWorkerIds(body, mentionedWorkerOptions);
+    const mentionIds = Array.from(
+      new Set([...mentionedWorkerIds, ...fromText]),
+    );
     setBusy(true);
     setError(null);
     try {
       await postReviewComment(reviewId, {
         body,
-        mentioned_worker_ids: Array.from(mentionedWorkerIds),
+        mentioned_worker_ids: mentionIds,
       });
       setDraft("");
       setMentionedWorkerIds(new Set());
@@ -110,9 +152,10 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
           ) : null}
 
           {comments.map((c) => {
-            const mentionNames = (c.mentioned_worker_ids ?? [])
-              .map((id) => workerRoster.find((w) => w.id === id)?.name)
-              .filter((name): name is string => Boolean(name));
+            const mentionNames = (c.mentioned_worker_ids ?? []).map((id) => {
+              const name = workerNameById.get(id);
+              return name ?? id.slice(0, 8);
+            });
             return (
               <article key={c.id} className={styles.comment}>
                 <div className={styles.commentHeader}>
@@ -128,7 +171,7 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
                 {mentionNames.length > 0 ? (
                   <div className={styles.mentionTags}>
                     {mentionNames.map((name) => (
-                      <span key={name} className={styles.mentionTag}>
+                      <span key={`${c.id}-${name}`} className={styles.mentionTag}>
                         @{name}
                       </span>
                     ))}
@@ -148,40 +191,41 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
             value={draft}
             onChange={(e) => setDraft(e.target.value)}
             rows={3}
-            placeholder="Write a note, and optionally mention workers."
+            placeholder="Write a note. Use the chips below or type @Name to tag someone."
           />
         </label>
+
+        {rosterError ? (
+          <p className={styles.error}>
+            Could not load people to tag: {rosterError}
+          </p>
+        ) : null}
 
         {mentionedWorkerOptions.length > 0 ? (
           <div className={styles.mentions}>
             <div className={styles.mentionsLabel}>
-              Mention workers (optional)
+              Tag people (optional) — they get a Mentions notification
             </div>
-            <div className={styles.mentionList}>
+            <div className={styles.mentionList} role="group" aria-label="Tag people">
               {mentionedWorkerOptions.map((w) => {
                 const checked = mentionedWorkerIds.has(w.id);
                 return (
-                  <label
+                  <button
                     key={w.id}
+                    type="button"
                     className={styles.mentionChip}
                     data-checked={checked ? "true" : undefined}
+                    aria-pressed={checked}
+                    onClick={() => toggleMention(w)}
                   >
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={(e) => {
-                        const next = new Set(mentionedWorkerIds);
-                        if (e.target.checked) next.add(w.id);
-                        else next.delete(w.id);
-                        setMentionedWorkerIds(next);
-                      }}
-                    />
-                    {w.name}
-                  </label>
+                    @{w.name}
+                  </button>
                 );
               })}
             </div>
           </div>
+        ) : !rosterError ? (
+          <p className={styles.loading}>Loading people to tag…</p>
         ) : null}
 
         <div className={styles.actions}>

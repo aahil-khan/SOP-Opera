@@ -177,18 +177,30 @@
   display: inline-flex;
   gap: 0.45rem;
   align-items: center;
-  padding: 0.35rem 0.5rem;
+  padding: 0.35rem 0.65rem;
   border-radius: var(--radius-md);
   border: 1px solid var(--border-muted);
-  background: transparent;
+  background: var(--surface-card, var(--surface-panel));
   cursor: pointer;
+  font: inherit;
   font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
   color: var(--text-primary);
+  transition:
+    border-color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out),
+    color var(--duration-fast) var(--ease-out);
+}
+
+.mentionChip:hover {
+  border-color: var(--border-hover);
+  background: var(--interactive-hover);
 }
 
 .mentionChip[data-checked="true"] {
-  border-color: var(--border-selected);
-  background: color-mix(in srgb, var(--border-selected) 12%, transparent);
+  border-color: color-mix(in srgb, var(--status-info) 45%, var(--border-default));
+  background: color-mix(in srgb, var(--status-info) 12%, transparent);
+  color: var(--status-info);
 }
 
 .actions {

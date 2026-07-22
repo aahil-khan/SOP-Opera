@@ -132,6 +132,18 @@ export function NotificationCenter() {
     hydrateDnd();
   }, [hydrateDnd]);
 
+  /** Prefer Mentions when opening if that is where unread (or any) updates live. */
+  useEffect(() => {
+    if (!open) return;
+    const unread = new Set(unreadIds);
+    const unreadUpdates = updates.some((n) => unread.has(n.id));
+    const unreadAlerts = alerts.some((n) => unread.has(n.id));
+    if (unreadUpdates && !unreadAlerts) setTab("updates");
+    else if (!unreadAlerts && updates.length > 0 && alerts.length === 0) {
+      setTab("updates");
+    }
+  }, [open, alerts, updates, unreadIds]);
+
   useEffect(() => {
     if (!open) return;
     markRead();

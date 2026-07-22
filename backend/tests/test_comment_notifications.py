@@ -118,6 +118,9 @@ async def test_comment_mention_and_reply_notifications(client: AsyncClient):
         },
     )
     assert mentioned.status_code == 201, mentioned.text
+    assert str(WORKER_IMRAN) in [
+        str(x) for x in mentioned.json()["mentioned_worker_ids"]
+    ]
 
     notes = (await client.get("/notifications?limit=50")).json()
     for_review = [n for n in notes if n.get("review_id") == review_id]
