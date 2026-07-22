@@ -15,9 +15,15 @@ import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
 import { AgentTracePanel } from "@/components/trace/AgentTracePanel";
 import { IssueReport } from "@/components/reviews/IssueReport";
+import { SupervisorTaskBrief } from "@/components/reviews/SupervisorTaskBrief";
 import { ReviewThread } from "@/components/thread/ReviewThread";
+import type { ReviewTask } from "@/lib/liveApi";
 import { nextActionForView, ownerNameForView } from "@/lib/openWork";
 import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
+import {
+  OutstandingHitlTasks,
+  outstandingHitlTasks,
+} from "@/components/reviews/OutstandingHitlTasks";
 import actionStyles from "@/components/decision/RecommendedAction.module.css";
 import styles from "./ReviewDetail.module.css";
 
@@ -26,16 +32,19 @@ interface ReviewDetailProps {
   /** In-drawer twin embedding: single column, no page chrome. */
   variant?: "page" | "embedded";
   /**
-   * Supervisor board: summary + thread only — no why/citations, agent
-   * trace, recommended action, or assessment panel.
+   * Supervisor board: summary + decision/task brief + thread — no
+   * why/citations, agent trace, recommended action, or assessment panel.
    */
   audience?: "operator" | "supervisor";
+  /** HITL task opened from the supervisor board (when present). */
+  hitlTask?: ReviewTask | null;
 }
 
 export function ReviewDetail({
   reviewId,
   variant = "page",
   audience = "operator",
+  hitlTask = null,
 }: ReviewDetailProps) {
   const embedded = variant === "embedded";
   const supervisorAudience = audience === "supervisor";
@@ -125,6 +134,7 @@ export function ReviewDetail({
   const otherRecommendations = recommendations.slice(1);
   const nextAction = nextActionForView(view);
   const ownerName = ownerNameForView(view);
+  const hitlOutstanding = outstandingHitlTasks(detail.tasks);
   const showRecommended =
     !supervisorAudience &&
     (latest?.status === "complete" || recommendations.length > 0);
@@ -171,6 +181,18 @@ export function ReviewDetail({
         />
       ) : null}
 
+      {supervisorAudience ? (
+        <SupervisorTaskBrief
+          decision={decision}
+          task={hitlTask}
+          decidedByName={detail.decided_by_name}
+          recommendations={
+            (assessmentInProgress ? priorAssessment : latest)?.recommendations ??
+            []
+          }
+        />
+      ) : null}
+
       <IssueReport
         view={view}
         assessment={
@@ -200,8 +222,22 @@ export function ReviewDetail({
                 </span>
               ) : null}
             </div>
-            <p className={actionStyles.primaryActionText}>{nextAction}</p>
+            <p className={actionStyles.primaryActionText}>
+              {hitlOutstanding.length > 0
+                ? `${hitlOutstanding.length} HITL task${
+                    hitlOutstanding.length === 1 ? "" : "s"
+                  } outstanding`
+                : nextAction}
+            </p>
           </div>
+
+          {hitlOutstanding.length > 0 ? (
+            <OutstandingHitlTasks
+              tasks={detail.tasks}
+              decision={decision}
+              recommendations={recommendations}
+            />
+          ) : null}
 
           {decision ? (
             <p className={actionStyles.decisionLine}>

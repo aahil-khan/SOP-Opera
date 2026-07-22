@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { fetchRoster } from "@/lib/authApi";
+import { fetchRoster, actorKindLabel } from "@/lib/authApi";
 import type { RosterEntry } from "@/lib/authTypes";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import {
@@ -20,12 +20,14 @@ import styles from "./ReviewThread.module.css";
 export function ReviewThread({ reviewId }: { reviewId: string }) {
   const commentEventSeq = useLiveStore((s) => s.commentEventSeq);
   const lastCommentReviewId = useLiveStore((s) => s.lastCommentReviewId);
+  const markThreadRead = useLiveStore((s) => s.markThreadRead);
   const [comments, setComments] = useState<ReviewComment[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const [draft, setDraft] = useState("");
   const [workerRoster, setWorkerRoster] = useState<RosterEntry[]>([]);
+  const [roster, setRoster] = useState<RosterEntry[]>([]);
   const [mentionedWorkerIds, setMentionedWorkerIds] = useState<Set<string>>(
     () => new Set(),
   );
@@ -45,6 +47,16 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
     return map;
   }, [workerRoster]);
 
+  const authorNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const entry of roster) map.set(entry.id, entry.name);
+    return map;
+  }, [roster]);
+
+  function displayAuthorName(comment: ReviewComment): string {
+    return authorNameById.get(comment.author_id) ?? comment.author_name;
+  }
+
   async function refresh() {
     setLoading(true);
     setError(null);
@@ -63,6 +75,20 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [reviewId]);
 
+  /** Clear the unread dot once the thread is actually on screen. */
+  useEffect(() => {
+    const el = document.getElementById("review-thread");
+    if (!el) return;
+    const io = new IntersectionObserver(
+      ([entry]) => {
+        if (entry?.isIntersecting) markThreadRead(reviewId);
+      },
+      { threshold: 0.25 },
+    );
+    io.observe(el);
+    return () => io.disconnect();
+  }, [reviewId, markThreadRead]);
+
   useEffect(() => {
     if (!lastCommentReviewId) return;
     if (lastCommentReviewId !== reviewId) return;
@@ -73,9 +99,10 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
   useEffect(() => {
     let cancelled = false;
     void fetchRoster()
-      .then((roster) => {
+      .then((entries) => {
         if (cancelled) return;
-        setWorkerRoster(roster.filter((r) => r.kind === "worker"));
+        setRoster(entries);
+        setWorkerRoster(entries.filter((r) => r.kind === "worker"));
         setRosterError(null);
       })
       .catch((e) => {
@@ -134,7 +161,7 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
   }
 
   return (
-    <div className={styles.thread}>
+    <div className={styles.thread} id="review-thread" data-section="thread">
       <div className={styles.header}>
         <h2 className={styles.title}>Thread</h2>
         <span className={styles.count}>
@@ -152,29 +179,33 @@ export function ReviewThread({ reviewId }: { reviewId: string }) {
           ) : null}
 
           {comments.map((c) => {
-            const mentionNames = (c.mentioned_worker_ids ?? []).map((id) => {
-              const name = workerNameById.get(id);
-              return name ?? id.slice(0, 8);
-            });
+            const mentionIds = Array.from(
+              new Set(c.mentioned_worker_ids ?? []),
+            );
             return (
               <article key={c.id} className={styles.comment}>
                 <div className={styles.commentHeader}>
                   <div className={styles.author}>
-                    {c.author_name}{" "}
-                    <span className={styles.authorKind}>({c.author_kind})</span>
+                    {displayAuthorName(c)}{" "}
+                    <span className={styles.authorKind}>
+                      ({actorKindLabel(c.author_kind as "user" | "worker")})
+                    </span>
                   </div>
                   <div className={styles.when}>
                     {new Date(c.created_at).toLocaleString()}
                   </div>
                 </div>
                 <p className={styles.body}>{c.body}</p>
-                {mentionNames.length > 0 ? (
+                {mentionIds.length > 0 ? (
                   <div className={styles.mentionTags}>
-                    {mentionNames.map((name) => (
-                      <span key={`${c.id}-${name}`} className={styles.mentionTag}>
-                        @{name}
-                      </span>
-                    ))}
+                    {mentionIds.map((id) => {
+                      const name = workerNameById.get(id) ?? id.slice(0, 8);
+                      return (
+                        <span key={id} className={styles.mentionTag}>
+                          @{name}
+                        </span>
+                      );
+                    })}
                   </div>
                 ) : null}
               </article>

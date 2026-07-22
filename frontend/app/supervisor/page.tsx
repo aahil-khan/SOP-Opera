@@ -991,6 +991,7 @@ export default function SupervisorPage() {
                   reviewId={selectedReviewId}
                   variant="embedded"
                   audience="supervisor"
+                  hitlTask={selectedTask}
                 />
               </div>
             </>
