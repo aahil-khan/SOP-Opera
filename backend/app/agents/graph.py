@@ -16,6 +16,7 @@ from app.agents.events import AgentStep, broadcast_agent_step
 from app.agents.llm import model_label, provider_label, sum_usage
 from app.agents.llm_outcomes import summarize_llm_outcomes
 from app.agents.nodes.incident_pattern import incident_pattern_agent
+from app.agents.nodes.investigation import investigation_agent
 from app.agents.nodes.orchestrator import orchestrator_agent
 from app.agents.nodes.predictive_trend import predictive_trend_agent
 from app.agents.nodes.shift_handover import shift_handover_agent
@@ -98,6 +99,7 @@ def build_graph():
 
     builder.add_node("orchestrator", orch)
     builder.add_node("incident_pattern", incident_pattern_agent)
+    builder.add_node("investigation", investigation_agent)
     builder.add_node("shift_handover", shift_handover_agent)
 
     builder.add_conditional_edges(START, _fan_out_sources, [*SOURCE_AGENTS, "join_sources"])
@@ -117,7 +119,11 @@ def build_graph():
         _fan_out_enrichment,
         ["incident_pattern", END],
     )
-    builder.add_edge("incident_pattern", END)
+    # incident_pattern writes incident_echoes into state; investigation reads them
+    # to headline its advisory, so it runs strictly after. Both are post-verdict and
+    # cannot alter risk_level (they return only observations / agent_trace).
+    builder.add_edge("incident_pattern", "investigation")
+    builder.add_edge("investigation", END)
     return builder.compile()
 
 

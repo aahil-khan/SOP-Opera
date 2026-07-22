@@ -103,3 +103,46 @@ async def test_langgraph_nominal_when_no_facts():
     assert "incident_pattern" not in agents
     assert "shift_handover" not in agents
     assert "scada" not in agents
+
+
+@pytest.mark.asyncio
+async def test_investigation_node_is_verdict_safe():
+    """The investigation enrichment node advises but cannot move the verdict."""
+    from app.agents.nodes.investigation import investigation_agent
+
+    state = {
+        "review_id": str(uuid4()),
+        "assessment_id": str(uuid4()),
+        "asset_name": "Vessel A",
+        "grounded_fact_types": ["elevated_gas", "incomplete_isolation"],
+        "verdict": {"risk_level": "blocking", "summary": "x", "recommendations": []},
+        "incident_echoes": [{"title": "VSP-pattern near-miss"}],
+        "retrieved_references": [],
+        "provider_name": "mock",
+    }
+    out = await investigation_agent(state)
+
+    # It emits a visible advisory for the Brain panel...
+    assert out["observations"][0]["agent"] == "investigation"
+    assert out["observations"][0]["observation"].strip()
+    assert out["observations"][0]["local_risk"] == "nominal"  # never escalates
+    # ...but structurally cannot write any key that carries the verdict.
+    for forbidden in ("verdict", "risk_level", "grounded_fact_types", "recommendations"):
+        assert forbidden not in out
+    # Mock mode makes no LLM call.
+    assert "llm_usage" not in out
+
+
+@pytest.mark.asyncio
+async def test_investigation_node_nominal_needs_no_conditions():
+    from app.agents.nodes.investigation import investigation_agent
+
+    out = await investigation_agent(
+        {
+            "asset_name": "Vessel A",
+            "grounded_fact_types": [],
+            "verdict": {"risk_level": "nominal"},
+            "provider_name": "mock",
+        }
+    )
+    assert "routine monitoring" in out["observations"][0]["observation"].lower()
