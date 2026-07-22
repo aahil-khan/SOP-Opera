@@ -46,6 +46,8 @@ export interface RetrievedReference {
   triggered_by_fact?: string | null;
   /** Primary-source link, so a cited clause can be checked rather than trusted. */
   source_url?: string | null;
+  /** When a matched historical incident occurred (drives the "N months ago" echo). */
+  occurred_at?: string | null;
 }
 
 export interface ReasoningFactor {

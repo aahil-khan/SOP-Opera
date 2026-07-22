@@ -163,6 +163,10 @@ def _serialize_ref(r: RetrievedReference) -> dict[str, Any]:
         "snippet": getattr(r, "snippet", None),
         "code": getattr(r, "code", None),
         "triggered_by_fact": getattr(r, "triggered_by_fact", None),
+        "source_url": getattr(r, "source_url", None),
+        "occurred_at": r.occurred_at.isoformat()
+        if hasattr(getattr(r, "occurred_at", None), "isoformat")
+        else getattr(r, "occurred_at", None),
     }
 
 

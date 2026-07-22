@@ -61,6 +61,8 @@ class RetrievedReference(BaseModel):
     triggered_by_fact: str | None = None
     source_url: str | None = None
     """Primary-source link, so a cited clause can be checked rather than trusted."""
+    occurred_at: datetime | None = None
+    """When a matched historical incident occurred (drives the 'N months ago' echo)."""
 
 
 class ReasoningFactor(BaseModel):

@@ -24,6 +24,8 @@ def _parse_ref(raw: dict | RetrievedReference) -> RetrievedReference:
         snippet=raw.get("snippet"),
         code=raw.get("code"),
         triggered_by_fact=raw.get("triggered_by_fact"),
+        source_url=raw.get("source_url"),
+        occurred_at=raw.get("occurred_at"),
     )
 
 
@@ -82,12 +84,12 @@ async def enrich_references(
             m = row._mapping
             sop_map[str(m["id"])] = (m["title"], m["body_summary"])
 
-    inc_map: dict[str, str] = {}
+    inc_map: dict[str, tuple[str, object | None]] = {}
     if by_source["historical_incidents"]:
         result = await session.execute(
             text(
                 """
-                SELECT id, description
+                SELECT id, description, reported_at
                 FROM incidents
                 WHERE id = ANY(CAST(:ids AS uuid[]))
                 """
@@ -96,7 +98,7 @@ async def enrich_references(
         )
         for row in result.fetchall():
             m = row._mapping
-            inc_map[str(m["id"])] = m["description"]
+            inc_map[str(m["id"])] = (m["description"], m["reported_at"])
 
     enriched: list[RetrievedReference] = []
     for r in parsed:
@@ -105,13 +107,14 @@ async def enrich_references(
         snippet = r.snippet
         code = r.code
         source_url = None
+        occurred_at = r.occurred_at
         if r.source == "regulations" and key in reg_map:
             code, title, snippet, _clause, source_url = reg_map[key]
         elif r.source == "sops" and key in sop_map:
             title, snippet = sop_map[key]
             code = None
         elif r.source == "historical_incidents" and key in inc_map:
-            snippet = inc_map[key]
+            snippet, occurred_at = inc_map[key]
             title = title or "Historical incident"
             code = None
         enriched.append(
@@ -126,6 +129,7 @@ async def enrich_references(
                 code=code,
                 triggered_by_fact=r.triggered_by_fact,
                 source_url=source_url,
+                occurred_at=occurred_at,
             )
         )
     return enriched
@@ -142,4 +146,8 @@ def serialize_ref(r: RetrievedReference) -> dict:
         "snippet": r.snippet,
         "code": r.code,
         "triggered_by_fact": r.triggered_by_fact,
+        "source_url": r.source_url,
+        "occurred_at": r.occurred_at.isoformat()
+        if hasattr(r.occurred_at, "isoformat")
+        else r.occurred_at,
     }
