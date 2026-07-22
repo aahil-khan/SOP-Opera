@@ -60,6 +60,7 @@ export function ReviewDetail({
   const detail = useLiveStore((s) => s.reviewDetails[reviewId]);
   const assessments = useLiveStore((s) => s.assessmentsByReview[reviewId]);
   const sensorCriticalByAsset = useLiveStore((s) => s.sensorCriticalByAsset);
+  const mapClearedReviewIds = useLiveStore((s) => s.mapClearedReviewIds);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [otherActionsOpen, setOtherActionsOpen] = useState(true);
 
@@ -84,10 +85,19 @@ export function ReviewDetail({
           ? { [reviewId]: assessments }
           : {},
         sensorCriticalByAsset,
+        mapClearedReviewIds,
       },
       reviewId,
     );
-  }, [listReview, listAsset, detail, assessments, reviewId, sensorCriticalByAsset]);
+  }, [
+    listReview,
+    listAsset,
+    detail,
+    assessments,
+    reviewId,
+    sensorCriticalByAsset,
+    mapClearedReviewIds,
+  ]);
 
   const assessmentList = assessments ?? [];
   const latest = useMemo(() => {
