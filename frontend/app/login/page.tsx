@@ -109,7 +109,7 @@ export default function LoginPage() {
     setBusy(true);
     setError(null);
     try {
-      await loginAs(selected.id);
+      await loginAs(selected);
       router.replace(activeRole.home);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));

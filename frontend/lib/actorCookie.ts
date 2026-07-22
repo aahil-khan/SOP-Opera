@@ -41,3 +41,25 @@ export function getActorFromCookie(): Actor | null {
   }
 }
 
+/** Mirror the backend cookie on the page origin so the UI can read it. */
+export function setActorCookie(actor: Actor): void {
+  if (typeof document === "undefined") return;
+  const value = encodeURIComponent(JSON.stringify(actor));
+  document.cookie = `${COOKIE_KEY}=${value}; path=/; SameSite=Lax`;
+}
+
+/** Clear the page-origin cookie the UI reads (API logout alone is not enough). */
+export function clearActorCookie(): void {
+  if (typeof document === "undefined") return;
+  document.cookie = `${COOKIE_KEY}=; Max-Age=0; path=/; SameSite=Lax`;
+}
+
+/** Mirror sop_actor for credentialed API calls when the API cookie is absent (cross-origin dev). */
+export function actorRequestHeaders(): Record<string, string> {
+  const actor = getActorFromCookie();
+  if (!actor) return {};
+  return {
+    "X-SOP-Actor": encodeURIComponent(JSON.stringify(actor)),
+  };
+}
+
