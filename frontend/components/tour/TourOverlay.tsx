@@ -30,11 +30,29 @@ import styles from "./TourOverlay.module.css";
 
 /** Breathing room (px) around the spotlit element and between it and the card. */
 const ANCHOR_PAD = 8;
+/** Keep the ring fully on-screen — edge-flush targets used to clip the halo. */
+const VIEWPORT_MARGIN = 12;
 const CARD_GAP = 16;
 const CARD_WIDTH = 360;
 /** Anchor poll cadence + cap (~3.6s) before falling back to a centered card. */
 const POLL_MS = 150;
 const POLL_MAX = 24;
+
+/** Pad the target, then clamp so the spotlight ring never sits off-screen. */
+function spotlightRect(raw: DOMRect): DOMRect {
+  const vw = window.innerWidth;
+  const vh = window.innerHeight;
+  const left = Math.max(VIEWPORT_MARGIN, raw.left - ANCHOR_PAD);
+  const top = Math.max(VIEWPORT_MARGIN, raw.top - ANCHOR_PAD);
+  const right = Math.min(vw - VIEWPORT_MARGIN, raw.right + ANCHOR_PAD);
+  const bottom = Math.min(vh - VIEWPORT_MARGIN, raw.bottom + ANCHOR_PAD);
+  return new DOMRect(
+    left,
+    top,
+    Math.max(0, right - left),
+    Math.max(0, bottom - top),
+  );
+}
 
 interface CardPosition {
   style: React.CSSProperties;
@@ -258,14 +276,7 @@ export function TourOverlay() {
   const step = TOUR_STEPS[stepIndex];
   if (!step) return null;
 
-  const paddedRect = rect
-    ? new DOMRect(
-        rect.x - ANCHOR_PAD,
-        rect.y - ANCHOR_PAD,
-        rect.width + ANCHOR_PAD * 2,
-        rect.height + ANCHOR_PAD * 2,
-      )
-    : null;
+  const paddedRect = rect ? spotlightRect(rect) : null;
   const { style: cardStyle, placement } = computeCardPosition(
     paddedRect,
     step.anchor ? step.placement ?? "bottom" : "center",

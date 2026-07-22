@@ -118,3 +118,10 @@ export const useTourStore = create<TourState>((set, get) => ({
 
   hydrateSeen: () => set({ hasSeen: readSeen() }),
 }));
+
+/** Current script step id while the tour is active; null otherwise. */
+export function useTourStepId(): string | null {
+  return useTourStore((s) =>
+    s.active ? (TOUR_STEPS[s.stepIndex]?.id ?? null) : null,
+  );
+}

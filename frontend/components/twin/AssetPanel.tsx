@@ -4,6 +4,7 @@ import { useEffect, useRef, useState, type RefObject } from "react";
 import dynamic from "next/dynamic";
 import type { LiveAssetView } from "@/lib/liveStore";
 import { useLiveStore } from "@/lib/liveStore";
+import { useTourStepId } from "@/lib/tourStore";
 import { AgentBrainPanel } from "./AgentBrainPanel";
 import { WhyBrief } from "./WhyBrief";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
@@ -190,11 +191,15 @@ export function AssetPanel({
     review ? s.assessmentsByReview[review.id] : undefined,
   );
   const isFullReview = assetPanelMode === "fullReview";
+  const tourStepId = useTourStepId();
+  /** Tour Act III needs the Brain even after a fast mock assessment finishes. */
+  const tourShowBrain = tourStepId === "cast-brain";
 
   const assessmentInProgress =
     review?.state === "assessing" ||
     assessment?.status === "pending" ||
     assessment?.status === "generating";
+  const showBrain = Boolean(review && (assessmentInProgress || tourShowBrain));
 
   const priorAssessment = assessmentInProgress
     ? priorSettledAssessment(assessmentHistory) ??
@@ -359,13 +364,15 @@ export function AssetPanel({
                 <h3 id="why-heading" className={styles.sectionTitle}>
                   {reviewClosed ? "What happened" : "Why"}
                 </h3>
-                {assessmentInProgress && review ? (
+                {showBrain && review ? (
                   <>
-                    <AssessingBanner
-                      priorRisk={priorAssessment?.risk_level ?? null}
-                      provisionalRisk={provisionalDisplayRisk}
-                      sensorCritical={sensor_critical}
-                    />
+                    {assessmentInProgress ? (
+                      <AssessingBanner
+                        priorRisk={priorAssessment?.risk_level ?? null}
+                        provisionalRisk={provisionalDisplayRisk}
+                        sensorCritical={sensor_critical}
+                      />
+                    ) : null}
                     <AgentBrainPanel reviewId={review.id} />
                   </>
                 ) : (
@@ -393,7 +400,7 @@ export function AssetPanel({
               </section>
             )}
 
-            {!assessmentInProgress && <DomainRadar view={view} />}
+            {!showBrain && <DomainRadar view={view} />}
 
             {!isHappy && (
               <TrendForecastCard
@@ -402,7 +409,7 @@ export function AssetPanel({
               />
             )}
 
-            {!isHappy && !assessmentInProgress && !reviewClosed && (
+            {!isHappy && !showBrain && !reviewClosed && (
               <section
                 className={actionStyles.actionSection}
                 aria-labelledby="do-heading"

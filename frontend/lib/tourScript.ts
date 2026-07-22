@@ -13,8 +13,13 @@
  * step with an `anchor` spotlights the element carrying that `data-tour` value.
  */
 
-import { getLiveAssetViews, useLiveStore } from "@/lib/liveStore";
-import { fetchReports } from "@/lib/liveApi";
+import {
+  getLiveAssetViews,
+  useLiveStore,
+  type AgentStepEvent,
+} from "@/lib/liveStore";
+import { fetchReports, type AssessmentHistoryItem } from "@/lib/liveApi";
+import { normalizeAgentTrace } from "@/lib/reasoningGraph";
 import { startTourScenario } from "@/lib/tourDemo";
 
 /** Minimal router surface the overlay hands to onEnter (Next.js AppRouter). */
@@ -95,6 +100,78 @@ function focusHeroSummary(): void {
   }
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function traceFromAssessment(
+  assessment: AssessmentHistoryItem | null | undefined,
+): AgentStepEvent[] {
+  if (!assessment) return [];
+  const raw =
+    assessment.agent_trace ??
+    assessment.metadata?.agent_trace ??
+    [];
+  return normalizeAgentTrace(raw, assessment);
+}
+
+/**
+ * Open the hero Brain panel with a stable cast list.
+ *
+ * Mock assessments finish in ~1–2s — long before this act — so live `agent.step`
+ * events are often already gone and the panel would unmount. We wait for the
+ * review, hydrate from the persisted `agent_trace` when the live stream is
+ * empty, then select the asset so the tour freezes a full history view.
+ */
+async function prepareCastBrain(): Promise<void> {
+  const deadline = Date.now() + 12_000;
+
+  // Scenario may still be mid-replay — poll until a reviewed hero exists.
+  while (Date.now() < deadline) {
+    const store = useLiveStore.getState();
+    await store.refreshOverview().catch(() => {});
+    if (heroReviewId()) break;
+    await sleep(250);
+  }
+
+  const reviewId = heroReviewId();
+  const assetId = heroAssetId();
+  if (!reviewId || !assetId) {
+    focusHeroSummary();
+    return;
+  }
+
+  // Hold the panel closed until we have a full cast (verdict), or a completed
+  // assessment we can rehydrate — otherwise the act opens on an empty/partial stream.
+  while (Date.now() < deadline) {
+    const store = useLiveStore.getState();
+    await store.loadReviewDetail(reviewId).catch(() => {});
+
+    const live = store.agentStepsByReview[reviewId] ?? [];
+    if (live.some((s) => s.kind === "verdict")) {
+      break;
+    }
+
+    const assessments =
+      useLiveStore.getState().assessmentsByReview[reviewId] ?? [];
+    const complete = assessments.find((a) => a.status === "complete");
+    const fromTrace = traceFromAssessment(complete);
+    if (fromTrace.some((s) => s.kind === "verdict") || fromTrace.length > 0) {
+      // Prefer trace when the live WS stream was missed (assessment already done).
+      if (live.length === 0 || fromTrace.length >= live.length) {
+        useLiveStore.getState().seedAgentStepsForReview(reviewId, fromTrace);
+      }
+      break;
+    }
+
+    await sleep(250);
+  }
+
+  const store = useLiveStore.getState();
+  store.selectAsset(assetId);
+  store.setAssetPanelMode("summary");
+}
+
 /* ── The script ────────────────────────────────────────────────────────────*/
 
 export const TOUR_STEPS: TourStep[] = [
@@ -154,8 +231,8 @@ export const TOUR_STEPS: TourStep[] = [
     route: "/operator",
     anchor: "brain-panel",
     placement: "left",
-    autoMs: 9000,
-    onEnter: () => focusHeroSummary(),
+    autoMs: 10000,
+    onEnter: () => prepareCastBrain(),
   },
 
   // ── Act IV · The Evidence ─────────────────────────────────────────────

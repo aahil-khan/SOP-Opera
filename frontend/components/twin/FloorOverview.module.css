@@ -2,15 +2,23 @@
   position: absolute;
   inset: 0;
   z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: clamp(0.75rem, 1.8vw, 1.75rem);
+  display: flex;
+  flex-direction: column;
   padding: clamp(4.5rem, 10vh, 6.5rem) clamp(1.25rem, 3vw, 2.5rem)
     clamp(2rem, 5vh, 3.5rem);
-  align-items: stretch;
   overflow: auto;
   transform-origin: center center;
   animation: overview-zoom-in 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.floors {
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: clamp(0.75rem, 1.8vw, 1.75rem);
+  align-items: stretch;
 }
 
 .overview[data-exiting="true"] {

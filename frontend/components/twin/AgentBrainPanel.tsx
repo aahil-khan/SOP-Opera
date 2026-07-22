@@ -3,9 +3,12 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   useAgentStepsForReview,
+  useLiveStore,
   type AgentStepEvent,
   type AgentStepKind,
 } from "@/lib/liveStore";
+import { normalizeAgentTrace } from "@/lib/reasoningGraph";
+import { useTourStepId } from "@/lib/tourStore";
 import styles from "./AgentBrainPanel.module.css";
 
 const AGENT_LABELS: Record<string, string> = {
@@ -150,23 +153,83 @@ interface AgentBrainPanelProps {
   reviewId: string;
 }
 
+const EMPTY_TRACE: AgentStepEvent[] = [];
+
 /**
  * Live multi-agent reasoning stream scoped to one review.
  * Default: only the latest step. "History" expands the full step list from the start.
+ *
+ * During the tour's cast-brain act the stream freezes into an expanded history
+ * snapshot so the narration isn't racing a live (or already-finished) run.
  */
 export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
-  const steps = useAgentStepsForReview(reviewId);
+  const liveSteps = useAgentStepsForReview(reviewId);
+  const assessments = useLiveStore((s) => s.assessmentsByReview[reviewId]);
+  const tourStepId = useTourStepId();
+  const tourPinned = tourStepId === "cast-brain";
+
   const listRef = useRef<HTMLUListElement>(null);
   const [showHistory, setShowHistory] = useState(false);
+  const [frozenSteps, setFrozenSteps] = useState<AgentStepEvent[] | null>(null);
+
+  const traceSteps = useMemo(() => {
+    const complete =
+      assessments?.find((a) => a.status === "complete") ?? assessments?.[0];
+    if (!complete) return EMPTY_TRACE;
+    const raw =
+      complete.agent_trace ?? complete.metadata?.agent_trace ?? [];
+    return normalizeAgentTrace(raw, complete);
+  }, [assessments]);
+
+  const sourceSteps =
+    liveSteps.length > 0 ? liveSteps : traceSteps;
+  const sourceStepsRef = useRef(sourceSteps);
+  sourceStepsRef.current = sourceSteps;
 
   useEffect(() => {
     setShowHistory(false);
+    setFrozenSteps(null);
   }, [reviewId]);
 
+  // Pin a stable cast list for the tour act — ignore further live churn.
+  // Prefer freezing once a verdict is in; fall back after a short settle so a
+  // hung assessment doesn't leave the narration on a blank panel forever.
+  useEffect(() => {
+    if (!tourPinned) {
+      setFrozenSteps(null);
+      return;
+    }
+    if (frozenSteps) return;
+    if (sourceSteps.length === 0) return;
+
+    const complete =
+      sourceSteps.some((s) => s.kind === "verdict") ||
+      Boolean(
+        assessments?.some(
+          (a) => a.status === "complete" || a.status === "failed",
+        ),
+      );
+
+    if (complete) {
+      setFrozenSteps(sourceSteps);
+      setShowHistory(true);
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      const latest = sourceStepsRef.current;
+      if (latest.length === 0) return;
+      setFrozenSteps((prev) => prev ?? latest);
+      setShowHistory(true);
+    }, 2500);
+    return () => window.clearTimeout(timer);
+  }, [tourPinned, frozenSteps, sourceSteps, assessments]);
+
+  const steps = tourPinned && frozenSteps ? frozenSteps : sourceSteps;
   const current = steps[steps.length - 1] ?? null;
   const history = showHistory ? steps.slice(0, -1) : [];
   const priorCount = Math.max(0, steps.length - 1);
-  const canToggle = steps.length > 1;
+  const canToggle = steps.length > 1 && !tourPinned;
 
   useEffect(() => {
     const el = listRef.current;
@@ -198,13 +261,16 @@ export function AgentBrainPanel({ reviewId }: AgentBrainPanelProps) {
           ? "Clearance"
           : (KIND_LABELS[current.kind] ?? current.kind)
       }`
-    : "Waiting for domain signals…";
+    : tourPinned
+      ? "Waiting for the cast…"
+      : "Waiting for domain signals…";
 
   return (
     <div
       className={styles.embedded}
       aria-label="Agent reasoning stream"
       data-tour="brain-panel"
+      data-tour-pinned={tourPinned ? "true" : undefined}
     >
       <header className={styles.header}>
         <div className={styles.titleBlock}>

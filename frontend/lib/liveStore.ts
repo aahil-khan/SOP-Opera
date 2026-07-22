@@ -382,6 +382,11 @@ interface LiveState {
   clearNotifications: () => void;
   markNotificationsRead: () => void;
   clearAgentSteps: () => void;
+  /** Replace the in-memory step list for one review (tour hydrate from agent_trace). */
+  seedAgentStepsForReview: (
+    reviewId: string,
+    steps: AgentStepEvent[],
+  ) => void;
   clearTelemetry: () => void;
   handleRealtimeEvent: (type: string, payload: Record<string, unknown>) => void;
 }
@@ -887,6 +892,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
 
   clearAgentSteps: () => {
     set({ agentStepsByReview: {} });
+  },
+
+  seedAgentStepsForReview: (reviewId, steps) => {
+    const key = agentStepBucket(reviewId);
+    set((state) => ({
+      agentStepsByReview: {
+        ...state.agentStepsByReview,
+        [key]: steps.slice(-AGENT_STEP_CAP),
+      },
+    }));
   },
 
   clearTelemetry: () => {

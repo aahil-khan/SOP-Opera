@@ -9,10 +9,8 @@
 }
 
 /*
- * The spotlight cutout. A single giant spread shadow dims everything outside
- * the box; the box itself stays clear. pointer-events:auto so the dimmed area
- * still swallows clicks, but the transparent center lets the user see the
- * highlighted feature underneath.
+ * Viewport-sized dim with a clip-path cutout. Visual only — the blocker above
+ * owns hit-testing so the hole can't leak clicks to the page.
  */
 .blocker {
   position: fixed;
@@ -21,13 +19,25 @@
   background: transparent;
 }
 
-.hole {
+.dim {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  background: color-mix(in srgb, #000 62%, transparent);
+  backdrop-filter: blur(1.5px);
+  animation: dim-in var(--duration-normal, 200ms) var(--ease-out) both;
+  transition: clip-path var(--duration-normal, 200ms) var(--ease-out);
+}
+
+/* Accent frame around the revealed target — separate from the dim so glow
+   never depends on a giant box-shadow that ancestors can clip. */
+.ring {
   position: fixed;
   pointer-events: none;
-  border-radius: var(--radius-lg, 8px);
+  box-sizing: border-box;
+  border: 2px solid color-mix(in srgb, var(--accent-ai) 75%, transparent);
   box-shadow:
-    0 0 0 9999px color-mix(in srgb, #000 62%, transparent),
-    0 0 0 2px color-mix(in srgb, var(--accent-ai) 70%, transparent),
+    0 0 0 1px color-mix(in srgb, #000 35%, transparent),
     0 0 22px 4px color-mix(in srgb, var(--accent-ai) 45%, transparent);
   transition:
     top var(--duration-normal, 200ms) var(--ease-out),
@@ -46,24 +56,25 @@
 @keyframes halo-pulse {
   0%,
   100% {
+    border-color: color-mix(in srgb, var(--accent-ai) 70%, transparent);
     box-shadow:
-      0 0 0 9999px color-mix(in srgb, #000 62%, transparent),
-      0 0 0 2px color-mix(in srgb, var(--accent-ai) 70%, transparent),
+      0 0 0 1px color-mix(in srgb, #000 35%, transparent),
       0 0 22px 4px color-mix(in srgb, var(--accent-ai) 40%, transparent);
   }
   50% {
+    border-color: color-mix(in srgb, var(--accent-ai) 95%, transparent);
     box-shadow:
-      0 0 0 9999px color-mix(in srgb, #000 62%, transparent),
-      0 0 0 2px color-mix(in srgb, var(--accent-ai) 90%, transparent),
+      0 0 0 1px color-mix(in srgb, #000 35%, transparent),
       0 0 30px 7px color-mix(in srgb, var(--accent-ai) 60%, transparent);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .hole {
+  .ring {
     animation: none;
   }
-  .fullDim {
+  .fullDim,
+  .dim {
     backdrop-filter: none;
   }
 }

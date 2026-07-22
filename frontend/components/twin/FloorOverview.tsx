@@ -193,22 +193,26 @@ export const FloorOverview = memo(function FloorOverview({
       role="list"
       aria-label="Plant floors overview"
     >
-      {FLOOR_ORDER.map((floor, index) => (
-        <div
-          key={floor}
-          className={styles.slot}
-          role="listitem"
-          style={{ "--slot-index": index } as CSSProperties}
-        >
-          <FloorThumb
-            floor={floor}
-            riskByAsset={riskByAsset}
-            activity={activityByFloor[floor]}
-            fresh={Boolean(freshByFloor[floor])}
-            onSelect={() => onSelectFloor(floor)}
-          />
-        </div>
-      ))}
+      {/* Inner grid is the tour target — overview padding keeps the spotlight
+          ring inset from the viewport so it isn't clipped edge-to-edge. */}
+      <div className={styles.floors} data-tour="twin-map">
+        {FLOOR_ORDER.map((floor, index) => (
+          <div
+            key={floor}
+            className={styles.slot}
+            role="listitem"
+            style={{ "--slot-index": index } as CSSProperties}
+          >
+            <FloorThumb
+              floor={floor}
+              riskByAsset={riskByAsset}
+              activity={activityByFloor[floor]}
+              fresh={Boolean(freshByFloor[floor])}
+              onSelect={() => onSelectFloor(floor)}
+            />
+          </div>
+        ))}
+      </div>
     </div>
   );
 });

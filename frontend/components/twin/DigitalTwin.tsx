@@ -516,7 +516,6 @@ export function DigitalTwin() {
         className={styles.stage}
         data-affected-inset={sidebarOpen ? "true" : undefined}
         data-resizing={sidebarResizing ? "true" : undefined}
-        data-tour="twin-map"
       >
         {viewMode === "overview" ? (
           <FloorOverview
@@ -529,6 +528,7 @@ export function DigitalTwin() {
         ) : (
           <div
             className={styles.detailPane}
+            data-tour="twin-map"
             data-exiting={slideDir === "out" ? "true" : undefined}
           >
             <MapViewport ref={mapRef}>

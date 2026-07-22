@@ -2,6 +2,8 @@
   position: fixed;
   inset: 0;
   z-index: var(--z-tour, 10000);
+  /* Explicit — a clipped ancestor would hide the spotlight ring/glow. */
+  overflow: visible;
   /* The backdrop layer intercepts clicks; the card re-enables pointer events. */
   pointer-events: none;
 }
