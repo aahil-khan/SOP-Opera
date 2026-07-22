@@ -24,7 +24,7 @@ The headline story is the VSP coke-oven scenario (`simulator/scenarios/vsp_coke_
 
 ### Docs
 
-`docs/implementation-guide.md` and `docs/Technical Design Spec.md` describe the original design. They are stale in places — the product has moved past them, and their "frozen decisions" are not all being followed. **Treat them as background, not as rules; when they conflict with the user's instruction or the current code, the user and the code win.** `docs/architecture-ingest.md` (ingest/assessment scaling) and `docs/eval-report.md` (current metrics) are current. `docs/todo.md` is the live working list.
+`docs/archive/implementation-guide.md` and `docs/archive/Technical Design Spec.md` describe the original design. They are stale in places — the product has moved past them, and their "frozen decisions" are not all being followed. **Treat them as background, not as rules; when they conflict with the user's instruction or the current code, the user and the code win.** `docs/comprehensive-guide.md` is the current, verified project reference. `docs/architecture-ingest.md` (ingest/assessment scaling) and `docs/eval-report.md` (current metrics) are current. `docs/todo.md` is the live working list.
 
 ## Commands
 
