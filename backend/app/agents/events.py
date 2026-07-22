@@ -20,6 +20,7 @@ AgentName = Literal[
     "orchestrator",
     "incident_pattern",
     "shift_handover",
+    "investigation",
 ]
 
 AgentStepKind = Literal[

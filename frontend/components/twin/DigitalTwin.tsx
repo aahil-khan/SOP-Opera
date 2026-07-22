@@ -24,6 +24,7 @@ import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
+import { SystemContrastStrip } from "./SystemContrastStrip";
 import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { MapControls, type MapLayerId } from "./MapControls";
@@ -553,6 +554,10 @@ export function DigitalTwin() {
             </MapViewport>
           </div>
         )}
+
+        {viewMode === "detail" && slideDir !== "out" ? (
+          <SystemContrastStrip views={views} />
+        ) : null}
 
         {viewMode === "detail" && slideDir !== "out" ? (
           <FloorNavArrows

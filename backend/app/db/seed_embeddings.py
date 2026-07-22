@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from app.assessment.embeddings import embed_texts
 from app.db import vector as vector_db
@@ -330,6 +330,13 @@ INCIDENTS = [
     ),
 ]
 
+# Days-before-now to stamp specific incidents at, so the historical-echo reads as a
+# real prior event on the unit. The VSP-pattern coke-oven near-miss is dated ~6 months
+# back on Vessel A — the unit the hero scenario drives.
+INCIDENT_AGE_DAYS: dict[str, int] = {
+    "c3333333-3333-3333-3333-333333333306": 183,
+}
+
 
 async def seed_embeddings() -> None:
     async with SessionLocal() as session:
@@ -381,6 +388,9 @@ async def seed_embeddings() -> None:
 
         now = datetime.now(timezone.utc)
         for iid, asset_id, desc, cat in INCIDENTS:
+            # Backdate specific near-misses so the incident-echo can honestly read
+            # "~N months ago on this unit" rather than a synthetic "now".
+            reported_at = now - timedelta(days=INCIDENT_AGE_DAYS.get(iid, 0))
             await session.execute(
                 text(
                     """
@@ -393,14 +403,15 @@ async def seed_embeddings() -> None:
                     )
                     ON CONFLICT (id) DO UPDATE SET
                       description = EXCLUDED.description,
-                      applies_to_category = EXCLUDED.applies_to_category
+                      applies_to_category = EXCLUDED.applies_to_category,
+                      reported_at = EXCLUDED.reported_at
                     """
                 ),
                 {
                     "id": iid,
                     "asset_id": asset_id,
                     "desc": desc,
-                    "reported_at": now,
+                    "reported_at": reported_at,
                     "cat": cat,
                 },
             )
