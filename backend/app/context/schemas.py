@@ -6,7 +6,7 @@ from uuid import UUID
 
 from pydantic import BaseModel, Field
 
-from app.tasks.schemas import TaskSummaryOut
+from app.tasks.schemas import ReviewTaskOut, TaskSummaryOut
 from shared.python.schemas import AreaOwner, Asset, Context, Decision, DerivedFact, Review
 
 SupervisorConcernType = Literal[
@@ -62,7 +62,9 @@ class ReviewDetailOut(BaseModel):
     context: list[Context]
     derived_facts: list[DerivedFact]
     decision: Decision | None = None
+    decided_by_name: str | None = None
     area_owner: AreaOwner | None = None
     raised_by_worker_name: str | None = None
     supervisor_report: SupervisorReportOut | None = None
     task_summary: TaskSummaryOut | None = None
+    tasks: list[ReviewTaskOut] = Field(default_factory=list)

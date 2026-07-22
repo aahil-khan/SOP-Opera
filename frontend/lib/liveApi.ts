@@ -21,6 +21,7 @@ import type {
   Review,
 } from "@/shared/schemas";
 import type { DecisionOutcome, RiskLevel } from "@/shared/enums";
+import { actorRequestHeaders } from "@/lib/actorCookie";
 import { API_BASE } from "@/lib/api";
 import type { ThresholdsConfig } from "@/lib/sensorThresholds";
 
@@ -30,6 +31,7 @@ export interface ReviewDetail {
   context: Context[];
   derived_facts: DerivedFact[];
   decision: Decision | null;
+  decided_by_name?: string | null;
   area_owner?: AreaOwner | null;
   raised_by_worker_name?: string | null;
   supervisor_report?: {
@@ -38,6 +40,21 @@ export interface ReviewDetail {
     reported_by_name: string;
   } | null;
   task_summary?: TaskSummary | null;
+  tasks?: ReviewTaskBrief[];
+}
+
+export interface ReviewTaskBrief {
+  id: string;
+  assigned_worker_id: string;
+  assigned_worker_name: string | null;
+  task_type: "follow_up" | "unblock";
+  title: string;
+  detail: string | null;
+  status: "open" | "acknowledged" | "done" | "cancelled";
+  created_at: string;
+  acknowledged_at: string | null;
+  done_at: string | null;
+  done_note: string | null;
 }
 
 export interface TaskSummary {
@@ -98,6 +115,7 @@ export interface ReviewTask {
   decision_conditions: string | null;
   decision_comments: string | null;
   decision_submitted_at: string | null;
+  decision_decided_by_name: string | null;
 }
 
 export interface TaskAcknowledgeOut {
@@ -182,6 +200,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...actorRequestHeaders(),
       ...(init?.headers ?? {}),
     },
     credentials: "include",

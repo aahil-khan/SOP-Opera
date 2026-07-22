@@ -315,9 +315,24 @@ async def get_review_detail(
         )
 
     from app.decisions.service import get_decision_for_review
-    from app.tasks.service import get_task_summary
+    from app.tasks.service import get_task_summary, list_tasks_for_review
 
     decision = await get_decision_for_review(session, review_id)
+    decided_by_name: str | None = None
+    if decision is not None:
+        name_row = await session.execute(
+            text(
+                """
+                SELECT name
+                FROM users
+                WHERE id = CAST(:uid AS uuid)
+                """
+            ),
+            {"uid": str(decision.decided_by)},
+        )
+        name_result = name_row.first()
+        if name_result is not None:
+            decided_by_name = name_result._mapping["name"]
     area_owner = await get_zone_owner(session, asset.zone)
     raised_by_worker_name: str | None = None
     supervisor_report = None
@@ -381,6 +396,7 @@ async def get_review_detail(
                         break
 
     task_summary = await get_task_summary(session, review_id=review_id)
+    tasks = await list_tasks_for_review(session, review_id=review_id)
 
     return ReviewDetailOut(
         review=review,
@@ -388,10 +404,12 @@ async def get_review_detail(
         context=context,
         derived_facts=derived,
         decision=decision,
+        decided_by_name=decided_by_name,
         area_owner=area_owner,
         raised_by_worker_name=raised_by_worker_name,
         supervisor_report=supervisor_report,
         task_summary=task_summary,
+        tasks=tasks,
     )
 
 

@@ -29,11 +29,16 @@ async def test_task_summary_awaiting_fix_after_decision(client: AsyncClient):
 
     detail = await client.get(f"/reviews/{review_id}")
     assert detail.status_code == 200
-    summary = detail.json()["task_summary"]
+    body = detail.json()
+    summary = body["task_summary"]
     assert summary is not None
     assert summary["total"] >= 1
     assert summary["open"] >= 1
     assert summary["all_done"] is False
+    tasks = body["tasks"]
+    assert len(tasks) >= 1
+    assert any(t["status"] == "open" for t in tasks)
+    assert all(t["title"] for t in tasks)
 
 
 @pytest.mark.asyncio
