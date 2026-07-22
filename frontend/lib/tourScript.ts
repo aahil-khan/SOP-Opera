@@ -228,7 +228,7 @@ async function sealTourHeroReview(): Promise<string | null> {
 
   await store.loadReviewDetail(reviewId).catch(() => {});
 
-  let view = heroView();
+  const view = heroView();
   let review = view?.review ?? store.reviewDetails[reviewId]?.review ?? null;
   if (!review) return null;
 

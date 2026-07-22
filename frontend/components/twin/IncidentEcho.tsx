@@ -1,6 +1,6 @@
 "use client";
 
-import type { ReasoningFactor, RetrievedReference } from "@/shared";
+import type { ReasoningFactor, RetrievedReference } from "@/shared/schemas";
 import styles from "./IncidentEcho.module.css";
 
 type WithFactors = { reasoning_factors?: ReasoningFactor[] | null };
