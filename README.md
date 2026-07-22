@@ -47,10 +47,10 @@ Not a SCADA replacement, an ERP, a general safety chatbot, an auto-approval syst
 
 ## Architecture
 
-- **Backend** — FastAPI + SQLAlchemy async (raw SQL, no ORM). Domain packages: `reviews`, `context`, `assessment`, `agents`, `risk`, `decisions`, `tasks`, `reports`, `notifications`, `audit`, `graph`, `handover`, `simulator`, `eval`, `ai_ops`, `config`, `auth`, `realtime`. No migration system — `db/schema.sql` is idempotent and applied on every boot.
-- **AI pipeline** — LangGraph `StateGraph` that fans out *selectively*: source agents (scada/permit/maintenance/workforce) only run when their facts are present; spatial, predictive-trend, and shift-handover agents only run on elevated signals; incident-pattern retrieval only runs once a verdict is elevated or blocking. A nominal review is orchestrator-only. Retrieval is orchestrator-driven — deterministic SQL guarantees a citation for every regulation/SOP reference; vector search is used only for incident precedent.
-- **Frontend** — Next.js 15 App Router + React 19 + Zustand. `/operator` is the live Digital Twin (2D plant map, agent reasoning trace, domain radar, predictive trend); `/supervisor` is the review/decision queue; a scripted **Grand Tour** walks the whole product end-to-end for a 3-minute demo.
-- **Data** — Postgres + pgvector, 28 tables, hash-chained `audit_entries` so tampering is detectable (`GET /audit/verify`), durable `SKIP LOCKED` assessment queue so jobs survive worker restarts.
+- **Backend** — FastAPI + SQLAlchemy async (raw SQL, no ORM). Domain packages: `reviews`, `context`, `assessment`, `agents`, `risk`, `decisions`, `tasks`, `reports`, `notifications`, `audit`, `graph`, `handover`, `incidents`, `simulator`, `eval`, `ai_ops`, `config`, `auth`, `realtime`. No migration system — `db/schema.sql` is idempotent and applied on every boot.
+- **AI pipeline** — LangGraph `StateGraph` that fans out *selectively*: source agents (scada/permit/maintenance/workforce) only run when their facts are present; spatial runs on elevated/gas/hot-work signals; predictive-trend when the focus asset has telemetry; shift-handover when this asset carried unacknowledged items; incident-pattern retrieval only once a verdict is elevated or blocking. A nominal review is orchestrator-only. Retrieval is orchestrator-driven — deterministic SQL guarantees a citation for every regulation/SOP reference; vector search is used only for incident precedent.
+- **Frontend** — Next.js 15 App Router + React 19 + Zustand. `/operator` is the live Digital Twin (2D plant map, agent reasoning trace, domain radar, predictive trend); review cases deep-link as `/operator?review={id}`. `/supervisor` is the review/decision queue; `/eval` is the detector scorecard; **Settings** (nav) holds the threshold editor. A scripted **Grand Tour** walks the whole product end-to-end for a 3-minute demo.
+- **Data** — Postgres + pgvector, 28 tables, hash-chained `audit_entries` so tampering is detectable (`GET /audit/verify`), durable `SKIP LOCKED` assessment queue so jobs survive worker restarts. Elevated/hold closures promote into the historical-incident corpus for later retrieval.
 
 Full architectural detail, API surface, and the reasoning behind each design choice: [`docs/comprehensive-guide.md`](docs/comprehensive-guide.md).
 
@@ -110,7 +110,7 @@ Pure-logic backend tests (`test_state_machine.py`, `test_agent_routing.py`, `tes
 | [`docs/audit-2026-07.md`](docs/audit-2026-07.md) | How the eval numbers were verified to be non-circular and trustworthy |
 | [`docs/architecture-ingest.md`](docs/architecture-ingest.md) | Ingest and assessment-queue scaling design |
 | [`docs/business-impact-model.md`](docs/business-impact-model.md) | Sourced ₹ cost/ROI model |
-| [`docs/pitch-scorecard.md`](docs/pitch-scorecard.md) | One-pager for pitching — headline numbers and demo beats |
+| [`docs/pitch-scorecard.md`](docs/pitch-scorecard.md) | One-pager for pitching — headline numbers and demo beats (Eval = scorecard; Settings = thresholds) |
 | [`docs/todo.md`](docs/todo.md) | Live working list |
 | [`docs/archive/`](docs/archive/) | Superseded design docs and historical notes — not current, kept for record |
 

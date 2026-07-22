@@ -69,7 +69,7 @@ flowchart LR
   Persist --> Twin["Digital Twin / Assessment panel\n(ws: assessment.completed)"]
   Twin --> Decision["Supervisor decision"]
   Decision --> Evidence["Evidence frozen"]
-  Evidence --> Close["Review closed → report generated"]
+  Evidence --> Close["Review closed → report +\noptional incident promotion"]
 ```
 
 Audit entries are written at every step along this spine (`audit_entries`, hash-chained — see §12).
@@ -285,18 +285,18 @@ So geospatial earns its place as **evidence quality for the human** — showing 
 
 FastAPI + SQLAlchemy async + asyncpg, no ORM (raw `text()` SQL). Layering per domain: `routes.py` (HTTP) → `service.py` (orchestration/business rules) → `repository.py` (SQL). No migration system — `backend/app/db/schema.sql` is idempotent and applied on every boot.
 
-### Domain packages (18)
+### Domain packages (19)
 
-`reviews, context, assessment, agents, risk, decisions, tasks, reports, notifications, audit, graph, handover, simulator, eval, ai_ops, config, auth, realtime`
+`reviews, context, assessment, agents, risk, decisions, tasks, reports, notifications, audit, graph, handover, incidents, simulator, eval, ai_ops, config, auth, realtime`
 
-*(`handover` and `risk` are recent additions not called out as top-level domains in some older docs — see the staleness note at the end.)*
+`incidents` has no HTTP router — it is a service package that promotes elevated/blocking (or hold) closures into the historical-incident corpus so the next similar assessment can cite this plant's own prior decision. `risk` is the hazard-pathway policy; `handover` is shift-to-shift custody.
 
 ### API surface (by domain, as currently wired in `main.py`)
 
 | Domain | Endpoints |
 | --- | --- |
 | **context** | `POST /context` (ingest) · `GET /assets` · `GET /assets/{id}/owner` · `GET /assets/{id}/context` |
-| **reviews** | `POST /reviews` · `GET /reviews` · `GET /reviews/raised-by-me` \| `/shared-with-me` \| `/in-my-zones` · `GET /reviews/{id}` · `GET /reviews/{id}/assessments` · `POST /reviews/{id}/assessments/retry` · `POST /reviews/{id}/reopen` · `POST /reviews/{id}/close` · `GET /reviews/{id}/reports` |
+| **reviews** | `POST /reviews` · `GET /reviews` · `GET /reviews/raised-by-me` \| `/shared-with-me` \| `/in-my-zones` · `GET /reviews/{id}` · `GET`/`POST /reviews/{id}/comments` · `GET /reviews/{id}/assessments` · `POST /reviews/{id}/assessments/retry` · `POST /reviews/{id}/assessments/manual` · `POST /reviews/{id}/reopen` · `POST /reviews/{id}/close` · `GET /reviews/{id}/reports` |
 | **decisions** | `POST /reviews/{id}/decisions` |
 | **tasks** | `GET /tasks` · `POST` (acknowledge) · `POST` (mark done) |
 | **reports** | `GET /reports` · `GET /reports/{id}` · `GET /reports/export.xlsx` · `GET /reports/{id}/export.pdf` · `GET /reports/{id}/export.xlsx` |
@@ -310,6 +310,7 @@ FastAPI + SQLAlchemy async + asyncpg, no ORM (raw `text()` SQL). Layering per do
 | **config** | `GET`/`PUT /api/config/thresholds` |
 | **auth** | `GET /auth/me` · `GET /auth/roster` · `POST /auth/login` \| `/logout` |
 | **ingest** | `POST /api/ingest/webhook` |
+| **assessment-jobs** | `GET /api/assessment-jobs/queue` |
 
 Route prefixes are inconsistent by history, not accident — most domains are unprefixed while `config`, `eval`, `ingest`, and the assessment job queue sit under `/api/...`.
 
@@ -332,16 +333,19 @@ Next.js 15 App Router + React 19 + Zustand. `lib/liveStore.ts` is the single cli
 | `/supervisor` | Task list, floor reports, review queues (raised by me / shared with me / in my zones), decision flow | `worker` actors (shift supervisor) |
 | `/reports`, `/reports/[id]` | Frozen audit-packet reports, with PDF/Excel export | Both |
 | `/handover` | Shift handover ledger — carried-forward hazards, acknowledgement status | Both |
-| `/eval` | Compound-vs-single-sensor scorecard, threshold editor, handover coverage | Both / demo audience |
+| `/eval` | Compound-vs-single-sensor scorecard + handover coverage | Both / demo audience |
 | `/ai-ops` | Pipeline health — LLM outcomes, WebSocket queue depth/drops, worker status | Both |
 | `/notifications` | Notification feed | Both |
 | `/login` | Actor login (cookie-carried `sop_actor`, seeded users, no real IdP) | Everyone |
+| `/reviews`, `/reviews/[id]` | **Redirects** — list → `/operator`; detail → `/operator?review={id}` (twin deep-link) | Legacy bookmarks |
+
+Thresholds are **not** on `/eval`. Nav → **Settings** hosts the sensor/rule threshold editor (`ThresholdEditor`, session-editable against `GET|PUT /api/config/thresholds`), plus appearance and do-not-disturb. A **Live plant feed** pill in the top nav appears while ambient telemetry is streaming.
 
 *Note: this route/actor layout is a meaningful change from the "twin at `app/page.tsx`" framing in some older docs — see the staleness note at the end.*
 
 ### The Digital Twin (`components/twin/`)
 
-The signature surface. A 2D floor plan (`FloorPlan.tsx`, `FloorOverview.tsx`) where assets highlight as risk builds. Key pieces: `AssetMarker`/`AssetPanel` (click an asset → its context), `AgentBrainPanel` (the live multi-agent trace as agents fire), `DomainRadar`/`DomainDetailFlyout` (five-domain risk shape), `WhyBrief` (plain-language "why" summary), `TrendForecastCard` (predictive-trend readout), `SpatialGraphPanel`/`SpatialLinksLayer` (KG proximity links on the map), `ImpactStrip`, `ReviewSidebar`, `ShiftGate`.
+The signature surface. A 2D floor plan (`FloorPlan.tsx`, `FloorOverview.tsx`) where assets highlight as risk builds. Key pieces: `AssetMarker`/`AssetPanel` (click an asset → its context, including outstanding HITL tasks), `AgentBrainPanel` (the live multi-agent trace as agents fire), `DomainRadar`/`DomainDetailFlyout` (five-domain risk shape), `WhyBrief` (plain-language "why" summary), `TrendForecastCard` (predictive-trend readout), `SpatialGraphPanel`/`SpatialLinksLayer` (KG proximity links on the map), `ImpactStrip`, `ReviewSidebar`, `ShiftGate`, `IncidentEcho`. Review case UI opens **on the twin** via `/operator?review={id}` (legacy `/reviews/[id]` redirects there); `ReviewDetail` / `SupervisorTaskBrief` / `OutstandingHitlTasks` render in that panel flow rather than a standalone case page.
 
 ### The Grand Tour (`components/tour/`, `lib/tourScript.ts`)
 
@@ -363,7 +367,7 @@ A scripted, cinematic guided walkthrough of the whole product — added after th
 
 ### Reports (`components/reports/`)
 
-Reviews close into **frozen, versioned, hash-stamped audit packets** — the exact context and assessment content a decision rested on, snapshotted at decision time, not just referenced by id. Exportable as PDF or Excel (`GET /reports/{id}/export.pdf` \| `.xlsx`).
+Reviews close into **frozen, versioned, hash-stamped audit packets** — the exact context and assessment content a decision rested on, snapshotted at decision time, not just referenced by id. Exportable as PDF or Excel (`GET /reports/{id}/export.pdf` \| `.xlsx`). Elevated/blocking (or hold-outcome) closures are also **promoted into the historical-incident corpus** (`incidents/service.py`) and re-indexed for retrieval, so the next similar compound condition can cite this plant's own prior decision — not only the seeded near-misses. Demo reset wipes promoted incidents while keeping the seed corpus.
 
 ### Handover (`components/handover/`)
 
@@ -433,15 +437,17 @@ That's not decoration — it's the direct answer to "why did the system say this
 
 ## 22. Where the older docs are stale (read this before quoting them)
 
-`docs/project-overview.md`, `docs/pitch-scorecard.md`, and CLAUDE.md itself have drifted from the current code in a few concrete ways this guide corrects:
+`docs/archive/` holds superseded design docs (including `project-overview.md`). Leave them alone — they are historical. Current drift that this guide (and CLAUDE.md) must stay aligned with:
 
-- **Six derived facts → 16.** The "six rules" framing in `project-overview.md` predates `over_temperature`, `critical_temperature`, `equipment_vibration_anomaly`, `effluent_quality_breach`, `tank_level_critical`, `ppe_noncompliance`, `lifting_operation_conflict`, `weather_hold`, `certification_expiring`, and `supervisor_floor_report`.
-- **`app/page.tsx` is no longer the Digital Twin.** It's now the public landing page; the twin lives at `/operator`, and signed-in visitors are redirected there (or to `/supervisor`) by `AppShell`.
-- **Two more domains exist that older docs don't list**: `handover` (shift-to-shift hazard custody, feeds the risk policy) and `risk` (the hazard-pathway policy itself, factored out as its own package).
-- **Two features shipped after those docs were written**: the frozen/versioned/hash-stamped report packets with PDF/Excel export, and **The Grand Tour** guided walkthrough (§16).
-- **The eval headline numbers themselves are current** (verified by re-running `python -m app.eval.run` against the current code on 2026-07-22 — output was byte-identical to the shipped `docs/eval-report.md`), so the 98%/0%-FN/28-minute figures in `pitch-scorecard.md` can still be quoted as-is.
+- **Sixteen derived facts**, not the archived "six rules" framing.
+- **`app/page.tsx` is the public landing page**; the twin lives at `/operator`. Signed-in visitors are redirected there (or to `/supervisor`) by `AppShell`.
+- **Review case URLs deep-link the twin** (`/operator?review={id}`); `/reviews` and `/reviews/[id]` are redirects, not a standalone case page.
+- **Threshold editor lives in Nav → Settings**, not on `/eval`. Eval is the scorecard + handover coverage only.
+- **Extra domains**: `handover`, `risk`, and `incidents` (closure → historical-incident promotion; no HTTP router).
+- **Shipped after early docs**: frozen/versioned/hash-stamped report packets with PDF/Excel export, **The Grand Tour**, Live plant-feed pill, supervisor task brief / outstanding HITL tasks on the twin.
+- **Eval headline numbers** (verified 2026-07-22 against `python -m app.eval.run`) remain the ones in `docs/eval-report.md` / `pitch-scorecard.md`.
 
-Per CLAUDE.md: when any doc conflicts with the current code, **the code wins** — treat `docs/` as background, and this file as the corrected snapshot.
+When any doc conflicts with the current code, **the code wins** — this file is the corrected snapshot among the live docs.
 
 ---
 

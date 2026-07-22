@@ -80,14 +80,14 @@ context arrives (simulator | manual POST /context | POST /api/ingest/webhook)
   → orchestrator claims job → hybrid retrieval → LangGraph agents + LLM → validate → persist
   → review FSM → pending_decision  (ws: assessment.completed)
   → supervisor decides → evidence frozen → tasks created
-  → close → report generated; audit entries throughout
+  → close → report generated (+ historical-incident promotion when warranted); audit entries throughout
 ```
 
 ### Backend (`backend/app`, FastAPI + SQLAlchemy async + asyncpg)
 
 Layering per domain package: `routes.py` (HTTP) → `service.py` (orchestration/business rules) → `repository.py` (SQL). SQL is raw `text()` against `sqlalchemy.ext.asyncio` — there are no ORM models. Response/request shapes come from `shared/python/schemas.py` where they are contract types, and local `schemas.py` for endpoint-only shapes.
 
-Domains: `reviews` (lifecycle, comments, ownership, concerns), `context` (ingest + derived facts), `assessment` (orchestrator, pipeline, providers, retrieval, embeddings, manual fallback), `agents` (LangGraph multi-agent), `decisions`, `tasks` (follow-through work generated from a decision), `reports`, `notifications`, `audit`, `graph` (knowledge graph / spatial neighbors), `simulator` (scripted scenarios + ambient telemetry), `eval` (detector metrics / lead-time harness), `ai_ops` (pipeline health), `config` (thresholds), `auth`, `realtime`.
+Domains: `reviews` (lifecycle, comments, ownership, concerns), `context` (ingest + derived facts), `assessment` (orchestrator, pipeline, retrieval, embeddings, manual fallback), `agents` (LangGraph multi-agent), `risk` (hazard-pathway `classify()`), `decisions`, `tasks` (follow-through work generated from a decision), `reports`, `notifications`, `audit`, `graph` (knowledge graph / spatial neighbors), `handover` (shift custody transfer), `incidents` (closure → historical-incident promotion; no HTTP router), `simulator` (scripted scenarios + ambient telemetry), `eval` (detector metrics / lead-time harness), `ai_ops` (pipeline health), `config` (thresholds), `auth`, `realtime`.
 
 Route prefixes are inconsistent by design/history: most domains are unprefixed (`/reviews`, `/demo`, `/graph`), while `config`, `eval`, `ingest`, and `assessment-jobs` sit under `/api/...`. Check `backend/app/main.py` for the router list.
 
@@ -95,24 +95,24 @@ Route prefixes are inconsistent by design/history: most domains are unprefixed (
 
 Not policy — just the load-bearing structure. Changing any of it is fine, but know what you're cutting through, because several of these are single choke points with side effects attached.
 
-1. **`transition_review()` in `reviews/repository.py` is the only writer of `reviews.state`.** It validates against the pure table in `reviews/state_machine.py`, records audit, broadcasts `review.status_changed`, and fires side effects by target state (`assessing` → enqueue assessment, `reopened` → cancel open tasks, `closed` → generate report). A raw `UPDATE reviews SET state` silently skips all of that.
+1. **`transition_review()` in `reviews/repository.py` is the only writer of `reviews.state`.** It validates against the pure table in `reviews/state_machine.py`, records audit, broadcasts `review.status_changed`, and fires side effects by target state (`assessing` → enqueue assessment, `reopened` → cancel open tasks, `closed` → generate report and optionally promote into the historical-incident corpus). A raw `UPDATE reviews SET state` silently skips all of that.
 2. **Fact detection is deterministic Python, not the LLM.** Pure `rule_*` functions over `ContextEntryView` in `context/derived_facts.py`, thresholds injected from settings. This is what the eval harness measures, so a fact moved into LLM judgement stops being scoreable against the single-sensor baseline. Purity is load-bearing: rules see only the context entry, never asset metadata or the knowledge graph. That is why `rule_zone_occupied` reads a *reported hazard classification* (`worker_location.payload["zone"]`, values `hazardous`/`safe`) rather than comparing against `assets.zone`, which is a plant-area label (`coke-oven-battery`, …). Same field name, different meanings — read the docstring on that rule before "fixing" it.
 2b. **`risk/policy.py` is the only place facts become a verdict.** `classify()` maps facts to hazard dimensions (atmosphere · ignition/energy · exposure · control failure) and blocks on a *pathway*, not a fact count. The agent orchestrator, `reviews/service.py` and `eval/detectors.py` all delegate to it — do not reimplement the gate anywhere, or the shipped verdict and the measured verdict will drift. The LLM never writes `risk_level`; it only writes `summary`.
 3. **Retrieval is orchestrator-driven, not model-driven.** `assessment/retrieval/` tries pgvector first, applies a quality gate, then falls back to deterministic SQL. Two things to know before describing this as RAG: `RAG_VECTOR_SOURCE_TYPES` is **incidents-only**, so regulations and SOPs are *never* vector-searched in any config; and with the default `EMBEDDING_PROVIDER=mock` (a hash-derived random vector) the quality gate never passes, so the deterministic path always wins. That is a deliberate trade for guaranteed citation coverage — just do not call the regulatory path RAG.
 3b. **A summary may only cite what was retrieved.** `assessment/citations.py` checks citation-shaped tokens in generated prose against the enriched references and strips unsupported ones. Without it the only guard was a prompt instruction.
 4. Generation is retried `assessment_max_retries` times, then fails *visibly* — the supervisor retries, switches provider, or writes a manual assessment (`assessment/manual.py`). The seam to patch in tests is `assessment.pipeline.run_agent_assessment`.
-5. WebSocket broadcasts go to **all** clients; the frontend filters for relevance. There is no per-client queue or backpressure, so one stalled client blocks the send loop.
+5. WebSocket broadcasts fan out to **all** clients, but each client has its own bounded outbound queue and writer task — `broadcast()` never awaits a socket. A stalled tab drops its oldest frames rather than blocking ingest or other clients; depth/drop counters surface on AI Ops.
 6. **`audit/service.py` is the only writer of `audit_entries`, and every entry is hash-chained** (`audit/chain.py`). Appends take a transaction-scoped advisory lock so concurrent writers cannot fork the chain; `GET /audit/verify` recomputes it and reports breaks. Inserting an audit row by any other path leaves an unverifiable gap.
 
 ### Assessment pipeline
 
 `assessment/orchestrator.py` is a durable Postgres-backed queue: an in-memory `asyncio.Queue` provides the low-latency wake path, while workers also claim rows with `FOR UPDATE SKIP LOCKED` so jobs survive restarts and N workers (`assessment_worker_count`) never double-run. `recover_pending()` resets stranded `generating` rows at boot.
 
-`assessment/pipeline.py` executes one job: retrieve → `agents/graph.py` → validate → persist → transition. The LangGraph `StateGraph` fans out **selectively** — `agents/routing.py` gates source agents (scada/permit/maintenance/workforce) on matching facts or context categories, spatial and predictive-trend on elevated signals, incident-pattern and shift-handover on elevated/blocking verdicts. A nominal review is orchestrator-only. Agent steps stream to the UI Brain panel as `agent.step` events.
+`assessment/pipeline.py` executes one job: retrieve → `agents/graph.py` → validate → persist → transition. The LangGraph `StateGraph` fans out **selectively** — `agents/routing.py` gates source agents (scada/permit/maintenance/workforce) on matching facts or context categories, spatial on elevated/gas/hot-work signals, predictive-trend when the focus asset has sensor telemetry, shift-handover when this asset carried unacknowledged items (pre-verdict), and incident-pattern only once the orchestrator verdict is elevated/blocking. A nominal review is orchestrator-only. Agent steps stream to the UI Brain panel as `agent.step` events.
 
 LLM selection is `agents/llm.py` `get_chat_model()`: `mock` (default — returns `None`, so **no network call is made and every narration is a deterministic template**), `openai_compatible`, `ollama`. The UI surfaces this as "deterministic narration · no LLM configured" rather than implying reasoning. Embeddings (`assessment/embeddings/`): `mock` / `local` / `openai_compatible`. Selected by `AI_PROVIDER` / `EMBEDDING_PROVIDER`.
 
-There was a second, parallel `assessment/providers/` package implementing the same idea with structured output; nothing reached it and it has been deleted. If you need to change how the LLM is called, `agents/llm.py` is the only seam.
+There was a second, parallel `assessment/providers/` package implementing the same idea with structured output; the source was deleted (only `__pycache__` may remain). If you need to change how the LLM is called, `agents/llm.py` is the only seam.
 
 ### Database
 
@@ -126,7 +126,7 @@ No migration system. `backend/app/db/schema.sql` is idempotent (`CREATE TABLE IF
 
 ### Frontend (`frontend/`, Next.js 15 App Router + React 19 + Zustand)
 
-`app/operator/page.tsx` is the Digital Twin (the hero surface); other routes are `supervisor`, `reports/[id]`, `notifications`, `handover`, `ai-ops`, `eval`, landing (`/`), `login`. `app/layout.tsx` mounts `AppShell`, `ThemeProvider`, `AppToaster`, and `RealtimeProvider`.
+`app/operator/page.tsx` is the Digital Twin (the hero surface); other routes are `supervisor`, `reports/[id]`, `notifications`, `handover`, `ai-ops`, `eval`, landing (`/`), `login`. Legacy `/reviews` and `/reviews/[id]` redirect into the twin (`/operator` and `/operator?review={id}`). Nav **Settings** hosts the threshold editor (not `/eval` — Eval is the scorecard). `app/layout.tsx` mounts `AppShell`, `ThemeProvider`, `AppToaster`, and `RealtimeProvider`.
 
 `lib/liveStore.ts` (Zustand) is the single client-side source of truth: `hooks/useRealtimeEvents.ts` holds one reconnecting WebSocket that funnels every domain event into `handleRealtimeEvent`, which refetches through the typed client in `lib/liveApi.ts`. Components subscribe with narrow selectors — this store is large and hot, so **select the minimum slice**; recent work specifically cut re-renders from hover, the overview feed, and the notification badge.
 
@@ -134,7 +134,7 @@ Styling is CSS Modules colocated next to each component (`Foo.tsx` + `Foo.module
 
 ## Configuration
 
-All backend settings live in `backend/app/core/config.py` (pydantic-settings, reads root `.env` then `backend/.env`); `.env.example` documents every key. Sensor/rule thresholds are backend-owned and exposed to the UI via `GET /api/config/thresholds` — do not duplicate threshold numbers in frontend code, read them from `lib/sensorThresholds.ts` which hydrates from that endpoint.
+All backend settings live in `backend/app/core/config.py` (pydantic-settings, reads root `.env` then `backend/.env`); `.env.example` documents every key. Sensor/rule thresholds are backend-owned and exposed to the UI via `GET /api/config/thresholds` — do not duplicate threshold numbers in frontend code, read them from `lib/sensorThresholds.ts` which hydrates from that endpoint. The session-editable UI for those bands is **Nav → Settings** (`SettingsMenu` → embedded `ThresholdEditor`), not the Eval page.
 
 Two threshold tiers exist and mean different things: **elevated** is the compound-engine early warning (sub-critical co-occurrence), **critical** is the single-sensor incident line used as the baseline for false-negative/lead-time eval. Critical must stay above elevated.
 

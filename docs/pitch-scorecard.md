@@ -76,12 +76,14 @@ a citation can be checked rather than trusted.
    isolation — while gas is still below critical and *before* anyone enters the
    zone. Single-sensor stays silent for another 28 minutes of process time.
 3. Open **Eval** (nav) — FN table, lead time, regulatory coverage.
-4. Supervisor decision → close.
-5. Webhook curl → Vessel A elevated → same twin path; show `/api/assessment-jobs/queue`.
+4. (Optional) Nav → **Settings** — show live threshold editor if a judge asks how bands are tuned.
+5. Supervisor decision → close (report freezes; elevated/hold closures promote into the incident corpus).
+6. Webhook curl → Vessel A elevated → same twin path; show `/api/assessment-jobs/queue`.
 
 ## Where to look live
 
-- Nav → **Eval** → FN table, 3-lane VSP timeline, threshold editor
+- Nav → **Eval** → FN table, 3-lane VSP timeline, handover coverage
+- Nav → **Settings** → sensor/rule threshold editor (session-editable; backed by `GET|PUT /api/config/thresholds`)
 - API → `GET /api/eval/summary`, `GET|PUT /api/config/thresholds`
 - Source report → `docs/eval-report.md`
 
