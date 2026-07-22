@@ -307,9 +307,45 @@ export interface LiveAssetView {
   risk_level: RiskLevel;
   /** Deep-red sensor incident threshold crossed (derived fact or live reading). */
   sensor_critical: boolean;
+  /**
+   * Operator cleared the twin's halted/resolved marker for this closed review.
+   * Report remains the audit trail — map returns to nominal green.
+   */
+  map_cleared: boolean;
   review: Review | null;
   assessment: AssessmentHistoryItem | null;
   detail: ReviewDetail | null;
+}
+
+const MAP_CLEARED_STORAGE_KEY = "sop_map_cleared_reviews";
+
+function loadMapClearedReviewIds(): Record<string, true> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = window.localStorage.getItem(MAP_CLEARED_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return {};
+    const out: Record<string, true> = {};
+    for (const id of parsed) {
+      if (typeof id === "string" && id.length > 0) out[id] = true;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function persistMapClearedReviewIds(ids: Record<string, true>): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.setItem(
+      MAP_CLEARED_STORAGE_KEY,
+      JSON.stringify(Object.keys(ids)),
+    );
+  } catch {
+    /* quota / private mode — in-memory clear still works for the session */
+  }
 }
 
 export interface LiveState {
@@ -327,6 +363,11 @@ export interface LiveState {
   /** Closure-report freeze signal for the /reports register. */
   reportEventSeq: number;
   lastCommentReviewId: string | null;
+  /**
+   * Reviews with a thread comment the local actor has not opened yet
+   * (excludes own posts). Powers the AssetPanel "Open thread" dot.
+   */
+  unreadThreadReviewIds: string[];
   /** Client-side unread ids (bootstrap history starts as read). */
   unreadNotificationIds: string[];
   /** Agent steps keyed by review id (null-scoped → `_unscoped`). */
@@ -351,6 +392,13 @@ export interface LiveState {
   refreshThresholds: () => Promise<ThresholdsConfig>;
   /** Sparse map — only assets with active sensor-critical readings/facts. */
   sensorCriticalByAsset: Record<string, boolean>;
+  /**
+   * Closed reviews whose halted map marker the operator dismissed
+   * ("All ok now"). Persisted in localStorage; reports remain the audit trail.
+   */
+  mapClearedReviewIds: Record<string, true>;
+  /** Drop the twin's resolved/halted marker for a closed review. */
+  clearMapMarker: (reviewId: string) => void;
   /** Per-asset permit / isolation / workforce chips — patched on telemetry flush. */
   opsChipsByAsset: Record<string, AssetOpsChips>;
   /** Plant-wide ops KPI counters — patched with opsChipsByAsset. */
@@ -395,6 +443,8 @@ export interface LiveState {
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
   markNotificationsRead: () => void;
+  /** Clear the per-review thread unread indicator (after opening the thread). */
+  markThreadRead: (reviewId: string) => void;
   clearAgentSteps: () => void;
   /** Replace the in-memory step list for one review (tour hydrate from agent_trace). */
   seedAgentStepsForReview: (
@@ -629,6 +679,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
         state.opsChipsByAsset,
         merged.telemetryStatus,
         merged.telemetryBySource,
+        state.reviewDetails,
       );
       const opsSummary =
         opsChipsByAsset === state.opsChipsByAsset
@@ -674,6 +725,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
     commentEventSeq: 0,
     reportEventSeq: 0,
     lastCommentReviewId: null,
+  unreadThreadReviewIds: [],
   notifications: [],
   handover: null,
   handoverLoading: false,
@@ -689,11 +741,25 @@ export const useLiveStore = create<LiveState>((set, get) => {
   supervisorReviewFocusRequest: null,
   thresholdsConfig: DEFAULT_THRESHOLDS,
   sensorCriticalByAsset: {},
+  mapClearedReviewIds: {},
   opsChipsByAsset: {},
   opsSummary: EMPTY_OPS_SUMMARY,
   bootstrapped: false,
   loading: false,
   error: null,
+
+  clearMapMarker: (reviewId) => {
+    if (!reviewId) return;
+    set((state) => {
+      if (state.mapClearedReviewIds[reviewId]) return state;
+      const mapClearedReviewIds = {
+        ...state.mapClearedReviewIds,
+        [reviewId]: true as const,
+      };
+      persistMapClearedReviewIds(mapClearedReviewIds);
+      return { mapClearedReviewIds };
+    });
+  },
 
   selectAsset: (id) =>
     set({
@@ -760,22 +826,39 @@ export const useLiveStore = create<LiveState>((set, get) => {
         })),
       );
       const actorId = getActorFromCookie()?.id ?? null;
+      const mapClearedReviewIds = loadMapClearedReviewIds();
+      const unreadNotificationIds = unreadIdsSinceSeen(
+        notifications,
+        actorId,
+        isInboxNotification,
+      );
+      const unreadThreadReviewIds = [
+        ...new Set(
+          notifications
+            .filter(
+              (n) =>
+                unreadNotificationIds.includes(n.id) &&
+                n.review_id &&
+                (n.event_type === "comment.mentioned" ||
+                  n.event_type === "comment.replied"),
+            )
+            .map((n) => n.review_id as string),
+        ),
+      ];
       set({
         assets,
         reviews,
         notifications,
         // Unread survives refresh via a per-actor last-seen watermark.
-        unreadNotificationIds: unreadIdsSinceSeen(
-          notifications,
-          actorId,
-          isInboxNotification,
-        ),
+        unreadNotificationIds,
+        unreadThreadReviewIds,
         reviewDetails: {},
         assessmentsByReview: {},
         selectedAssetId: null,
         assetPanelMode: "summary",
         ...hydrated,
         thresholdsConfig,
+        mapClearedReviewIds,
         sensorCriticalByAsset: buildSensorCriticalMap(assets, {
           ...hydrated,
           thresholdsConfig,
@@ -787,6 +870,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
             {},
             hydrated.telemetryStatus,
             hydrated.telemetryBySource,
+            {},
           );
           return {
             opsChipsByAsset,
@@ -922,6 +1006,17 @@ export const useLiveStore = create<LiveState>((set, get) => {
     set({ unreadNotificationIds: [] });
   },
 
+  markThreadRead: (reviewId) => {
+    set((state) => {
+      if (!state.unreadThreadReviewIds.includes(reviewId)) return state;
+      return {
+        unreadThreadReviewIds: state.unreadThreadReviewIds.filter(
+          (id) => id !== reviewId,
+        ),
+      };
+    });
+  },
+
   clearAgentSteps: () => {
     set({ agentStepsByReview: {} });
   },
@@ -965,9 +1060,21 @@ export const useLiveStore = create<LiveState>((set, get) => {
         [id]: assessments,
       };
       const merged = { ...state, reviewDetails, assessmentsByReview };
+      const opsChipsByAsset = refreshOpsChipsByAsset(
+        state.opsChipsByAsset,
+        state.telemetryStatus,
+        state.telemetryBySource,
+        reviewDetails,
+      );
+      const opsSummary =
+        opsChipsByAsset === state.opsChipsByAsset
+          ? state.opsSummary
+          : refreshOpsSummary(state.opsSummary, opsChipsByAsset);
       return {
         reviewDetails,
         assessmentsByReview,
+        opsChipsByAsset,
+        opsSummary,
         sensorCriticalByAsset: patchSensorCriticalForAssets(
           state.sensorCriticalByAsset,
           merged,
@@ -1045,10 +1152,21 @@ export const useLiveStore = create<LiveState>((set, get) => {
     if (type === "comment.created") {
       const rid =
         typeof payload.review_id === "string" ? (payload.review_id as string) : null;
-      set((state) => ({
-        commentEventSeq: state.commentEventSeq + 1,
-        lastCommentReviewId: rid,
-      }));
+      const authorId =
+        typeof payload.author_id === "string" ? (payload.author_id as string) : null;
+      const actorId = getActorFromCookie()?.id ?? null;
+      const fromOther = Boolean(rid && authorId && authorId !== actorId);
+      set((state) => {
+        let unreadThreadReviewIds = state.unreadThreadReviewIds;
+        if (fromOther && rid && !unreadThreadReviewIds.includes(rid)) {
+          unreadThreadReviewIds = [rid, ...unreadThreadReviewIds];
+        }
+        return {
+          commentEventSeq: state.commentEventSeq + 1,
+          lastCommentReviewId: rid,
+          unreadThreadReviewIds,
+        };
+      });
       return;
     }
     if (type === "agent.step") {
@@ -1106,7 +1224,27 @@ export const useLiveStore = create<LiveState>((set, get) => {
         if (type === "sim.source_emit") {
           const sample = asTelemetrySample(payload);
           if (sample) {
-            Object.assign(next, applyTelemetrySamples(state, [sample]));
+            const hydrated = applyTelemetrySamples(state, [sample]);
+            const merged = { ...state, ...hydrated };
+            const opsChipsByAsset = refreshOpsChipsByAsset(
+              state.opsChipsByAsset,
+              merged.telemetryStatus,
+              merged.telemetryBySource,
+              state.reviewDetails,
+            );
+            const opsSummary =
+              opsChipsByAsset === state.opsChipsByAsset
+                ? state.opsSummary
+                : refreshOpsSummary(state.opsSummary, opsChipsByAsset);
+            Object.assign(next, hydrated, {
+              opsChipsByAsset,
+              opsSummary,
+              sensorCriticalByAsset: patchSensorCriticalForAssets(
+                state.sensorCriticalByAsset,
+                merged,
+                new Set([sample.asset_id]),
+              ),
+            });
           }
         }
         return next;
@@ -1178,11 +1316,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
           !isDndEnabled() &&
           presentNotification(n).toastable
         ) {
+          const actorKind = getActorFromCookie()?.kind;
           showNotificationToast(n, {
             onClear: () => get().dismissNotification(n.id),
             onOpen: n.review_id
               ? () => {
-                  void focusReviewAssetOnTwin(n.review_id!);
+                  if (actorKind === "worker") {
+                    get().focusSupervisorReview(n.review_id!);
+                  } else {
+                    void focusReviewAssetOnTwin(n.review_id!);
+                  }
                 }
               : undefined,
           });
@@ -1213,6 +1356,7 @@ export function getLiveAssetViews(
     | "reviewDetails"
     | "assessmentsByReview"
     | "sensorCriticalByAsset"
+    | "mapClearedReviewIds"
   >,
 ): LiveAssetView[] {
   const reviewsByAsset = new Map<string, Review>();
@@ -1237,6 +1381,9 @@ export function getLiveAssetViews(
       detail,
       risk_level: deriveRisk(review, assessment, detail),
       sensor_critical: state.sensorCriticalByAsset[asset.id] ?? false,
+      map_cleared: review
+        ? state.mapClearedReviewIds[review.id] === true
+        : false,
     };
   });
 }
@@ -1261,6 +1408,7 @@ export function useLiveAssetViews(): LiveAssetView[] {
   const reviewDetails = useLiveStore((s) => s.reviewDetails);
   const assessmentsByReview = useLiveStore((s) => s.assessmentsByReview);
   const sensorCriticalByAsset = useLiveStore((s) => s.sensorCriticalByAsset);
+  const mapClearedReviewIds = useLiveStore((s) => s.mapClearedReviewIds);
   return useMemo(
     () =>
       getLiveAssetViews({
@@ -1269,8 +1417,16 @@ export function useLiveAssetViews(): LiveAssetView[] {
         reviewDetails,
         assessmentsByReview,
         sensorCriticalByAsset,
+        mapClearedReviewIds,
       }),
-    [assets, reviews, reviewDetails, assessmentsByReview, sensorCriticalByAsset],
+    [
+      assets,
+      reviews,
+      reviewDetails,
+      assessmentsByReview,
+      sensorCriticalByAsset,
+      mapClearedReviewIds,
+    ],
   );
 }
 
