@@ -208,11 +208,14 @@ export function ReviewSidebar({
 
   const views = useMemo(
     () =>
-      allViews.filter(
-        (v) =>
+      allViews.filter((v) => {
+        // Cleared closed incidents leave the open-work board; report is the archive.
+        if (v.map_cleared && v.review?.state === "closed") return false;
+        return (
           v.review != null ||
-          (v.risk_level !== "nominal" && v.detail?.derived_facts?.length),
-      ),
+          (v.risk_level !== "nominal" && v.detail?.derived_facts?.length)
+        );
+      }),
     [allViews],
   );
 

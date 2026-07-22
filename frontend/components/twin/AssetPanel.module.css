@@ -436,17 +436,40 @@
 
 .footer {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: 1fr 1fr 1fr;
   gap: var(--space-2);
   padding: var(--space-3) var(--space-4);
   border-top: 1px solid var(--border-muted);
 }
 
-.footer[data-single-action="true"] {
-  grid-template-columns: 1fr;
+.footer[data-actions="two"] {
+  grid-template-columns: 1fr 1fr;
 }
 
 .footerBtn {
   width: 100%;
+  min-width: 0;
+  padding-inline: var(--space-2);
+  font-size: var(--text-xs);
+  white-space: nowrap;
+}
+
+.footerBtnThread {
+  position: relative;
+}
+
+.threadDot {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.4rem;
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--status-elevated, #d4a017);
+  box-shadow: 0 0 0 2px var(--surface-panel);
+}
+
+.footerBtnThread[data-unread="true"] {
+  font-weight: var(--weight-semibold);
 }
 

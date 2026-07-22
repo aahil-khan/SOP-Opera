@@ -2,7 +2,7 @@
   position: absolute;
   right: var(--space-4);
   bottom: var(--space-4);
-  z-index: 4;
+  z-index: 8;
   display: flex;
   flex-direction: column;
   gap: 1px;
@@ -13,6 +13,7 @@
   background: var(--surface-panel);
   box-shadow: var(--shadow-sm);
   transition: right var(--duration-normal) var(--ease-out);
+  pointer-events: auto;
 }
 
 :global([data-panel-resizing="true"]) .controls {
@@ -89,9 +90,6 @@
 }
 
 .btnOps {
-  flex-direction: column;
-  gap: 2px;
-  padding: 0 6px;
   color: var(--text-secondary);
   font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
@@ -105,27 +103,10 @@
 
 .btnOps[data-active="true"] {
   color: var(--text-primary);
-  background: color-mix(in srgb, var(--accent-selection) 12%, var(--surface-panel));
+  background: color-mix(in srgb, var(--accent-selection) 18%, var(--surface-panel));
+  box-shadow: inset 2px 0 0 var(--accent-selection);
 }
 
 .opsLabel {
   line-height: 1;
-}
-
-.opsCount {
-  min-width: 1rem;
-  padding: 0 3px;
-  border-radius: 999px;
-  font-size: 0.5625rem;
-  font-weight: var(--weight-semibold);
-  letter-spacing: 0;
-  text-transform: none;
-  line-height: 1.2;
-  color: var(--text-muted);
-  background: color-mix(in srgb, var(--text-muted) 14%, transparent);
-}
-
-.btnOps[data-active="true"] .opsCount {
-  color: var(--accent-selection);
-  background: color-mix(in srgb, var(--accent-selection) 16%, transparent);
 }

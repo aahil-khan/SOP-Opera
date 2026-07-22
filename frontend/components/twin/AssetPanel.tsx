@@ -18,6 +18,10 @@ import {
 } from "@/components/assessment/AssessingBanner";
 import { nextActionForView, ownerNameForView, workStatusForView } from "@/lib/openWork";
 import { openWorkDisplayRisk } from "@/lib/sensorThresholds";
+import {
+  OutstandingHitlTasks,
+  outstandingHitlTasks,
+} from "@/components/reviews/OutstandingHitlTasks";
 import { useHorizontalResize } from "./useHorizontalResize";
 import actionStyles from "@/components/decision/RecommendedAction.module.css";
 import styles from "./AssetPanel.module.css";
@@ -136,10 +140,12 @@ function QuickDecisionSection({
 
   if (!rendered) return null;
 
+  const decisionTaken = reviewState === "decided";
+
   return (
     <DecisionCard
       cardRef={sectionRef}
-      title="Make a decision"
+      title={decisionTaken ? "Close Review" : "Make a decision"}
       onClose={onClose}
       closing={closing}
       data-tour="decision"
@@ -170,8 +176,10 @@ export function AssetPanel({
   const recommendations = assessment?.recommendations ?? [];
   const nextAction = nextActionForView(view);
   const ownerName = ownerNameForView(view);
+  const hitlOutstanding = outstandingHitlTasks(detail?.tasks);
   const [otherActionsOpen, setOtherActionsOpen] = useState(true);
   const [quickDecisionOpen, setQuickDecisionOpen] = useState(false);
+  const [threadFocusNonce, setThreadFocusNonce] = useState(0);
   const bodyRef = useRef<HTMLDivElement>(null);
 
   const { resizing, handleProps } = useHorizontalResize({
@@ -189,6 +197,10 @@ export function AssetPanel({
   const assetPanelMode = useLiveStore((s) => s.assetPanelMode);
   const setAssetPanelMode = useLiveStore((s) => s.setAssetPanelMode);
   const loadReviewDetail = useLiveStore((s) => s.loadReviewDetail);
+  const markThreadRead = useLiveStore((s) => s.markThreadRead);
+  const threadUnread = useLiveStore((s) =>
+    review ? s.unreadThreadReviewIds.includes(review.id) : false,
+  );
   const assessmentHistory = useLiveStore((s) =>
     review ? s.assessmentsByReview[review.id] : undefined,
   );
@@ -235,6 +247,7 @@ export function AssetPanel({
   useEffect(() => {
     setQuickDecisionOpen(false);
     setOtherActionsOpen(true);
+    setThreadFocusNonce(0);
   }, [asset.id, review?.id]);
 
   useEffect(() => {
@@ -250,11 +263,64 @@ export function AssetPanel({
     void loadReviewDetail(review.id);
   }, [quickDecisionOpen, review, loadReviewDetail]);
 
+  // Full review opens at the top unless the user explicitly chose Open thread.
+  useEffect(() => {
+    if (!isFullReview || threadFocusNonce > 0) return;
+    const body = bodyRef.current;
+    if (!body) return;
+    body.scrollTo({ top: 0 });
+  }, [isFullReview, threadFocusNonce]);
+
+  useEffect(() => {
+    if (!threadFocusNonce || !review) return;
+    const body = bodyRef.current;
+    if (!body) return;
+
+    let cancelled = false;
+    const tryScroll = () => {
+      if (cancelled) return false;
+      const section = body.querySelector<HTMLElement>("#review-thread");
+      if (!section) return false;
+      scrollSectionIntoView(body, section);
+      markThreadRead(review.id);
+      return true;
+    };
+
+    if (tryScroll()) return;
+
+    const observer = new MutationObserver(() => {
+      if (tryScroll()) observer.disconnect();
+    });
+    observer.observe(body, { childList: true, subtree: true });
+    const timeout = window.setTimeout(() => {
+      tryScroll();
+      observer.disconnect();
+    }, 800);
+
+    return () => {
+      cancelled = true;
+      observer.disconnect();
+      window.clearTimeout(timeout);
+    };
+  }, [threadFocusNonce, review, markThreadRead]);
+
   // Closed reviews are skipped at bootstrap — load decision + assessment on select.
   useEffect(() => {
     if (!review || review.state !== "closed") return;
     if (detail != null) return;
     void loadReviewDetail(review.id);
+  }, [review, detail, loadReviewDetail]);
+
+  // task_summary can arrive before the embedded task list (stale cache / older API).
+  useEffect(() => {
+    if (!review) return;
+    const summary = detail?.task_summary;
+    const pending =
+      summary != null ? summary.open + summary.acknowledged : 0;
+    const listed = outstandingHitlTasks(detail?.tasks).length;
+    if (pending > 0 && listed === 0) {
+      void loadReviewDetail(review.id);
+    }
   }, [review, detail, loadReviewDetail]);
 
   return (
@@ -438,8 +504,22 @@ export function AssetPanel({
                       </span>
                     ) : null}
                   </div>
-                  <p className={actionStyles.primaryActionText}>{nextAction}</p>
+                  <p className={actionStyles.primaryActionText}>
+                    {hitlOutstanding.length > 0
+                      ? `${hitlOutstanding.length} HITL task${
+                          hitlOutstanding.length === 1 ? "" : "s"
+                        } outstanding`
+                      : nextAction}
+                  </p>
                 </div>
+
+                {hitlOutstanding.length > 0 ? (
+                  <OutstandingHitlTasks
+                    tasks={detail?.tasks}
+                    decision={decision}
+                    recommendations={recommendations}
+                  />
+                ) : null}
 
                 {decision ? (
                   <p className={actionStyles.decisionLine}>
@@ -515,7 +595,9 @@ export function AssetPanel({
       {review && !isHappy && (
         <div
           className={styles.footer}
-          data-single-action={assessmentInProgress || reviewClosed ? "true" : undefined}
+          data-actions={
+            assessmentInProgress || reviewClosed ? "two" : "three"
+          }
         >
           {!assessmentInProgress && !reviewClosed && (
             <button
@@ -524,15 +606,34 @@ export function AssetPanel({
               aria-expanded={quickDecisionOpen}
               onClick={() => setQuickDecisionOpen((open) => !open)}
             >
-              Make a decision
+              {review.state === "decided" ? "Close Review" : "Make a decision"}
             </button>
           )}
+          <button
+            type="button"
+            className={`btn ${styles.footerBtn} ${styles.footerBtnThread}`}
+            data-unread={threadUnread ? "true" : undefined}
+            aria-label={
+              threadUnread ? "Open thread, new message" : "Open thread"
+            }
+            onClick={() => {
+              setQuickDecisionOpen(false);
+              setAssetPanelMode("fullReview");
+              setThreadFocusNonce((n) => n + 1);
+            }}
+          >
+            Open thread
+            {threadUnread ? (
+              <span className={styles.threadDot} aria-hidden />
+            ) : null}
+          </button>
           {isFullReview ? (
             <button
               type="button"
               className={`btn btn-primary ${styles.footerBtn}`}
               onClick={() => {
                 setQuickDecisionOpen(false);
+                setThreadFocusNonce(0);
                 setAssetPanelMode("summary");
               }}
             >
@@ -542,7 +643,10 @@ export function AssetPanel({
             <button
               type="button"
               className={`btn btn-primary ${styles.footerBtn}`}
-              onClick={() => setAssetPanelMode("fullReview")}
+              onClick={() => {
+                setThreadFocusNonce(0);
+                setAssetPanelMode("fullReview");
+              }}
             >
               View full review
             </button>

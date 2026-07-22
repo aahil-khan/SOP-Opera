@@ -299,16 +299,23 @@ export const TOUR_STEPS: TourStep[] = [
     fallbackBody:
       "The compound engine singles out an asset and its marker pulses on the map. Clicking it opens the asset's file — every asset on the twin is one click from its full risk picture.",
     route: "/operator",
-    anchor: "twin-map",
+    anchor: "hero-marker",
     placement: "right",
     autoMs: 6000,
     interactive: {
       hint: "Click the pulsing marker on the map to open its file.",
       done: (s) => s.selectedAssetId != null,
     },
-    // Auto/demo mode performs the click for you; interactive mode waits for it.
+    // Auto/demo mode performs the click for you; interactive mode waits for it
+    // (DigitalTwin zooms to the hero floor and leaves only that marker live).
     onEnter: (ctx) => {
-      if (ctx.mode === "auto") focusHeroSummary();
+      if (ctx.mode === "auto") {
+        focusHeroSummary();
+        return;
+      }
+      // Clear any prior selection so Back→cast-select doesn't auto-advance,
+      // and so the spotlight hole is the only way to open the file.
+      useLiveStore.getState().selectAsset(null);
     },
   },
   {
