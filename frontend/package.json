@@ -4,9 +4,9 @@
   "private": true,
   "scripts": {
     "sync-shared": "node ../scripts/sync-shared.mjs",
-    "predev": "npm run sync-shared",
+    "predev": "node -e \"require('fs').accessSync('../scripts/sync-shared.mjs')\" && npm run sync-shared || true",
     "dev": "next dev",
-    "prebuild": "npm run sync-shared",
+    "prebuild": "node -e \"require('fs').accessSync('../scripts/sync-shared.mjs')\" && npm run sync-shared || true",
     "build": "next build",
     "start": "next start",
     "lint": "next lint"
