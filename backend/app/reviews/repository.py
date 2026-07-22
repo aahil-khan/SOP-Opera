@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from uuid import UUID
 
 from sqlalchemy import text
@@ -9,6 +10,8 @@ from app.audit.service import record_audit
 from app.realtime.connection_manager import manager
 from app.reviews.state_machine import ReviewEvent, next_state
 from shared.python.schemas import Review
+
+logger = logging.getLogger(__name__)
 
 
 def _row_to_review(row: object) -> Review:
@@ -262,10 +265,11 @@ async def transition_review(
     # not happen at all.
     report_id: UUID | None = None
     report_seq: int | None = None
+    promoted_incident_id: UUID | None = None
     if new_state == "closed":
         from app.reports.service import freeze_report_on_closure
 
-        report_id, report_seq = await freeze_report_on_closure(
+        report_id, report_seq, promoted_incident_id = await freeze_report_on_closure(
             session, updated, actor=actor
         )
 
@@ -309,4 +313,17 @@ async def transition_review(
                 review_id=updated.id,
                 closure_event_seq=report_seq,
             )
+        # Chunk indexing uses the vector pool (separate from this txn) and must
+        # only run once the incidents row is committed.
+        if promoted_incident_id is not None:
+            from app.incidents.service import index_promoted_incident
+
+            try:
+                await index_promoted_incident(promoted_incident_id)
+            except Exception:  # noqa: BLE001 — report freeze already succeeded
+                logger.exception(
+                    "failed to index promoted incident %s after close of %s",
+                    promoted_incident_id,
+                    updated.id,
+                )
     return updated

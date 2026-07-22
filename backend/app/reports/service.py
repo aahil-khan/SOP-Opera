@@ -54,13 +54,17 @@ class ReportGenerationError(RuntimeError):
 
 async def freeze_report_on_closure(
     session: AsyncSession, review, *, actor: str
-) -> tuple[UUID, int]:
+) -> tuple[UUID, int, UUID | None]:
     """
     Build and persist the frozen packet for one closure.
 
     Does not commit and does not broadcast — the caller owns both, so that the
     state change and the report land atomically and no client is told about a
     report that was rolled back.
+
+    Returns (report_id, closure_event_seq, promoted_incident_id). The incident
+    id is set when the closure was elevated enough to enter the historical
+    corpus; the caller indexes the knowledge chunk after commit.
     """
     closure_event_seq = await repo.next_closure_seq(session, review.id)
     supersedes = await repo.latest_report_id(session, review.id)
@@ -97,6 +101,12 @@ async def freeze_report_on_closure(
             f"Could not freeze closure report for review {review.id}: {exc}"
         ) from exc
 
+    from app.incidents.service import promote_closure_to_incident
+
+    promoted_incident_id = await promote_closure_to_incident(
+        session, review=review, packet=packet, report_id=report_id
+    )
+
     await record_audit(
         session,
         entity_type="report",
@@ -110,6 +120,9 @@ async def freeze_report_on_closure(
             "content_hash": content_hash,
             "supersedes_report_id": str(supersedes) if supersedes else None,
             "built_from": packet.meta.built_from,
+            "promoted_incident_id": (
+                str(promoted_incident_id) if promoted_incident_id else None
+            ),
         },
     )
 
@@ -124,7 +137,7 @@ async def freeze_report_on_closure(
         closure_event_seq,
         packet.meta.built_from,
     )
-    return report_id, closure_event_seq
+    return report_id, closure_event_seq, promoted_incident_id
 
 
 async def broadcast_report_generated(
