@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { ShiftGate } from "@/components/twin/ShiftGate";
 import { DemoMenu } from "./DemoMenu";
+import { LiveFeedPill } from "./LiveFeedPill";
 import { SettingsMenu } from "./SettingsMenu";
 import { TourLaunchButton } from "@/components/tour/TourLaunchButton";
 import styles from "./TopNav.module.css";
@@ -23,7 +24,6 @@ export function TopNav() {
   const onAiOps = pathname.startsWith("/ai-ops");
   const onEval = pathname.startsWith("/eval");
   const onHandover = pathname.startsWith("/handover");
-  const onReviewDetail = pathname.startsWith("/reviews/");
   const selectAsset = useLiveStore((s) => s.selectAsset);
   const handover = useLiveStore((s) => s.handover);
   const loadHandover = useLiveStore((s) => s.loadHandover);
@@ -101,14 +101,11 @@ export function TopNav() {
           >
             Shift Handover
           </Link>
-          {onReviewDetail && (
-            <span className={styles.tab} data-active="true">
-              Review
-            </span>
-          )}
         </div>
 
         <span className={styles.spacer} />
+
+        <LiveFeedPill />
 
         <div className={styles.toolbar}>
           <TourLaunchButton />

@@ -90,7 +90,7 @@ class Settings(BaseSettings):
     ambient_coincidence_probability: float = 0.01
     ambient_heartbeat_seconds: float = 120.0
     ambient_batch_size: int = 2
-    ambient_status_every_n_ticks: int = 4
+    ambient_status_every_n_ticks: int = 1
     # Soft telemetry ring size per asset (hydrates UI charts on open)
     ambient_telemetry_keep: int = 40
 

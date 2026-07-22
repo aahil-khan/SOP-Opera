@@ -123,10 +123,10 @@ def nominal_scada_bundle(rng: random.Random, settings: Any) -> dict[str, Any]:
     }
 
 
-def nominal_status_sample(rng: random.Random) -> tuple[str, dict[str, Any]] | None:
-    """At most one sparse non-SCADA soft status."""
+def nominal_status_sample(rng: random.Random) -> tuple[str, dict[str, Any]]:
+    """Always emit one soft non-SCADA status so the Ops layer stays populated."""
     roll = rng.random()
-    if roll < 0.34:
+    if roll < 0.40:
         return (
             "permit",
             {
@@ -135,9 +135,9 @@ def nominal_status_sample(rng: random.Random) -> tuple[str, dict[str, Any]] | No
                 "work_type": rng.choice(["cold_work", "inspection"]),
             },
         )
-    if roll < 0.55:
+    if roll < 0.65:
         return ("isolation_status", {"complete": True, "verified": True})
-    if roll < 0.75:
+    if roll < 0.90:
         return (
             "worker_location",
             {
@@ -145,7 +145,10 @@ def nominal_status_sample(rng: random.Random) -> tuple[str, dict[str, Any]] | No
                 "zone": "safe",
             },
         )
-    return None
+    return (
+        "ppe_status",
+        {"compliant": True, "missing": []},
+    )
 
 
 def assert_nominal_below_thresholds(payload: dict[str, Any], settings: Any) -> None:
@@ -329,18 +332,17 @@ class AmbientPlantLoop:
             )
             if emit_status:
                 status = nominal_status_sample(self._rng)
-                if status is not None:
-                    cat, status_payload = status
-                    samples.append(
-                        _sample_dict(
-                            source=CATEGORY_TO_SOURCE.get(cat, "scada"),
-                            asset_id=asset["id"],
-                            asset_name=asset["name"],
-                            category=cat,
-                            payload=status_payload,
-                            ts=ts,
-                        )
+                cat, status_payload = status
+                samples.append(
+                    _sample_dict(
+                        source=CATEGORY_TO_SOURCE.get(cat, "scada"),
+                        asset_id=asset["id"],
+                        asset_name=asset["name"],
+                        category=cat,
+                        payload=status_payload,
+                        ts=ts,
                     )
+                )
 
         await broadcast_telemetry_batch(samples)
         # Quiet ring persist — UI hydrate on open; never goes through context ingest.
