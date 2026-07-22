@@ -1581,6 +1581,7 @@ export function findViewByReviewId(
     | "reviewDetails"
     | "assessmentsByReview"
     | "sensorCriticalByAsset"
+    | "mapClearedReviewIds"
   >,
   reviewId: string,
 ): LiveAssetView | undefined {
@@ -1598,7 +1599,7 @@ export function findViewByReviewId(
     detail,
     risk_level: deriveRisk(review, assessment, detail),
     sensor_critical: state.sensorCriticalByAsset[asset.id] ?? false,
-    map_cleared: false,
+    map_cleared: state.mapClearedReviewIds[review.id] === true,
   };
 }
 

@@ -1,0 +1,45 @@
+# Production stack on the home server: Postgres + API only.
+# Frontend is deployed on Vercel.
+#
+#   cp .env.prod.example .env.prod
+#   ./scripts/deploy-prod.sh
+#
+# Dev DB-only compose remains: docker compose up -d db
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-sop}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-sop}
+      POSTGRES_DB: ${POSTGRES_DB:-sop_opera}
+    volumes:
+      - sop_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready -U ${POSTGRES_USER:-sop} -d ${POSTGRES_DB:-sop_opera}",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    restart: unless-stopped
+
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    env_file:
+      - .env.prod
+    environment:
+      DATABASE_URL: postgresql+asyncpg://${POSTGRES_USER:-sop}:${POSTGRES_PASSWORD:-sop}@db:5432/${POSTGRES_DB:-sop_opera}
+    ports:
+      - "${API_PORT:-8000}:8000"
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+
+volumes:
+  sop_pgdata:

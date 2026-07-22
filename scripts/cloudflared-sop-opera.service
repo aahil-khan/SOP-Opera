@@ -1,0 +1,13 @@
+[Unit]
+Description=Cloudflared Tunnel for sop-opera API
+After=network.target
+
+[Service]
+User=aahil
+ExecStart=/usr/local/bin/cloudflared tunnel --config /home/aahil/.cloudflared/config-sop-opera.yml run
+Restart=on-failure
+RestartSec=10
+KillMode=process
+
+[Install]
+WantedBy=multi-user.target

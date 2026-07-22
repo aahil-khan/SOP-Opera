@@ -4,6 +4,8 @@ import path from "path";
 const sharedRoot = path.resolve(__dirname, "../shared");
 
 const nextConfig: NextConfig = {
+  // Smaller production image when built via frontend/Dockerfile (standalone server.js).
+  output: "standalone",
   // Allow importing ../shared from the monorepo root
   experimental: {
     externalDir: true,

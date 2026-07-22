@@ -38,16 +38,7 @@ export default function OperatorDashboardPage() {
         await loadReviewDetail(reviewId);
         if (cancelled) return;
         const state = useLiveStore.getState();
-        const view = findViewByReviewId(
-          {
-            assets: state.assets,
-            reviews: state.reviews,
-            reviewDetails: state.reviewDetails,
-            assessmentsByReview: state.assessmentsByReview,
-            sensorCriticalByAsset: state.sensorCriticalByAsset,
-          },
-          reviewId,
-        );
+        const view = findViewByReviewId(state, reviewId);
         if (view) {
           openAssetFullReview(view.asset.id);
         }

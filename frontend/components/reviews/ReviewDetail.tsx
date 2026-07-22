@@ -66,6 +66,7 @@ export function ReviewDetail({
     listReview?.asset_id ??
     null;
   const sensorCritical = useSensorCritical(assetIdForCritical);
+  const mapClearedReviewIds = useLiveStore((s) => s.mapClearedReviewIds);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [otherActionsOpen, setOtherActionsOpen] = useState(true);
 
@@ -92,10 +93,19 @@ export function ReviewDetail({
         sensorCriticalByAsset: sensorCritical
           ? { [listAsset.id]: true }
           : {},
+        mapClearedReviewIds,
       },
       reviewId,
     );
-  }, [listReview, listAsset, detail, assessments, reviewId, sensorCritical]);
+  }, [
+    listReview,
+    listAsset,
+    detail,
+    assessments,
+    reviewId,
+    sensorCritical,
+    mapClearedReviewIds,
+  ]);
 
   const assessmentList = assessments ?? [];
   const latest = useMemo(() => {
