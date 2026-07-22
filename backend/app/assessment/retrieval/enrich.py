@@ -10,6 +10,22 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from shared.python.schemas import RetrievedReference
 
 
+def _incident_title(description: str | None, existing: str | None) -> str:
+    """Derive a distinct operator-facing label from an incident description."""
+    if existing and existing.strip() and existing.strip() != "Historical incident":
+        return existing.strip()
+    text = (description or "").strip()
+    if not text:
+        return "Historical incident"
+    if ":" in text:
+        head = text.split(":", 1)[0].strip()
+        if head and len(head) <= 72:
+            return head
+    if len(text) <= 100:
+        return text
+    return text[:97].rstrip() + "…"
+
+
 def _parse_ref(raw: dict | RetrievedReference) -> RetrievedReference:
     if isinstance(raw, RetrievedReference):
         return raw
@@ -113,9 +129,10 @@ async def enrich_references(
         elif r.source == "sops" and key in sop_map:
             title, snippet = sop_map[key]
             code = None
-        elif r.source == "historical_incidents" and key in inc_map:
-            snippet, occurred_at = inc_map[key]
-            title = title or "Historical incident"
+        elif r.source == "historical_incidents":
+            if key in inc_map:
+                snippet, occurred_at = inc_map[key]
+            title = _incident_title(snippet, title)
             code = None
         enriched.append(
             RetrievedReference(

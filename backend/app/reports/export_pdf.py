@@ -360,7 +360,13 @@ def render_report_pdf(report: ReportOut) -> bytes:
             ]
         ]
         for c in packet.citations.references:
-            title = " — ".join(x for x in [c.clause, c.title] if x)
+            display_title = c.title
+            if (
+                (not display_title or display_title == "Historical incident")
+                and c.snippet
+            ):
+                display_title = c.snippet[:100] + ("…" if len(c.snippet) > 100 else "")
+            title = " — ".join(x for x in [c.clause, display_title] if x)
             rows.append(
                 [
                     Paragraph(_esc(c.code or c.source or "—"), s["cell"]),

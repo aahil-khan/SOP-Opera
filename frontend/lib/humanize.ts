@@ -18,6 +18,25 @@ export function refLabel(r: RetrievedReference): string {
   return r.source.replaceAll("_", " ");
 }
 
+/** Display label for a frozen report citation card. */
+export function citationLabel(c: {
+  source?: string | null;
+  code?: string | null;
+  title?: string | null;
+  snippet?: string | null;
+}): string {
+  const genericIncident = c.title === "Historical incident";
+  if (c.code && c.title && !genericIncident) return `${c.code}: ${c.title}`;
+  if (c.title && !genericIncident) return c.title;
+  if (c.code) return c.code;
+  const snippet = c.snippet?.trim();
+  if (snippet) {
+    return snippet.length <= 120 ? snippet : `${snippet.slice(0, 117).trimEnd()}…`;
+  }
+  if (c.title) return c.title;
+  return (c.source ?? "reference").replaceAll("_", " ");
+}
+
 /** Drop internal architecture jargon from operator-facing copy. */
 export function humanizeDetail(text: string, fallbackTitle: string): string {
   const derived = text.match(
