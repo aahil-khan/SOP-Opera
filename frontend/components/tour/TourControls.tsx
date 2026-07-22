@@ -13,9 +13,15 @@ import styles from "./TourControls.module.css";
 interface TourControlsProps {
   stepIndex: number;
   total: number;
+  /** Interactive step: the user is meant to act, so Next becomes "Skip step". */
+  interactive?: boolean;
 }
 
-export function TourControls({ stepIndex, total }: TourControlsProps) {
+export function TourControls({
+  stepIndex,
+  total,
+  interactive = false,
+}: TourControlsProps) {
   const mode = useTourStore((s) => s.mode);
   const paused = useTourStore((s) => s.paused);
   const next = useTourStore((s) => s.next);
@@ -77,8 +83,12 @@ export function TourControls({ stepIndex, total }: TourControlsProps) {
         >
           Back
         </button>
-        <button type="button" className={styles.primaryBtn} onClick={next}>
-          {isLast ? "Finish" : "Next"}
+        <button
+          type="button"
+          className={interactive ? styles.ghostBtn : styles.primaryBtn}
+          onClick={next}
+        >
+          {isLast ? "Finish" : interactive ? "Skip step ›" : "Next"}
         </button>
       </div>
 

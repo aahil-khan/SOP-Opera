@@ -13,7 +13,13 @@
  * step with an `anchor` spotlights the element carrying that `data-tour` value.
  */
 
-import { getLiveAssetViews, useLiveStore } from "@/lib/liveStore";
+import {
+  getLiveAssetViews,
+  useLiveStore,
+  type AssetDomainFocus,
+  type LiveState,
+} from "@/lib/liveStore";
+import type { TourMode } from "@/lib/tourStore";
 import { fetchReports } from "@/lib/liveApi";
 import { startTourScenario } from "@/lib/tourDemo";
 
@@ -24,11 +30,30 @@ export interface TourRouter {
 
 export interface TourContext {
   router: TourRouter;
+  /** Which mode the tour is playing in. Interactive gestures are the user's to
+   *  perform, so `onEnter` should only *simulate* them when `mode === "auto"`. */
+  mode: TourMode;
   /** Flip the tour into scripted-fallback mode (backend unreachable). */
   markFallback: () => void;
 }
 
 export type TourPlacement = "top" | "bottom" | "left" | "right" | "center";
+
+/**
+ * A step the user is meant to *do*, not just read (interactive mode only).
+ * Auto/demo mode ignores this entirely and advances on the dwell timer.
+ */
+export interface TourInteraction {
+  /** Prompt shown as a "your turn" affordance on the narration card. */
+  hint: string;
+  /**
+   * Advance when this predicate flips true (the overlay subscribes to the store).
+   * Omit for gestures with no observable store signal (e.g. a radar wedge writes
+   * component-local state) — the overlay then advances on a click inside the
+   * spotlit anchor instead.
+   */
+  done?: (state: LiveState) => boolean;
+}
 
 export interface TourStep {
   id: string;
@@ -47,6 +72,14 @@ export interface TourStep {
   autoMs?: number;
   /** Drive real state: select an asset, start the scenario, deep-link, etc. */
   onEnter?: (ctx: TourContext) => void | Promise<void>;
+  /**
+   * Hold the spotlight until this predicate holds (e.g. the review has settled
+   * out of `assessing`), so we never highlight a panel that is about to swap.
+   * Generous: the overlay resolves the anchor anyway once the poll cap elapses.
+   */
+  waitUntil?: (state: LiveState) => boolean;
+  /** Make this a hands-on step in interactive mode (see TourInteraction). */
+  interactive?: TourInteraction;
 }
 
 const DEFAULT_DWELL = 6500;
@@ -85,6 +118,30 @@ export function heroReviewId(): string | null {
   return view?.review?.id ?? null;
 }
 
+/** The hero asset's live view, if it exists yet. */
+function heroView() {
+  const id = heroAssetId();
+  if (!id) return undefined;
+  return getLiveAssetViews(useLiveStore.getState()).find(
+    (v) => v.asset.id === id,
+  );
+}
+
+/** True once the VSP replay has spawned a review for the hero asset. */
+export function heroReviewExists(): boolean {
+  return Boolean(heroView()?.review);
+}
+
+/**
+ * True once the hero review is out of `assessing` — i.e. the AssetPanel shows
+ * the settled evidence view, not the Brain panel. Used to gate the Act IV steps
+ * so a re-assessment (VSP break #2) can't yank the spotlight mid-highlight.
+ */
+export function heroReviewSettled(): boolean {
+  const review = heroView()?.review;
+  return Boolean(review && review.state !== "assessing");
+}
+
 /** Select the hero asset in summary mode (Brain panel + radar visible). */
 function focusHeroSummary(): void {
   const id = heroAssetId();
@@ -93,6 +150,22 @@ function focusHeroSummary(): void {
     store.selectAsset(id);
     store.setAssetPanelMode("summary");
   }
+}
+
+/** Auto-mode stand-in for the "click a wedge" gesture: pin the busiest domain. */
+function pinHeroDomain(): void {
+  const view = heroView();
+  if (!view) return;
+  // Prefer the domain most likely to carry signal in the coke-oven arc; the
+  // radar simply ignores a domain it has no data for, so this is best-effort.
+  const order: AssetDomainFocus[] = [
+    "sensors",
+    "permits",
+    "people",
+    "evidence",
+    "spatial",
+  ];
+  useLiveStore.getState().openAssetDomain(view.asset.id, order[0]);
 }
 
 /* ── The script ────────────────────────────────────────────────────────────*/
@@ -144,17 +217,39 @@ export const TOUR_STEPS: TourStep[] = [
 
   // ── Act III · The Cast Deliberates ────────────────────────────────────
   {
+    id: "cast-select",
+    act: "Act III · The Cast Deliberates",
+    title: "Open the flagged asset's file.",
+    body:
+      "The compound engine has singled out an asset — its marker is pulsing on the map. Click it to open its file. This is the core gesture: every asset on the twin is one click from its full risk picture.",
+    fallbackBody:
+      "The compound engine singles out an asset and its marker pulses on the map. Clicking it opens the asset's file — every asset on the twin is one click from its full risk picture.",
+    route: "/operator",
+    anchor: "twin-map",
+    placement: "right",
+    autoMs: 6000,
+    interactive: {
+      hint: "Click the pulsing marker on the map to open its file.",
+      done: (s) => s.selectedAssetId != null,
+    },
+    // Auto/demo mode performs the click for you; interactive mode waits for it.
+    onEnter: (ctx) => {
+      if (ctx.mode === "auto") focusHeroSummary();
+    },
+  },
+  {
     id: "cast-brain",
     act: "Act III · The Cast Deliberates",
     title: "Meet the cast — the AI agents.",
     body:
-      "Select the flagged asset and the Brain panel opens. Each line is a specialist agent reasoning in real time — reading sensors, permits, maintenance and crew, then pulling matching regulations, past incidents and SOPs. Every claim they make is cited.",
+      "The file opens on the Brain panel. Each line is a specialist agent reasoning in real time — reading sensors, permits, maintenance and crew, then pulling matching regulations, past incidents and SOPs. Every claim they make is cited.",
     fallbackBody:
       "This is the Brain panel: each line is a specialist agent — sensors, permits, maintenance, crew — reasoning in real time, then pulling matching regulations, past incidents and SOPs. Every claim they make is cited back to a source.",
     route: "/operator",
     anchor: "brain-panel",
     placement: "left",
     autoMs: 9000,
+    waitUntil: () => heroReviewExists(),
     onEnter: () => focusHeroSummary(),
   },
 
@@ -164,12 +259,21 @@ export const TOUR_STEPS: TourStep[] = [
     act: "Act IV · The Evidence",
     title: "Five domains, one shape.",
     body:
-      "The radar fuses five evidence domains — sensors, permits, people, evidence and spatial — into a single silhouette. A lopsided pentagon tells the supervisor at a glance where the danger is coming from. Click any wedge to open the detail.",
+      "The radar fuses five evidence domains — sensors, permits, people, evidence and spatial — into a single silhouette. A lopsided pentagon tells the supervisor at a glance where the danger is coming from. Try it: click any wedge to open that domain's detail.",
     route: "/operator",
     anchor: "domain-radar",
     placement: "left",
     autoMs: 7000,
-    onEnter: () => focusHeroSummary(),
+    waitUntil: () => heroReviewSettled(),
+    interactive: {
+      // No store predicate: a wedge click writes DomainRadar-local `pinned`
+      // state, so the overlay advances on a click inside the spotlit radar.
+      hint: "Click any wedge on the pentagon to open its domain.",
+    },
+    onEnter: (ctx) => {
+      focusHeroSummary();
+      if (ctx.mode === "auto") pinHeroDomain();
+    },
   },
   {
     id: "evidence-why",
@@ -181,6 +285,7 @@ export const TOUR_STEPS: TourStep[] = [
     anchor: "why-brief",
     placement: "left",
     autoMs: 6500,
+    waitUntil: () => heroReviewSettled(),
     onEnter: () => focusHeroSummary(),
   },
   {
@@ -193,6 +298,22 @@ export const TOUR_STEPS: TourStep[] = [
     anchor: "forecast",
     placement: "left",
     autoMs: 6500,
+    waitUntil: () => heroReviewSettled(),
+    onEnter: () => focusHeroSummary(),
+  },
+  {
+    id: "evidence-vindicated",
+    act: "Act IV · The Evidence",
+    title: "The line it beat.",
+    body:
+      "Then it happens: minutes later, gas finally crosses the single-sensor critical line — the alarm the old world waited for. But the compound engine had already blocked this asset long before, while every gauge still read 'safe'. That gap is the whole thesis: danger is a pattern, not a threshold.",
+    fallbackBody:
+      "Here's the thesis: a single sensor only alarms once it crosses its own critical line. The compound engine blocked this asset long before that, reading the pattern across gas, permits and people while every gauge still said 'safe'. Danger is a pattern, not a threshold.",
+    route: "/operator",
+    anchor: "forecast",
+    placement: "left",
+    autoMs: 8000,
+    waitUntil: () => heroReviewSettled(),
     onEnter: () => focusHeroSummary(),
   },
 

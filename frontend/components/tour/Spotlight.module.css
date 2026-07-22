@@ -21,6 +21,17 @@
   background: transparent;
 }
 
+/*
+ * Interactive-step framing. Each band swallows clicks outside the cutout while
+ * the cutout itself stays live, so the user clicks the real UI. Transparent —
+ * the visible dim is painted by the halo's box-shadow.
+ */
+.band {
+  position: fixed;
+  pointer-events: auto;
+  background: transparent;
+}
+
 .hole {
   position: fixed;
   pointer-events: none;

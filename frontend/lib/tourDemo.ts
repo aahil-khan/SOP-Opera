@@ -25,14 +25,21 @@ export interface TourDemoResult {
   error?: string;
 }
 
-async function post(path: string): Promise<void> {
+/** POST that returns the HTTP status instead of throwing, so callers can branch
+ *  on 409 (scenario already running) without a try/catch dance. */
+async function postStatus(path: string): Promise<number> {
   const res = await fetch(`${API_BASE}${path}`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     cache: "no-store",
   });
-  if (!res.ok) {
-    throw new Error(`POST ${path} failed (${res.status})`);
+  return res.status;
+}
+
+async function post(path: string): Promise<void> {
+  const status = await postStatus(path);
+  if (status < 200 || status >= 300) {
+    throw new Error(`POST ${path} failed (${status})`);
   }
 }
 
@@ -46,7 +53,16 @@ export async function startTourScenario(): Promise<TourDemoResult> {
   try {
     store.clearAgentSteps();
     store.clearTelemetry();
-    await post(`/demo/scenarios/${TOUR_SCENARIO}/start`);
+    let status = await postStatus(`/demo/scenarios/${TOUR_SCENARIO}/start`);
+    // 409 = a scenario is already running (e.g. a replay of the tour). Reset the
+    // plant and try once more so re-launching always re-arms the arc cleanly.
+    if (status === 409) {
+      await post("/demo/reset");
+      status = await postStatus(`/demo/scenarios/${TOUR_SCENARIO}/start`);
+    }
+    if (status < 200 || status >= 300) {
+      throw new Error(`start scenario failed (${status})`);
+    }
     void store.refreshOverview();
     await store.bootstrap();
     return { ok: true };

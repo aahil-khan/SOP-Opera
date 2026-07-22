@@ -22,6 +22,7 @@ import {
   type TourContext,
   type TourPlacement,
 } from "@/lib/tourScript";
+import { useLiveStore } from "@/lib/liveStore";
 import { useTourStore } from "@/lib/tourStore";
 import { NarrationCard } from "./NarrationCard";
 import { Spotlight } from "./Spotlight";
@@ -32,9 +33,12 @@ import styles from "./TourOverlay.module.css";
 const ANCHOR_PAD = 8;
 const CARD_GAP = 16;
 const CARD_WIDTH = 360;
-/** Anchor poll cadence + cap (~3.6s) before falling back to a centered card. */
+/** Anchor/readiness poll cadence + cap (~6s) before degrading to a centered card. */
 const POLL_MS = 150;
-const POLL_MAX = 24;
+const POLL_MAX = 40;
+/** Settle loop: frames of a stable rect to accept, and a hard frame cap (~800ms). */
+const SETTLE_STABLE_FRAMES = 3;
+const SETTLE_MAX_FRAMES = 50;
 
 interface CardPosition {
   style: React.CSSProperties;
@@ -114,6 +118,10 @@ export function TourOverlay() {
   const stop = useTourStore((s) => s.stop);
   const next = useTourStore((s) => s.next);
 
+  const stepDef = TOUR_STEPS[stepIndex];
+  const isInteractiveStep =
+    active && mode === "interactive" && Boolean(stepDef?.interactive);
+
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [anchorReady, setAnchorReady] = useState(false);
 
@@ -167,33 +175,76 @@ export function TourOverlay() {
 
     let cancelled = false;
     let pollTimer: ReturnType<typeof setTimeout> | undefined;
+    let rafId: number | undefined;
 
     const ctx: TourContext = {
       router: { push: (href) => router.push(href) },
+      mode,
       markFallback,
     };
 
-    const resolveAnchor = () => {
-      if (!step.anchor) {
-        // Centered act card — nothing to spotlight.
-        if (!cancelled) setAnchorReady(true);
-        return;
+    // Follow the element through any open/close or route-change animation and
+    // only commit the halo once its rect stops moving — this is what stops the
+    // spotlight from landing on a stale (mid-animation) position on Back/Next.
+    const settleOn = (el: Element) => {
+      targetElRef.current = el;
+      try {
+        el.scrollIntoView({ block: "center", inline: "center" });
+      } catch {
+        /* older engines: measure in place */
       }
-      let tries = 0;
-      const tick = () => {
+      let last = el.getBoundingClientRect();
+      let stableFrames = 0;
+      let frames = 0;
+      const measure = () => {
         if (cancelled) return;
-        const el = document.querySelector(`[data-tour="${step.anchor}"]`);
-        if (el) {
-          targetElRef.current = el;
-          setRect(el.getBoundingClientRect());
+        const r = el.getBoundingClientRect();
+        const moved =
+          Math.abs(r.top - last.top) > 0.5 ||
+          Math.abs(r.left - last.left) > 0.5 ||
+          Math.abs(r.width - last.width) > 0.5 ||
+          Math.abs(r.height - last.height) > 0.5;
+        last = r;
+        stableFrames = moved ? 0 : stableFrames + 1;
+        frames += 1;
+        if (stableFrames >= SETTLE_STABLE_FRAMES || frames >= SETTLE_MAX_FRAMES) {
+          setRect(r);
           setAnchorReady(true);
           return;
         }
-        if (++tries >= POLL_MAX) {
+        rafId = requestAnimationFrame(measure);
+      };
+      rafId = requestAnimationFrame(measure);
+    };
+
+    const resolveAnchor = () => {
+      let tries = 0;
+      const tick = () => {
+        if (cancelled) return;
+        const capped = tries >= POLL_MAX;
+        // 1. Hold until the step's readiness gate passes (e.g. review settled).
+        if (!capped && step.waitUntil && !step.waitUntil(useLiveStore.getState())) {
+          tries += 1;
+          pollTimer = setTimeout(tick, POLL_MS);
+          return;
+        }
+        // 2. Centered act card — nothing to spotlight.
+        if (!step.anchor) {
+          setAnchorReady(true);
+          return;
+        }
+        // 3. Wait for the anchor element, then settle the halo onto it.
+        const el = document.querySelector(`[data-tour="${step.anchor}"]`);
+        if (el) {
+          settleOn(el);
+          return;
+        }
+        if (capped) {
           // Anchor never showed — degrade to a centered card.
           setAnchorReady(true);
           return;
         }
+        tries += 1;
         pollTimer = setTimeout(tick, POLL_MS);
       };
       tick();
@@ -215,8 +266,9 @@ export function TourOverlay() {
     return () => {
       cancelled = true;
       if (pollTimer) clearTimeout(pollTimer);
+      if (rafId !== undefined) cancelAnimationFrame(rafId);
     };
-  }, [active, stepIndex, pathname, router, markFallback]);
+  }, [active, stepIndex, pathname, router, mode, markFallback]);
 
   // ── Keep the spotlight glued to the target while the step is shown ────────
   const remeasure = useCallback(() => {
@@ -234,15 +286,19 @@ export function TourOverlay() {
       ro = new ResizeObserver(remeasure);
       ro.observe(el);
     }
+    // Late layout shifts (panel/ancestor CSS transitions) don't fire resize or
+    // ResizeObserver — catch them so the halo re-glues to the settled position.
+    el?.addEventListener("transitionend", remeasure);
     return () => {
       window.removeEventListener("scroll", remeasure, true);
       window.removeEventListener("resize", remeasure);
+      el?.removeEventListener("transitionend", remeasure);
       ro?.disconnect();
     };
     // rect in deps so we re-bind if the target element swaps between steps.
   }, [active, rect, remeasure]);
 
-  // ── Auto-advance once the spotlight has landed ───────────────────────────
+  // ── Auto-advance once the spotlight has landed (auto/demo mode) ───────────
   useEffect(() => {
     if (!active || mode !== "auto" || paused || !anchorReady) return;
     const step = TOUR_STEPS[stepIndex];
@@ -250,6 +306,33 @@ export function TourOverlay() {
     const timer = setTimeout(() => next(), dwell);
     return () => clearTimeout(timer);
   }, [active, mode, paused, anchorReady, stepIndex, next]);
+
+  // ── Interactive advance: the user performs the real gesture ───────────────
+  // Only in interactive mode, and only after the spotlight has landed so a
+  // stray earlier click can't skip ahead. `done` steps watch the store for the
+  // resulting state change; gestures with no store signal advance on a click
+  // inside the spotlit anchor.
+  useEffect(() => {
+    if (!active || mode !== "interactive" || !anchorReady) return;
+    const step = TOUR_STEPS[stepIndex];
+    const it = step?.interactive;
+    if (!it) return;
+
+    if (it.done) {
+      // Subscribe (not check-now) so returning to this step via Back doesn't
+      // instantly bounce forward on an already-satisfied predicate.
+      return useLiveStore.subscribe((s) => {
+        if (it.done!(s)) next();
+      });
+    }
+
+    const onClick = (e: MouseEvent) => {
+      const el = targetElRef.current;
+      if (el && e.target instanceof Node && el.contains(e.target)) next();
+    };
+    document.addEventListener("click", onClick, true);
+    return () => document.removeEventListener("click", onClick, true);
+  }, [active, mode, anchorReady, stepIndex, next]);
 
   if (!active) {
     return <TourInvite />;
@@ -278,13 +361,17 @@ export function TourOverlay() {
       aria-modal="true"
       aria-label="SOP Opera guided tour"
     >
-      <Spotlight rect={paddedRect} />
+      <Spotlight rect={paddedRect} interactive={isInteractiveStep} />
       <div
         className={styles.cardAnchor}
         style={{ ...cardStyle, width: CARD_WIDTH }}
         data-placement={placement}
       >
-        <NarrationCard step={step} stepIndex={stepIndex} />
+        <NarrationCard
+          step={step}
+          stepIndex={stepIndex}
+          interactive={isInteractiveStep}
+        />
       </div>
     </div>
   );
