@@ -6,6 +6,7 @@ import type { LiveAssetView } from "@/lib/liveStore";
 import { useLiveStore } from "@/lib/liveStore";
 import { AgentBrainPanel } from "./AgentBrainPanel";
 import { WhyBrief } from "./WhyBrief";
+import { IncidentEcho } from "./IncidentEcho";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
 import type { AreaOwner } from "@/shared/schemas";
@@ -359,6 +360,7 @@ export function AssetPanel({
                 <h3 id="why-heading" className={styles.sectionTitle}>
                   {reviewClosed ? "What happened" : "Why"}
                 </h3>
+                <IncidentEcho assessment={assessment} />
                 {assessmentInProgress && review ? (
                   <>
                     <AssessingBanner
