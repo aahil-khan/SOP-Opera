@@ -159,6 +159,8 @@ export interface ReportSummary {
   asset_zone: string | null;
   outcome: string | null;
   outcome_label: string | null;
+  outcome_headline: string | null;
+  summary_line: string | null;
   risk_level: string | null;
   decided_by_name: string | null;
   open_tasks: number;
@@ -331,6 +333,7 @@ export function postManualAssessment(
 
 export interface ReportListParams {
   review_id?: string;
+  asset_id?: string;
   outcome?: string;
   risk_level?: string;
   include_superseded?: boolean;
@@ -343,6 +346,7 @@ export function fetchReports(
 ): Promise<ReportSummary[]> {
   const qs = new URLSearchParams();
   if (params?.review_id) qs.set("review_id", params.review_id);
+  if (params?.asset_id) qs.set("asset_id", params.asset_id);
   if (params?.outcome) qs.set("outcome", params.outcome);
   if (params?.risk_level) qs.set("risk_level", params.risk_level);
   if (params?.include_superseded) qs.set("include_superseded", "true");

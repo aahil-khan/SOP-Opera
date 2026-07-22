@@ -377,6 +377,17 @@ export interface LiveState {
   telemetryBySource: Record<string, TelemetrySample>;
   telemetryStatus: TelemetryStatusChip[];
   selectedAssetId: string | null;
+  /**
+   * How the right AssetPanel should treat a closed+nominal asset.
+   * `closure` — Closed board / review deep-link: show "what happened".
+   * `live` — map / overview / elsewhere: show All clear + history.
+   */
+  assetPanelIntent: "live" | "closure";
+  /**
+   * When set with closure intent, AssetPanel shows this review instead of the
+   * asset's latest (history rows can open older closures).
+   */
+  assetPanelReviewId: string | null;
   /** Right AssetPanel mode on the Digital Twin. */
   assetPanelMode: "summary" | "fullReview";
   /** One-shot pin request for DomainRadar (map spatial links → pentagon). */
@@ -429,7 +440,12 @@ export interface LiveState {
     id: string,
     body: ManualAssessmentIn,
   ) => Promise<Assessment>;
-  selectAsset: (id: string | null) => void;
+  selectAsset: (
+    id: string | null,
+    intent?: "live" | "closure",
+  ) => void;
+  /** Open the closed-review "what happened" panel for a specific review. */
+  openAssetClosure: (assetId: string, reviewId: string) => void;
   setAssetPanelMode: (mode: "summary" | "fullReview") => void;
   /** Select an asset and open the in-panel full review (deep links). */
   openAssetFullReview: (assetId: string) => void;
@@ -736,6 +752,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
   telemetryBySource: {},
   telemetryStatus: [],
   selectedAssetId: null,
+  assetPanelIntent: "live",
+  assetPanelReviewId: null,
   assetPanelMode: "summary",
   domainFocusRequest: null,
   supervisorReviewFocusRequest: null,
@@ -761,18 +779,33 @@ export const useLiveStore = create<LiveState>((set, get) => {
     });
   },
 
-  selectAsset: (id) =>
+  selectAsset: (id, intent = "live") =>
     set({
       selectedAssetId: id,
+      assetPanelIntent: id == null ? "live" : intent,
+      assetPanelReviewId: null,
       assetPanelMode: "summary",
       domainFocusRequest: null,
     }),
+
+  openAssetClosure: (assetId, reviewId) => {
+    set({
+      selectedAssetId: assetId,
+      assetPanelIntent: "closure",
+      assetPanelReviewId: reviewId,
+      assetPanelMode: "summary",
+      domainFocusRequest: null,
+    });
+    void get().loadReviewDetail(reviewId).catch(() => {});
+  },
 
   setAssetPanelMode: (mode) => set({ assetPanelMode: mode }),
 
   openAssetFullReview: (assetId) =>
     set({
       selectedAssetId: assetId,
+      assetPanelIntent: "closure",
+      assetPanelReviewId: null,
       assetPanelMode: "fullReview",
       domainFocusRequest: null,
     }),
@@ -780,6 +813,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
   openAssetDomain: (assetId, domain) =>
     set({
       selectedAssetId: assetId,
+      assetPanelIntent: "live",
+      assetPanelReviewId: null,
       assetPanelMode: "summary",
       domainFocusRequest: { assetId, domain, nonce: Date.now() },
     }),
@@ -855,6 +890,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
         reviewDetails: {},
         assessmentsByReview: {},
         selectedAssetId: null,
+        assetPanelIntent: "live",
+        assetPanelReviewId: null,
         assetPanelMode: "summary",
         ...hydrated,
         thresholdsConfig,
@@ -1059,7 +1096,15 @@ export const useLiveStore = create<LiveState>((set, get) => {
         ...state.assessmentsByReview,
         [id]: assessments,
       };
-      const merged = { ...state, reviewDetails, assessmentsByReview };
+      // History can open older closures that aren't in the bounded review list.
+      const existingIdx = state.reviews.findIndex((r) => r.id === id);
+      const reviews =
+        existingIdx === -1
+          ? [detail.review, ...state.reviews]
+          : state.reviews.map((r, i) =>
+              i === existingIdx ? detail.review : r,
+            );
+      const merged = { ...state, reviews, reviewDetails, assessmentsByReview };
       const opsChipsByAsset = refreshOpsChipsByAsset(
         state.opsChipsByAsset,
         state.telemetryStatus,
@@ -1071,6 +1116,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
           ? state.opsSummary
           : refreshOpsSummary(state.opsSummary, opsChipsByAsset);
       return {
+        reviews,
         reviewDetails,
         assessmentsByReview,
         opsChipsByAsset,
@@ -1531,7 +1577,11 @@ export async function focusReviewAssetOnTwin(
   const state = useLiveStore.getState();
   const view = findViewByReviewId(state, reviewId);
   if (view) {
-    state.selectAsset(view.asset.id);
+    if (view.review?.state === "closed") {
+      state.openAssetClosure(view.asset.id, reviewId);
+    } else {
+      state.selectAsset(view.asset.id, "live");
+    }
   }
 }
 

@@ -83,6 +83,8 @@ class ReportSummaryOut(BaseModel):
     asset_zone: str | None = None
     outcome: str | None = None
     outcome_label: str | None = None
+    outcome_headline: str | None = None
+    summary_line: str | None = None
     risk_level: str | None = None
     decided_by_name: str | None = None
     open_tasks: int = 0

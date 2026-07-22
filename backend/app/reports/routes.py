@@ -41,6 +41,7 @@ def _download(data: bytes, *, filename: str, media_type: str) -> Response:
 @router.get("", response_model=list[ReportSummaryOut])
 async def get_reports(
     review_id: UUID | None = None,
+    asset_id: UUID | None = None,
     outcome: str | None = None,
     risk_level: str | None = None,
     include_superseded: bool = False,
@@ -51,6 +52,7 @@ async def get_reports(
     return await list_reports(
         session,
         review_id=review_id,
+        asset_id=asset_id,
         outcome=outcome,
         risk_level=risk_level,
         include_superseded=include_superseded,

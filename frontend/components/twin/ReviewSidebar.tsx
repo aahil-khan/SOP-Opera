@@ -143,7 +143,7 @@ function WorkCard({
           {isNew ? <span className={styles.dot} aria-label="New" /> : null}
           {view.asset.name}
         </span>
-        <span className="badge" data-risk={status.badgeRisk}>
+        <span className={`badge ${styles.itemBadge}`} data-risk={status.badgeRisk}>
           {status.label}
         </span>
       </span>
@@ -560,7 +560,12 @@ export function ReviewSidebar({
                         active={selectedAssetId === v.asset.id}
                         isNew={fresh}
                         now={now}
-                        onSelect={() => selectAsset(v.asset.id)}
+                        onSelect={() =>
+                          selectAsset(
+                            v.asset.id,
+                            activeColumn === "closed" ? "closure" : "live",
+                          )
+                        }
                       />
                     </li>
                   );

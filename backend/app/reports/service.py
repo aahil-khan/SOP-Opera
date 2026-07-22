@@ -240,6 +240,16 @@ async def get_report(session: AsyncSession, report_id: UUID) -> ReportOut | None
     )
 
 
+_SUMMARY_LINE_MAX = 120
+
+
+def _truncate_summary_line(text: str, *, max_len: int = _SUMMARY_LINE_MAX) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 1].rstrip() + "…"
+
+
 def _to_summary(row: Mapping) -> ReportSummaryOut:
     content = _content_of(row)
     seq = int(row["closure_event_seq"])
@@ -255,6 +265,15 @@ def _to_summary(row: Mapping) -> ReportSummaryOut:
     tasks = content.get("tasks") or {}
     decided_by = decision.get("decided_by") or {}
 
+    title = header.get("title") or content.get("title")
+    outcome_headline = header.get("outcome_headline")
+    assessment_summary = (assessment.get("summary") or "").strip()
+    summary_line = (
+        _truncate_summary_line(assessment_summary)
+        if assessment_summary
+        else (outcome_headline or title)
+    )
+
     return ReportSummaryOut(
         id=row["id"],
         review_id=review_id,
@@ -267,11 +286,13 @@ def _to_summary(row: Mapping) -> ReportSummaryOut:
         generated_at=row["generated_at"],
         frozen_at=row.get("frozen_at"),
         closed_by=row.get("closed_by"),
-        title=header.get("title") or content.get("title"),
+        title=title,
         asset_name=asset.get("name"),
         asset_zone=asset.get("zone"),
         outcome=decision.get("outcome"),
         outcome_label=decision.get("outcome_label"),
+        outcome_headline=outcome_headline,
+        summary_line=summary_line,
         risk_level=assessment.get("risk_level"),
         decided_by_name=decided_by.get("name"),
         open_tasks=int(tasks.get("open") or 0),
@@ -285,6 +306,7 @@ async def list_reports(
     session: AsyncSession,
     *,
     review_id: UUID | None = None,
+    asset_id: UUID | None = None,
     include_superseded: bool = False,
     outcome: str | None = None,
     risk_level: str | None = None,
@@ -294,6 +316,7 @@ async def list_reports(
     rows = await repo.select_reports(
         session,
         review_id=review_id,
+        asset_id=asset_id,
         include_superseded=include_superseded,
         outcome=outcome,
         risk_level=risk_level,

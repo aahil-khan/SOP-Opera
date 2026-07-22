@@ -161,23 +161,60 @@ hand-written adjacency. It drives the twin's proximity links, the distance and
 floor-delta shown on each link, and the neighbourhood context the spatial agent
 pulls when a review is elevated.
 
-**It is not an input to the scored detectors, by choice.** Two reasons, and we say
-both plainly:
+**Decision (for the pitch):** reframe — geospatial is **evidence quality for the
+supervisor**, not a scored detector input. Do not invent a with-KG vs without-KG
+FN column at the current scale. Say this before a judge cross-references the map
+against `/eval`.
 
-1. The stop-work criteria our labels come from are written about the plant state —
-   atmosphere, permitted work, personnel — not about tag topology. Feeding geometry
-   into the detector without a spatially-aware ground truth would mean labeling
-   those cases to match what our own spatial agent does, which is exactly the
-   circular metric we removed from this harness.
-2. At the current floor-plan scale the graph has 3 same-floor `NEAR` edges, and the
-   hero scenario is single-asset. A "with KG vs without KG" column would be a
-   rounding error dressed as a result.
+### Script beat (~20 seconds)
 
-So geospatial earns its place as **evidence quality** — it shows a supervisor *where*
-the hazard is and what is next to it — and we do not claim it moves the
-false-negative number. Making it a scored input means first extending the ground
-truth with a distance-based criterion; that is real work, and we would rather name
-it as the next step than fake a number for it.
+1. Twin map — proximity links, real distances (geometry is load-bearing for the
+   *human*, not for the FN table).
+2. Eval page — “This scorecard scores the rules engine alone. Spatial is off by
+   design.”
+3. One line if challenged — “Stop-work in statute is about plant state —
+   atmosphere, permit, people — not tag topology. We won’t label cases to match
+   our own knowledge graph. That would be circular.”
+
+### Why the numbers ignore it (if a judge digs)
+
+`eval/detectors.py` calls `classify(grounded, observations or [])`, and the harness
+always passes nothing. So `spatial_hit` is structurally always false — every
+headline metric is computed with geospatial switched off.
+
+The KG itself is real: 53 nodes, Euclidean adjacency from `floor_plan_map.json`
+(3 `NEAR`, 21 `ABOVE`/`BELOW`-class, 27 `LOCATED_IN`). Best-looking surface in
+the product; contributes to zero scored metrics. That mismatch is intentional.
+
+**Why we deferred a scored column — three reasons; the third is the real one:**
+
+1. **Same-asset eval.** Every eval case puts context on one synthetic asset
+   (`EVAL_ASSET`). Spatial only matters *across* assets; same-asset distance is
+   0.0 m — a co-location tautology. Scoring it means new cross-asset cases, not
+   flipping a flag.
+2. **Harness is DB-free.** Eval is deterministic and does not hit Postgres. The
+   KG loads from JSON (fine), but real spatial observations come from the agent
+   node reading plant-neighborhood context from the DB. Hand-synthesizing
+   observations scores a fixture we wrote; plumbing the real call couples eval
+   to the live plant.
+3. **Independent labels have no geometry.** `hazard_ground_truth` reads a flat
+   list of entries and asks “does a stop-work provision apply?” — not “on which
+   asset, how far apart.” A cross-asset criterion (elevated gas on Vessel A,
+   hot work within N metres on Walkway 3) requires making the *labeler*
+   spatially aware first. Add cross-asset cases without that and you either
+   can’t score them, or you label them to match what the spatial agent does —
+   the circularity W2 removed.
+
+What’s already in place for a later bolt-on: `compound_alarm` already accepts an
+`observations` parameter (added in W2 for exactly this), and `EVAL_ASSET` sits on
+a `NEAR` edge to another asset.
+
+**Honest expectation if we did score it:** with only 3 same-floor `NEAR` edges and
+a same-asset hero scenario, spatial won’t move the headline FN rate. What it
+buys is a with-KG vs without-KG column over a handful of cross-asset cases —
+turning “we have a knowledge graph” from an assertion into a measured delta,
+however small. Do that only when the ground truth has a distance-based
+criterion; flipping `observations` first would be worse than leaving it out.
 
 ## Known gaps (say these before a judge finds them)
 
