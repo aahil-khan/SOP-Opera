@@ -284,10 +284,7 @@ export const TOUR_STEPS: TourStep[] = [
     anchor: "decision",
     placement: "left",
     autoMs: 7500,
-    onEnter: () => {
-      const id = heroAssetId();
-      if (id) useLiveStore.getState().openAssetFullReview(id);
-    },
+    onEnter: () => focusHeroSummary(),
   },
 
   // ── Act VI · The Vault ────────────────────────────────────────────────

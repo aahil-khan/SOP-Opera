@@ -357,10 +357,12 @@
   inset: 18%;
   border-color: color-mix(in srgb, var(--status-info) 34%, transparent);
   opacity: 0.9;
+  animation: orbit-breathe 3.6s var(--ease-out) infinite;
 }
 
 .orbitRing[data-ring="outer"] {
   opacity: 0.55;
+  animation: orbit-breathe 3.6s var(--ease-out) 0.45s infinite;
 }
 
 .orbitCore {
@@ -373,6 +375,7 @@
   border-radius: 50%;
   background: color-mix(in srgb, var(--status-info) 88%, white);
   box-shadow: 0 0 0 4px color-mix(in srgb, var(--status-info) 14%, transparent);
+  animation: orbit-core-pulse 2.4s ease-in-out infinite;
 }
 
 .orbitCompact .orbitCore {
@@ -385,6 +388,7 @@
 .orbitBlip {
   position: absolute;
   inset: 0;
+  animation: orbit-spin 7.5s linear infinite;
 }
 
 .orbitBlipDot {

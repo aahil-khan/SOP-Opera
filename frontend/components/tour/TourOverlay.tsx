@@ -200,11 +200,32 @@ export function TourOverlay() {
       let tries = 0;
       const tick = () => {
         if (cancelled) return;
-        const el = document.querySelector(`[data-tour="${step.anchor}"]`);
+        const el = document.querySelector(
+          `[data-tour="${step.anchor}"]`,
+        ) as HTMLElement | null;
         if (el) {
           targetElRef.current = el;
-          setRect(el.getBoundingClientRect());
-          setAnchorReady(true);
+          // Domain radar / forecast / decision (and anything else below the
+          // fold in the asset drawer) must scroll into the panel before we
+          // measure — otherwise the ring frames a clipped, off-screen rect.
+          el.scrollIntoView({
+            block: "center",
+            inline: "nearest",
+            behavior: "auto",
+          });
+          const settle = () => {
+            if (cancelled || targetElRef.current !== el) return;
+            setRect(el.getBoundingClientRect());
+            setAnchorReady(true);
+          };
+          // Nested panel scrolls (e.g. quick-decision) may still be easing —
+          // measure now, then once more after they settle.
+          requestAnimationFrame(() => {
+            requestAnimationFrame(() => {
+              settle();
+              pollTimer = setTimeout(settle, 280);
+            });
+          });
           return;
         }
         if (++tries >= POLL_MAX) {

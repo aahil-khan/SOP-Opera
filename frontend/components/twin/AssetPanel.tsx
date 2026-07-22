@@ -141,6 +141,7 @@ function QuickDecisionSection({
       title="Make a decision"
       onClose={onClose}
       closing={closing}
+      data-tour="decision"
     >
       <DecisionPanel
         reviewId={reviewId}
@@ -194,6 +195,14 @@ export function AssetPanel({
   const tourStepId = useTourStepId();
   /** Tour Act III needs the Brain even after a fast mock assessment finishes. */
   const tourShowBrain = tourStepId === "cast-brain";
+  /** Act V opens the decision form (not the sticky footer / full-review chrome). */
+  const tourShowDecision = tourStepId === "verdict";
+
+  useEffect(() => {
+    if (!tourShowDecision) return;
+    setAssetPanelMode("summary");
+    setQuickDecisionOpen(true);
+  }, [tourShowDecision, setAssetPanelMode]);
 
   const assessmentInProgress =
     review?.state === "assessing" ||
@@ -505,7 +514,6 @@ export function AssetPanel({
         <div
           className={styles.footer}
           data-single-action={assessmentInProgress || reviewClosed ? "true" : undefined}
-          data-tour="decision"
         >
           {!assessmentInProgress && !reviewClosed && (
             <button
