@@ -21,6 +21,7 @@ import type {
   Review,
 } from "@/shared/schemas";
 import type { DecisionOutcome, RiskLevel } from "@/shared/enums";
+import { actorRequestHeaders } from "@/lib/actorCookie";
 import { API_BASE } from "@/lib/api";
 import type { ThresholdsConfig } from "@/lib/sensorThresholds";
 
@@ -30,6 +31,7 @@ export interface ReviewDetail {
   context: Context[];
   derived_facts: DerivedFact[];
   decision: Decision | null;
+  decided_by_name?: string | null;
   area_owner?: AreaOwner | null;
   raised_by_worker_name?: string | null;
   supervisor_report?: {
@@ -38,6 +40,21 @@ export interface ReviewDetail {
     reported_by_name: string;
   } | null;
   task_summary?: TaskSummary | null;
+  tasks?: ReviewTaskBrief[];
+}
+
+export interface ReviewTaskBrief {
+  id: string;
+  assigned_worker_id: string;
+  assigned_worker_name: string | null;
+  task_type: "follow_up" | "unblock";
+  title: string;
+  detail: string | null;
+  status: "open" | "acknowledged" | "done" | "cancelled";
+  created_at: string;
+  acknowledged_at: string | null;
+  done_at: string | null;
+  done_note: string | null;
 }
 
 export interface TaskSummary {
@@ -98,6 +115,7 @@ export interface ReviewTask {
   decision_conditions: string | null;
   decision_comments: string | null;
   decision_submitted_at: string | null;
+  decision_decided_by_name: string | null;
 }
 
 export interface TaskAcknowledgeOut {
@@ -141,6 +159,8 @@ export interface ReportSummary {
   asset_zone: string | null;
   outcome: string | null;
   outcome_label: string | null;
+  outcome_headline: string | null;
+  summary_line: string | null;
   risk_level: string | null;
   decided_by_name: string | null;
   open_tasks: number;
@@ -182,6 +202,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     ...init,
     headers: {
       "Content-Type": "application/json",
+      ...actorRequestHeaders(),
       ...(init?.headers ?? {}),
     },
     credentials: "include",
@@ -312,6 +333,7 @@ export function postManualAssessment(
 
 export interface ReportListParams {
   review_id?: string;
+  asset_id?: string;
   outcome?: string;
   risk_level?: string;
   include_superseded?: boolean;
@@ -324,6 +346,7 @@ export function fetchReports(
 ): Promise<ReportSummary[]> {
   const qs = new URLSearchParams();
   if (params?.review_id) qs.set("review_id", params.review_id);
+  if (params?.asset_id) qs.set("asset_id", params.asset_id);
   if (params?.outcome) qs.set("outcome", params.outcome);
   if (params?.risk_level) qs.set("risk_level", params.risk_level);
   if (params?.include_superseded) qs.set("include_superseded", "true");

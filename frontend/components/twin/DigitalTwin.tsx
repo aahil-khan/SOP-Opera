@@ -15,6 +15,8 @@ import {
   useLiveAssetViews,
   useLiveStore,
 } from "@/lib/liveStore";
+import { heroAssetId } from "@/lib/tourScript";
+import { useTourStepId } from "@/lib/tourStore";
 import { columnForView } from "@/lib/openWork";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { buildFloorSpatialLinks } from "@/lib/riskHeatmap";
@@ -24,7 +26,6 @@ import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
 import { FloorNavArrows } from "./FloorNavArrows";
-import { SystemContrastStrip } from "./SystemContrastStrip";
 import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { MapControls, type MapLayerId } from "./MapControls";
@@ -35,29 +36,26 @@ import styles from "./DigitalTwin.module.css";
 const MAP_LAYERS_STORAGE_KEY = "sop-opera-map-layers";
 const DEFAULT_ENABLED_LAYERS: MapLayerId[] = ["ops"];
 
-function readEnabledLayers(): Set<MapLayerId> {
-  if (typeof window === "undefined") return new Set(DEFAULT_ENABLED_LAYERS);
+function readEnabledLayers(): MapLayerId[] {
+  if (typeof window === "undefined") return DEFAULT_ENABLED_LAYERS;
   try {
     const raw = localStorage.getItem(MAP_LAYERS_STORAGE_KEY);
-    if (!raw) return new Set(DEFAULT_ENABLED_LAYERS);
+    if (!raw) return DEFAULT_ENABLED_LAYERS;
     const parsed = JSON.parse(raw) as unknown;
-    if (!Array.isArray(parsed)) return new Set(DEFAULT_ENABLED_LAYERS);
-    const next = new Set<MapLayerId>();
+    if (!Array.isArray(parsed)) return DEFAULT_ENABLED_LAYERS;
+    const next: MapLayerId[] = [];
     for (const id of parsed) {
-      if (id === "ops") next.add(id);
+      if (id === "ops" && !next.includes("ops")) next.push("ops");
     }
     return next;
   } catch {
-    return new Set(DEFAULT_ENABLED_LAYERS);
+    return DEFAULT_ENABLED_LAYERS;
   }
 }
 
-function writeEnabledLayers(enabled: Set<MapLayerId>) {
+function writeEnabledLayers(enabled: MapLayerId[]) {
   try {
-    localStorage.setItem(
-      MAP_LAYERS_STORAGE_KEY,
-      JSON.stringify([...enabled]),
-    );
+    localStorage.setItem(MAP_LAYERS_STORAGE_KEY, JSON.stringify(enabled));
   } catch {
     /* ignore */
   }
@@ -104,7 +102,10 @@ export function DigitalTwin() {
   const assetPanelMode = useLiveStore((s) => s.assetPanelMode);
   const selectAsset = useLiveStore((s) => s.selectAsset);
   const opsChipsByAsset = useLiveStore((s) => s.opsChipsByAsset);
-  const opsAssetCount = useLiveStore((s) => s.opsSummary.assetsWithOps);
+  const tourStepId = useTourStepId();
+  /** Cast-select spotlights only this marker — everything else stays blocked. */
+  const tourTargetAssetId =
+    tourStepId === "cast-select" ? heroAssetId() : null;
 
   const mapRef = useRef<MapViewportHandle>(null);
   const floorTablistRef = useRef<HTMLDivElement>(null);
@@ -122,8 +123,8 @@ export function DigitalTwin() {
   /** Overview is diving into a floor before detail mounts. */
   const [overviewExiting, setOverviewExiting] = useState(false);
   const [floorSlider, setFloorSlider] = useState({ left: 0, width: 0 });
-  const [enabledLayers, setEnabledLayers] = useState<Set<MapLayerId>>(
-    () => new Set(DEFAULT_ENABLED_LAYERS),
+  const [enabledLayers, setEnabledLayers] = useState<MapLayerId[]>(
+    DEFAULT_ENABLED_LAYERS,
   );
   const lastFocusedRef = useRef<string | null>(null);
   const pendingFocusRef = useRef<string | null>(null);
@@ -173,11 +174,12 @@ export function DigitalTwin() {
     setEnabledLayers(readEnabledLayers());
   }, []);
 
+  const opsLayerOn = enabledLayers.includes("ops");
+
   const toggleLayer = useCallback((id: MapLayerId) => {
     setEnabledLayers((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
+      const on = prev.includes(id);
+      const next = on ? prev.filter((x) => x !== id) : [...prev, id];
       writeEnabledLayers(next);
       return next;
     });
@@ -205,13 +207,15 @@ export function DigitalTwin() {
       if (
         v.review != null &&
         v.review.state === "closed" &&
-        v.detail?.decision?.outcome === "blocked"
+        v.detail?.decision?.outcome === "blocked" &&
+        !v.map_cleared
       ) {
         resolved[v.asset.id] = true;
       }
       if (
-        v.review != null ||
-        (v.risk_level !== "nominal" && v.detail?.derived_facts?.length)
+        !(v.map_cleared && v.review?.state === "closed") &&
+        (v.review != null ||
+          (v.risk_level !== "nominal" && v.detail?.derived_facts?.length))
       ) {
         affected += 1;
       }
@@ -464,6 +468,48 @@ export function DigitalTwin() {
     clearViewTransition,
   ]);
 
+  // Tour cast-select: dive to the hero floor and frame the marker *without*
+  // selecting it, so the user (or Skip) performs the real click themselves.
+  useEffect(() => {
+    if (!tourTargetAssetId || selectedAssetId) return;
+    const entry = MAP[tourTargetAssetId];
+    const floor = floorOfAsset(tourTargetAssetId);
+
+    if (viewMode === "overview") {
+      if (overviewExiting) return;
+      pendingFocusRef.current = tourTargetAssetId;
+      setOverviewExiting(true);
+      clearViewTransition();
+      viewTransitionTimerRef.current = window.setTimeout(() => {
+        viewTransitionTimerRef.current = null;
+        enterFloor(floor, "in");
+      }, VIEW_ZOOM_MS);
+      return;
+    }
+
+    if (floor !== activeFloor) {
+      pendingFocusRef.current = tourTargetAssetId;
+      enterFloor(floor, "in");
+      return;
+    }
+
+    if (lastFocusedRef.current === tourTargetAssetId) return;
+    if (!entry) return;
+    lastFocusedRef.current = tourTargetAssetId;
+    mapRef.current?.focusOn(
+      { x: entry.x, y: entry.y },
+      entry.hit ? { bounds: entry.hit } : undefined,
+    );
+  }, [
+    tourTargetAssetId,
+    selectedAssetId,
+    activeFloor,
+    viewMode,
+    overviewExiting,
+    enterFloor,
+    clearViewTransition,
+  ]);
+
   useEffect(() => {
     if (viewMode !== "detail" || slideDir === "out") return;
     const onKey = (e: KeyboardEvent) => {
@@ -548,16 +594,13 @@ export function DigitalTwin() {
                   onSelectAsset={selectAsset}
                   spatialLinks={floorSpatialLinks}
                   opsChipsByAsset={opsChipsByAsset}
-                  showOpsLayer={enabledLayers.has("ops")}
+                  showOpsLayer={opsLayerOn}
+                  tourTargetAssetId={tourTargetAssetId}
                 />
               </div>
             </MapViewport>
           </div>
         )}
-
-        {viewMode === "detail" && slideDir !== "out" ? (
-          <SystemContrastStrip views={views} />
-        ) : null}
 
         {viewMode === "detail" && slideDir !== "out" ? (
           <FloorNavArrows
@@ -578,9 +621,8 @@ export function DigitalTwin() {
             onZoomOut={() => mapRef.current?.zoomOut()}
             onReset={() => mapRef.current?.resetView()}
             onOverview={showOverview}
-            opsEnabled={enabledLayers.has("ops")}
+            opsEnabled={opsLayerOn}
             onToggleOps={() => toggleLayer("ops")}
-            opsCount={opsAssetCount}
             shiftForDrawer={Boolean(selected) && viewMode === "detail"}
           />
         ) : null}

@@ -54,21 +54,73 @@
   }
 }
 
-.grid {
+/* Concentric detection rings — reads as monitoring coverage, not a dot-grid. */
+.rings {
   position: absolute;
   inset: 0;
-  background-image:
+  background: repeating-radial-gradient(
+    circle at 36% 44%,
+    transparent 0,
+    transparent 56px,
+    color-mix(in srgb, var(--border-muted) 50%, transparent) 57px,
+    transparent 58px
+  );
+  mask-image: radial-gradient(ellipse 88% 82% at 36% 44%, #000 4%, transparent 74%);
+  opacity: 0.5;
+}
+
+/* One slow sweep beam across the field. */
+.sweep {
+  position: absolute;
+  top: 44%;
+  left: 36%;
+  width: 160vmax;
+  height: 160vmax;
+  margin: -80vmax 0 0 -80vmax;
+  background: conic-gradient(
+    from -92deg,
+    transparent 0deg,
+    color-mix(in srgb, var(--accent-selection) 16%, transparent) 7deg,
+    transparent 14deg
+  );
+  opacity: 0.32;
+  animation: sweep 20s linear infinite;
+}
+
+@keyframes sweep {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Faint horizontal telemetry traces — three independent signal baselines. */
+.baselines {
+  position: absolute;
+  inset: 0;
+  background:
     linear-gradient(
-      color-mix(in srgb, var(--border-muted) 70%, transparent) 1px,
-      transparent 1px
-    ),
+        90deg,
+        transparent 0%,
+        color-mix(in srgb, var(--status-elevated) 22%, transparent) 18%,
+        transparent 34%
+      )
+      0 27% / 100% 1px no-repeat,
     linear-gradient(
-      90deg,
-      color-mix(in srgb, var(--border-muted) 70%, transparent) 1px,
-      transparent 1px
-    );
-  background-size: 64px 64px;
-  mask-image: radial-gradient(75% 70% at 40% 40%, #000 18%, transparent 78%);
+        90deg,
+        transparent 8%,
+        color-mix(in srgb, var(--accent-ai) 18%, transparent) 28%,
+        transparent 48%
+      )
+      0 51% / 100% 1px no-repeat,
+    linear-gradient(
+        90deg,
+        transparent 2%,
+        color-mix(in srgb, var(--status-nominal) 20%, transparent) 22%,
+        transparent 38%
+      )
+      0 72% / 100% 1px no-repeat;
+  mask-image: linear-gradient(90deg, transparent, #000 18%, #000 82%, transparent);
+  opacity: 0.45;
 }
 
 .vignette {
@@ -287,7 +339,8 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .aurora {
+  .aurora,
+  .sweep {
     animation: none;
   }
 }

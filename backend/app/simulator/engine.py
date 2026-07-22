@@ -198,6 +198,10 @@ class DemoController:
         async with SessionLocal() as session:
             for table in _RESET_DELETE_ORDER:
                 await session.execute(text(f"DELETE FROM {table}"))
+            # Seeded near-misses stay; live closures promoted during the last run go.
+            from app.incidents.service import wipe_promoted_incidents
+
+            await wipe_promoted_incidents(session)
             await session.commit()
 
         orchestrator.start()

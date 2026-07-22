@@ -54,13 +54,17 @@ class ReportGenerationError(RuntimeError):
 
 async def freeze_report_on_closure(
     session: AsyncSession, review, *, actor: str
-) -> tuple[UUID, int]:
+) -> tuple[UUID, int, UUID | None]:
     """
     Build and persist the frozen packet for one closure.
 
     Does not commit and does not broadcast — the caller owns both, so that the
     state change and the report land atomically and no client is told about a
     report that was rolled back.
+
+    Returns (report_id, closure_event_seq, promoted_incident_id). The incident
+    id is set when the closure was elevated enough to enter the historical
+    corpus; the caller indexes the knowledge chunk after commit.
     """
     closure_event_seq = await repo.next_closure_seq(session, review.id)
     supersedes = await repo.latest_report_id(session, review.id)
@@ -97,6 +101,12 @@ async def freeze_report_on_closure(
             f"Could not freeze closure report for review {review.id}: {exc}"
         ) from exc
 
+    from app.incidents.service import promote_closure_to_incident
+
+    promoted_incident_id = await promote_closure_to_incident(
+        session, review=review, packet=packet, report_id=report_id
+    )
+
     await record_audit(
         session,
         entity_type="report",
@@ -110,6 +120,9 @@ async def freeze_report_on_closure(
             "content_hash": content_hash,
             "supersedes_report_id": str(supersedes) if supersedes else None,
             "built_from": packet.meta.built_from,
+            "promoted_incident_id": (
+                str(promoted_incident_id) if promoted_incident_id else None
+            ),
         },
     )
 
@@ -124,7 +137,7 @@ async def freeze_report_on_closure(
         closure_event_seq,
         packet.meta.built_from,
     )
-    return report_id, closure_event_seq
+    return report_id, closure_event_seq, promoted_incident_id
 
 
 async def broadcast_report_generated(
@@ -227,6 +240,16 @@ async def get_report(session: AsyncSession, report_id: UUID) -> ReportOut | None
     )
 
 
+_SUMMARY_LINE_MAX = 120
+
+
+def _truncate_summary_line(text: str, *, max_len: int = _SUMMARY_LINE_MAX) -> str:
+    cleaned = " ".join(text.split())
+    if len(cleaned) <= max_len:
+        return cleaned
+    return cleaned[: max_len - 1].rstrip() + "…"
+
+
 def _to_summary(row: Mapping) -> ReportSummaryOut:
     content = _content_of(row)
     seq = int(row["closure_event_seq"])
@@ -242,6 +265,15 @@ def _to_summary(row: Mapping) -> ReportSummaryOut:
     tasks = content.get("tasks") or {}
     decided_by = decision.get("decided_by") or {}
 
+    title = header.get("title") or content.get("title")
+    outcome_headline = header.get("outcome_headline")
+    assessment_summary = (assessment.get("summary") or "").strip()
+    summary_line = (
+        _truncate_summary_line(assessment_summary)
+        if assessment_summary
+        else (outcome_headline or title)
+    )
+
     return ReportSummaryOut(
         id=row["id"],
         review_id=review_id,
@@ -254,11 +286,13 @@ def _to_summary(row: Mapping) -> ReportSummaryOut:
         generated_at=row["generated_at"],
         frozen_at=row.get("frozen_at"),
         closed_by=row.get("closed_by"),
-        title=header.get("title") or content.get("title"),
+        title=title,
         asset_name=asset.get("name"),
         asset_zone=asset.get("zone"),
         outcome=decision.get("outcome"),
         outcome_label=decision.get("outcome_label"),
+        outcome_headline=outcome_headline,
+        summary_line=summary_line,
         risk_level=assessment.get("risk_level"),
         decided_by_name=decided_by.get("name"),
         open_tasks=int(tasks.get("open") or 0),
@@ -272,6 +306,7 @@ async def list_reports(
     session: AsyncSession,
     *,
     review_id: UUID | None = None,
+    asset_id: UUID | None = None,
     include_superseded: bool = False,
     outcome: str | None = None,
     risk_level: str | None = None,
@@ -281,6 +316,7 @@ async def list_reports(
     rows = await repo.select_reports(
         session,
         review_id=review_id,
+        asset_id=asset_id,
         include_superseded=include_superseded,
         outcome=outcome,
         risk_level=risk_level,

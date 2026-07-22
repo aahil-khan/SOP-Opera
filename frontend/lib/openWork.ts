@@ -133,6 +133,15 @@ export function workStatusForView(view: LiveAssetView): {
   const column = columnForView(view);
 
   if (state === "closed") {
+    if (view.map_cleared) {
+      return {
+        kind: "closed",
+        label: "All clear",
+        badgeRisk: "nominal",
+        nextAction: "None",
+        resolved: true,
+      };
+    }
     if (outcome === "blocked") {
       return {
         kind: "halted",
@@ -140,7 +149,7 @@ export function workStatusForView(view: LiveAssetView): {
         badgeRisk: "halted",
         nextAction: view.sensor_critical
           ? "Sensors still above incident threshold — keep offline"
-          : "Incident closed — no further action",
+          : "Clear the map when the area is safe — report stays on file",
         resolved: true,
       };
     }
@@ -253,11 +262,13 @@ export function ownerNameForView(view: LiveAssetView): string | null {
   return name || null;
 }
 
+/** Supervisor blocked work that is still active — not AI risk text or cleared history. */
 export function isBlockedWork(view: LiveAssetView): boolean {
-  if (view.detail?.decision?.outcome === "blocked") return true;
-  if (view.assessment?.risk_level === "blocking") return true;
-  const summary = view.assessment?.summary?.toUpperCase() ?? "";
-  if (summary.includes("BLOCK")) return true;
+  if (view.detail?.decision?.outcome !== "blocked") return false;
+  const state = view.review?.state;
+  if (state === "decided") return true;
+  // Closed halt stays on the map until the operator clears it.
+  if (state === "closed") return !view.map_cleared;
   return false;
 }
 

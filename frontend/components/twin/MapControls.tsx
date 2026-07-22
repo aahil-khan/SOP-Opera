@@ -1,5 +1,6 @@
 "use client";
 
+import type { MouseEvent } from "react";
 import styles from "./MapControls.module.css";
 
 export type MapLayerId = "ops";
@@ -12,7 +13,6 @@ interface MapControlsProps {
   /** When set, show an Ops layer toggle in this stack. */
   opsEnabled?: boolean;
   onToggleOps?: () => void;
-  opsCount?: number;
   shiftForDrawer?: boolean;
 }
 
@@ -21,12 +21,17 @@ export function MapControls({
   onZoomOut,
   onReset,
   onOverview,
-  opsEnabled,
+  opsEnabled = false,
   onToggleOps,
-  opsCount = 0,
   shiftForDrawer = false,
 }: MapControlsProps) {
   const showOps = typeof onToggleOps === "function";
+
+  function handleToggleOps(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleOps?.();
+  }
 
   return (
     <div
@@ -34,6 +39,8 @@ export function MapControls({
       data-shift={shiftForDrawer ? "true" : undefined}
       role="group"
       aria-label="Map controls"
+      onPointerDown={(e) => e.stopPropagation()}
+      onMouseDown={(e) => e.stopPropagation()}
     >
       <button
         type="button"
@@ -112,14 +119,9 @@ export function MapControls({
               ? "Hide ops chips (permits, isolation, occupancy)"
               : "Show ops chips (permits, isolation, occupancy)"
           }
-          onClick={onToggleOps}
+          onClick={handleToggleOps}
         >
           <span className={styles.opsLabel}>Ops</span>
-          {opsCount > 0 ? (
-            <span className={styles.opsCount} aria-label={`${opsCount} assets`}>
-              {opsCount}
-            </span>
-          ) : null}
         </button>
       ) : null}
     </div>

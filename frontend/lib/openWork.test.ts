@@ -4,6 +4,7 @@ import {
   columnForReviewState,
   columnForView,
   fallbackNextAction,
+  isBlockedWork,
   lifecycleLabelForReviewState,
 } from "./openWork";
 
@@ -19,7 +20,31 @@ function view(
     cancelled: number;
     all_done: boolean;
   } | null,
+  extras?: {
+    decisionOutcome?: "approved" | "approved_with_conditions" | "blocked" | null;
+    assessmentRisk?: "nominal" | "elevated" | "blocking";
+    assessmentSummary?: string;
+    mapCleared?: boolean;
+  },
 ): TestView {
+  const decision =
+    extras?.decisionOutcome === undefined
+      ? null
+      : extras.decisionOutcome == null
+        ? null
+        : ({
+            id: "d1",
+            review_id: "r1",
+            outcome: extras.decisionOutcome,
+            rationale: "",
+            conditions: null,
+            decided_by: "u1",
+            created_at: "2026-01-01T00:00:00Z",
+          } as NonNullable<NonNullable<TestView["detail"]>["decision"]>);
+
+  const wantsDetail =
+    taskSummary !== undefined || extras?.decisionOutcome !== undefined;
+
   return {
     asset: { id: "a1", name: "Vessel A", zone: "z", plant_id: "p", floor: "ground" },
     review: {
@@ -32,20 +57,32 @@ function view(
       raised_by_worker_id: null,
       created_at: "2026-01-01T00:00:00Z",
     },
-    detail:
-      taskSummary === undefined
-        ? null
-        : ({
-            review: {} as never,
-            asset: {} as never,
-            context: [],
-            derived_facts: [],
-            decision: null,
-            task_summary: taskSummary,
-          } as TestView["detail"]),
-    assessment: null,
-    risk_level: "nominal",
+    detail: !wantsDetail
+      ? null
+      : ({
+          review: {} as never,
+          asset: {} as never,
+          context: [],
+          derived_facts: [],
+          decision,
+          task_summary: taskSummary ?? null,
+        } as TestView["detail"]),
+    assessment:
+      extras?.assessmentRisk || extras?.assessmentSummary
+        ? ({
+            id: "as1",
+            review_id: "r1",
+            risk_level: extras.assessmentRisk ?? "nominal",
+            summary: extras.assessmentSummary ?? "",
+            recommendations: [],
+            evidence_refs: [],
+            model_meta: {},
+            created_at: "2026-01-01T00:00:00Z",
+          } as NonNullable<TestView["assessment"]>)
+        : null,
+    risk_level: extras?.assessmentRisk ?? "nominal",
     sensor_critical: false,
+    map_cleared: extras?.mapCleared ?? false,
   };
 }
 
@@ -108,4 +145,34 @@ test("lifecycleLabelForReviewState uses board labels", () => {
   assert.equal(lifecycleLabelForReviewState("pending_decision"), "Awaiting decision");
   assert.equal(lifecycleLabelForReviewState("decided"), "Awaiting fix");
   assert.equal(lifecycleLabelForReviewState("closed"), "Closed");
+});
+
+test("isBlockedWork counts active supervisor blocks only", () => {
+  assert.equal(
+    isBlockedWork(view("decided", null, { decisionOutcome: "blocked" })),
+    true,
+  );
+  assert.equal(
+    isBlockedWork(view("closed", null, { decisionOutcome: "blocked" })),
+    true,
+  );
+  assert.equal(
+    isBlockedWork(
+      view("closed", null, { decisionOutcome: "blocked", mapCleared: true }),
+    ),
+    false,
+  );
+  assert.equal(
+    isBlockedWork(view("closed", null, { decisionOutcome: "approved" })),
+    false,
+  );
+  assert.equal(
+    isBlockedWork(
+      view("pending_decision", null, {
+        assessmentRisk: "blocking",
+        assessmentSummary: "Recommend BLOCK — compound pathway",
+      }),
+    ),
+    false,
+  );
 });

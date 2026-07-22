@@ -17,6 +17,8 @@
   background: transparent;
   color: var(--text-muted);
   cursor: pointer;
+  /* Badge sits slightly outside the hit target — don't clip it. */
+  overflow: visible;
   transition:
     color var(--duration-fast) var(--ease-out),
     border-color var(--duration-fast) var(--ease-out),
@@ -31,7 +33,7 @@
 }
 
 .trigger[data-unread="true"] {
-  color: var(--text-primary);
+  color: var(--status-blocking);
 }
 
 .trigger[data-dnd="true"] {
@@ -43,14 +45,18 @@
   color: var(--status-info);
 }
 
+.trigger[data-dnd="true"][data-unread="true"] {
+  color: var(--status-info);
+}
+
 .icon {
   display: block;
 }
 
 .badge {
   position: absolute;
-  top: -5px;
-  right: -6px;
+  top: -4px;
+  right: -4px;
   min-width: 18px;
   height: 18px;
   padding: 0 5px;
@@ -63,15 +69,40 @@
   text-align: center;
   pointer-events: none;
   box-shadow:
-    0 0 0 2px var(--surface-nav, var(--surface-overlay)),
+    0 0 0 2px var(--surface-panel, var(--surface-overlay)),
     0 1px 4px color-mix(in srgb, var(--status-blocking) 45%, transparent);
+  animation: badgePulse 1.6s var(--ease-out) infinite;
 }
 
 .trigger[data-dnd="true"] .badge {
   background: var(--status-info);
   box-shadow:
-    0 0 0 2px var(--surface-nav, var(--surface-overlay)),
+    0 0 0 2px var(--surface-panel, var(--surface-overlay)),
     0 1px 4px color-mix(in srgb, var(--status-info) 40%, transparent);
+  animation: none;
+}
+
+@keyframes badgePulse {
+  0%,
+  100% {
+    transform: scale(1);
+    box-shadow:
+      0 0 0 2px var(--surface-panel, var(--surface-overlay)),
+      0 1px 4px color-mix(in srgb, var(--status-blocking) 45%, transparent);
+  }
+  50% {
+    transform: scale(1.08);
+    box-shadow:
+      0 0 0 2px var(--surface-panel, var(--surface-overlay)),
+      0 0 0 6px color-mix(in srgb, var(--status-blocking) 22%, transparent),
+      0 1px 4px color-mix(in srgb, var(--status-blocking) 45%, transparent);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .badge {
+    animation: none;
+  }
 }
 
 .panel {

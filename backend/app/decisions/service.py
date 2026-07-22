@@ -223,7 +223,11 @@ async def submit_decision(
             status_code=400,
         )
 
-    decided_by = UUID(get_settings().default_owner_user_id)
+    decided_by = (
+        actor.id
+        if isinstance(actor, ActorMeOut)
+        else UUID(get_settings().default_owner_user_id)
+    )
     conditions = (
         body.conditions.strip()
         if body.outcome == "approved_with_conditions" and body.conditions
@@ -401,6 +405,9 @@ async def submit_decision(
         assigned_worker_ids=assigned_worker_ids,
         outcome=str(body.outcome),
         actor=actor_label,
+        assessment_id=assessment_id,
+        recommendation_dispositions=dict(body.recommendation_dispositions),
+        conditions=conditions,
     )
 
     # Replace the old random unblock timer with a real HITL unlock action.

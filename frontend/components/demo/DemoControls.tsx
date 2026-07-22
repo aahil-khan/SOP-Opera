@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
-import { API_BASE } from "@/lib/api";
+import { useEffect, useState } from "react";
 import { useLiveStore } from "@/lib/liveStore";
+import { demoRequest, useDemoStatus, type DemoStatus } from "@/lib/useDemoStatus";
 import type { PlantFloor } from "@/shared/enums";
 import styles from "./DemoControls.module.css";
 
@@ -13,47 +13,7 @@ interface ScenarioInfo {
   step_count: number;
 }
 
-interface DemoStatus {
-  running: boolean;
-  mode?: "idle" | "scripted" | "random";
-  scenario: string | null;
-  step_index: number;
-  total_steps: number;
-  started_at: string | null;
-  issues_spawned?: number;
-  active_issue_count?: number;
-  ambient_running?: boolean;
-  demo_locked_assets?: string[];
-}
-
 type DemoModeKind = "scripted" | "random";
-
-async function demoRequest<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    ...init,
-    headers: {
-      "Content-Type": "application/json",
-      ...(init?.headers ?? {}),
-    },
-    cache: "no-store",
-  });
-  if (!res.ok) {
-    let detail = res.statusText;
-    try {
-      const body = await res.json();
-      detail =
-        typeof body.detail === "string"
-          ? body.detail
-          : JSON.stringify(body.detail ?? body);
-    } catch {
-      /* ignore */
-    }
-    throw new Error(
-      `${init?.method ?? "GET"} ${path} failed (${res.status}): ${detail}`,
-    );
-  }
-  return res.json() as Promise<T>;
-}
 
 const FLOOR_OPTIONS: { id: PlantFloor; label: string }[] = [
   { id: "ground", label: "G" },
@@ -71,10 +31,11 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   const clearAgentSteps = useLiveStore((s) => s.clearAgentSteps);
   const clearTelemetry = useLiveStore((s) => s.clearTelemetry);
 
+  const { status, setStatus, refreshStatus } = useDemoStatus();
+
   const [mode, setMode] = useState<DemoModeKind>("scripted");
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
   const [scenario, setScenario] = useState("vsp_coke_oven");
-  const [status, setStatus] = useState<DemoStatus | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ambientBusy, setAmbientBusy] = useState(false);
@@ -84,15 +45,6 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   const [paceMax, setPaceMax] = useState("12");
   const [seed, setSeed] = useState("");
   const [floors, setFloors] = useState<PlantFloor[]>(["ground", "first", "second"]);
-
-  const refreshStatus = useCallback(async () => {
-    try {
-      const st = await demoRequest<DemoStatus>("/demo/status");
-      setStatus(st);
-    } catch {
-      /* backend may be down — keep last known */
-    }
-  }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -105,27 +57,10 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
         );
       })
       .catch(() => {});
-    void refreshStatus();
     return () => {
       cancelled = true;
     };
-  }, [refreshStatus]);
-
-  useEffect(() => {
-    const tick = () => {
-      if (document.hidden) return;
-      void refreshStatus();
-    };
-    const id = setInterval(tick, status?.running ? 1500 : 8000);
-    const onVisibility = () => {
-      if (!document.hidden) void refreshStatus();
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => {
-      clearInterval(id);
-      document.removeEventListener("visibilitychange", onVisibility);
-    };
-  }, [status?.running, refreshStatus]);
+  }, []);
 
   function toggleFloor(f: PlantFloor) {
     setFloors((prev) => {
@@ -219,23 +154,14 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
 
   const running = Boolean(status?.running);
   const ambientOn = Boolean(status?.ambient_running);
+  const showStatusBadge = Boolean(error) || running;
   const statusText = error
     ? error
-    : running
-      ? status?.mode === "random"
-        ? `Random · ${status?.issues_spawned ?? 0} spawned · ${status?.active_issue_count ?? "?"} open`
-        : `${status?.scenario ?? "…"} · step ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`
-      : ambientOn
-        ? "Live plant feed active"
-        : "Idle";
+    : status?.mode === "random"
+      ? `Random · ${status?.issues_spawned ?? 0} spawned · ${status?.active_issue_count ?? "?"} open`
+      : `${status?.scenario ?? "…"} · step ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`;
 
-  const statusTone = error
-    ? "error"
-    : running
-      ? "running"
-      : ambientOn
-        ? "live"
-        : "idle";
+  const statusTone = error ? "error" : "running";
 
   return (
     <div
@@ -251,13 +177,15 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
             Scripted scenarios, random issues, and ambient plant feed.
           </p>
         </div>
-        <span
-          className={styles.statusBadge}
-          data-tone={statusTone}
-          title={statusText}
-        >
-          {statusText}
-        </span>
+        {showStatusBadge ? (
+          <span
+            className={styles.statusBadge}
+            data-tone={statusTone}
+            title={statusText}
+          >
+            {statusText}
+          </span>
+        ) : null}
       </header>
 
       <section className={styles.section}>

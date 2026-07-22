@@ -73,6 +73,8 @@ interface FloorPlanProps {
   opsChipsByAsset?: Record<string, AssetOpsChips>;
   /** When true, render the ops chip layer. */
   showOpsLayer?: boolean;
+  /** Tour cast-select: only this asset's hit target gets `data-tour`. */
+  tourTargetAssetId?: string | null;
 }
 
 const MAP = floorPlanMap as Record<string, FloorEntry>;
@@ -167,11 +169,11 @@ function buildZoneHalos(
   return halos;
 }
 
-/** Circular ops badges — sized to read next to AssetMarker disks (r≈10). */
-const OPS_R = 13;
+/** Circular ops badges — anchored to asset hit boundary top-right. */
+const OPS_R = 16;
 const OPS_GAP = 5;
-const OPS_ICON = 16;
-const OPS_ICON_SCALE = 0.72;
+/** Icon square inside the disk (viewBox 0 0 16 16). */
+const OPS_ICON_SIZE = 14;
 
 function tipFromSvgTarget(
   target: SVGGraphicsElement,
@@ -259,10 +261,10 @@ function OpsChipIcons({
   if (items.length === 0) return null;
 
   const diam = OPS_R * 2;
+  // (x, y) = top-right corner of the asset hit boundary; chips grow leftward.
   const totalW = items.length * diam + (items.length - 1) * OPS_GAP;
   const startX = x - totalW;
-  // Center the row vertically on the anchor y.
-  const cy = y + OPS_R;
+  const cy = y;
 
   return (
     <g className={styles.opsChipRow}>
@@ -304,9 +306,14 @@ function OpsChipIcons({
                 onSelect(assetId);
               }}
             />
-            <g
+            <svg
               className={styles.opsChipIcon}
-              transform={`translate(${-OPS_ICON / 2}, ${-OPS_ICON / 2}) scale(${OPS_ICON_SCALE})`}
+              x={-OPS_ICON_SIZE / 2}
+              y={-OPS_ICON_SIZE / 2}
+              width={OPS_ICON_SIZE}
+              height={OPS_ICON_SIZE}
+              viewBox="0 0 16 16"
+              aria-hidden
               pointerEvents="none"
             >
               {item.paths.map((d) => (
@@ -319,7 +326,7 @@ function OpsChipIcons({
                   strokeLinejoin="round"
                 />
               ))}
-            </g>
+            </svg>
           </g>
         );
       })}
@@ -338,6 +345,7 @@ export const FloorPlan = memo(function FloorPlan({
   spatialLinks = [],
   opsChipsByAsset = {},
   showOpsLayer = false,
+  tourTargetAssetId = null,
 }: FloorPlanProps) {
   const [schematic, setSchematic] = useState<string>("");
   const [mounted, setMounted] = useState(false);
@@ -348,6 +356,7 @@ export const FloorPlan = memo(function FloorPlan({
   const tipOpsRef = useRef<HTMLSpanElement | null>(null);
   const tipRiskRef = useRef<HTMLSpanElement | null>(null);
   const tipFreshRef = useRef<HTMLSpanElement | null>(null);
+  const tipMetaRef = useRef<HTMLDivElement | null>(null);
   const markerEls = useRef(new Map<string, SVGGElement>());
   const hoveredAssetIdRef = useRef<string | null>(null);
 
@@ -421,10 +430,12 @@ export const FloorPlan = memo(function FloorPlan({
     if (tip.fresh) root.dataset.fresh = "true";
     else delete root.dataset.fresh;
 
-    root.style.left = `${Math.min(Math.max(tip.x, 12), window.innerWidth - 12)}px`;
+    root.style.left = `${tip.x}px`;
     root.style.top = `${tip.y}px`;
     root.style.visibility = "visible";
     root.dataset.visible = "true";
+
+    if (tipMetaRef.current) tipMetaRef.current.hidden = isOps;
 
     if (tipNameRef.current) tipNameRef.current.textContent = tip.label;
 
@@ -438,6 +449,17 @@ export const FloorPlan = memo(function FloorPlan({
       tipRiskRef.current.textContent = tip.riskLabel;
     }
     if (tipFreshRef.current) tipFreshRef.current.hidden = !tip.fresh;
+
+    requestAnimationFrame(() => {
+      if (root.dataset.visible !== "true") return;
+      const half = root.offsetWidth / 2;
+      const margin = 12;
+      const clampedX = Math.min(
+        Math.max(tip.x, half + margin),
+        window.innerWidth - half - margin,
+      );
+      root.style.left = `${clampedX}px`;
+    });
   };
 
   const showTipOnEnter = (
@@ -546,6 +568,9 @@ export const FloorPlan = memo(function FloorPlan({
               data-selected={selected ? "true" : undefined}
               data-map-marker=""
               data-svg-id={entry.svg_element_id}
+              data-tour={
+                tourTargetAssetId === assetId ? "hero-marker" : undefined
+              }
               x={x}
               y={y}
               width={w}
@@ -577,7 +602,16 @@ export const FloorPlan = memo(function FloorPlan({
           const sensorCritical = criticalByAsset[assetId] ?? false;
           const resolved = resolvedByAsset[assetId] ?? false;
           const fresh = freshByAsset[assetId] ?? false;
-          if (risk === "nominal" && !sensorCritical && !resolved && !fresh && entry.hit) {
+          const hasOps =
+            showOpsLayer && hasAnyOpsChip(opsChipsByAsset[assetId]);
+          if (
+            risk === "nominal" &&
+            !sensorCritical &&
+            !resolved &&
+            !fresh &&
+            !hasOps &&
+            entry.hit
+          ) {
             return null;
           }
           return (
@@ -601,7 +635,7 @@ export const FloorPlan = memo(function FloorPlan({
           );
         })}
 
-        {/* Ops chips above markers so they stay readable */}
+        {/* Ops chips — top-right of each asset hit boundary */}
         {showOpsLayer
           ? floorEntries.map(([assetId, entry]) => {
               if (!entry.hit) return null;
@@ -614,7 +648,7 @@ export const FloorPlan = memo(function FloorPlan({
                   key={`ops-${assetId}`}
                   chips={chips!}
                   x={x + w - 8}
-                  y={y + 8}
+                  y={y + OPS_R}
                   assetId={assetId}
                   assetLabel={entry.label}
                   risk={risk}
@@ -638,21 +672,25 @@ export const FloorPlan = memo(function FloorPlan({
             style={{ visibility: "hidden", left: 0, top: 0 }}
             role="tooltip"
           >
-            <span className={styles.tooltipDot} aria-hidden />
-            <span ref={tipNameRef} className={styles.tooltipName} />
-            <span ref={tipSepRef} className={styles.tooltipSep} aria-hidden hidden>
-              ·
-            </span>
-            <span ref={tipOpsRef} className={styles.tooltipOps} hidden />
-            <span ref={tipRiskRef} className={styles.tooltipRisk} hidden />
-            <span
-              ref={tipFreshRef}
-              className={styles.tooltipFresh}
-              aria-label="New data"
-              hidden
-            >
-              New
-            </span>
+            <div className={styles.tooltipLead}>
+              <span className={styles.tooltipDot} aria-hidden />
+              <span ref={tipNameRef} className={styles.tooltipName} />
+              <span ref={tipSepRef} className={styles.tooltipSep} aria-hidden hidden>
+                ·
+              </span>
+              <span ref={tipOpsRef} className={styles.tooltipOps} hidden />
+            </div>
+            <div ref={tipMetaRef} className={styles.tooltipMeta}>
+              <span ref={tipRiskRef} className={styles.tooltipRisk} hidden />
+              <span
+                ref={tipFreshRef}
+                className={styles.tooltipFresh}
+                aria-label="New data"
+                hidden
+              >
+                New
+              </span>
+            </div>
           </div>,
           document.body,
         )}

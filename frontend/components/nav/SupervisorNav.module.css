@@ -84,6 +84,8 @@
   border-radius: var(--radius-lg);
   background: var(--surface-panel);
   flex-shrink: 0;
+  /* Activity badge overhangs the trigger — keep it visible. */
+  overflow: visible;
 }
 
 .account {

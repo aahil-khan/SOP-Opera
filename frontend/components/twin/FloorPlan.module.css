@@ -198,21 +198,22 @@
 .opsChip {
   cursor: pointer;
   outline: none;
-  transform-box: fill-box;
-  transform-origin: center;
 }
 
 .opsChipBg {
   fill: var(--surface-panel);
-  stroke: color-mix(in srgb, var(--border-default) 80%, transparent);
-  stroke-width: 1.5;
+  stroke: color-mix(in srgb, var(--text-primary) 35%, var(--border-default));
+  stroke-width: 2;
+  filter: drop-shadow(0 1px 2px color-mix(in srgb, var(--surface-app) 55%, transparent));
   transition:
     fill var(--duration-fast) var(--ease-out),
     stroke var(--duration-fast) var(--ease-out);
 }
 
 .opsChipIcon {
-  stroke: var(--text-muted);
+  display: block;
+  overflow: visible;
+  stroke: var(--text-secondary);
   fill: none;
   pointer-events: none;
   transition: stroke var(--duration-fast) var(--ease-out);
@@ -257,9 +258,10 @@
   position: fixed;
   z-index: 40;
   display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  max-width: min(280px, calc(100vw - 24px));
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  max-width: min(360px, calc(100vw - 24px));
   padding: 6px 10px;
   border-radius: 6px;
   border: 1px solid var(--border-default);
@@ -270,7 +272,26 @@
   animation: tooltip-in 140ms var(--ease-out);
   font-family: var(--font-sans);
   line-height: 1;
-  white-space: nowrap;
+}
+
+.tooltipLead {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.tooltipMeta {
+  display: inline-flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-left: 15px;
+}
+
+.tooltipMeta[hidden] {
+  display: none;
 }
 
 .tooltip[data-place="below"] {
@@ -328,8 +349,7 @@
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
   line-height: 1.15;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .tooltipRisk,
@@ -363,6 +383,9 @@
 }
 
 .tooltip[data-kind="ops"] {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 6px;
   padding: 5px 10px;
 }

@@ -15,6 +15,7 @@ from app.db.session import get_session
 router = APIRouter(prefix="/auth", tags=["auth"])
 
 COOKIE_KEY = "sop_actor"
+ACTOR_HEADER_KEY = "X-SOP-Actor"
 
 
 def _encode_actor_cookie(actor: dict[str, Any]) -> str:
@@ -47,7 +48,16 @@ def _coerce_actor_me(parsed: dict[str, Any] | None) -> ActorMeOut | None:
 
 def get_current_actor_from_request(request: Request) -> ActorMeOut | None:
     parsed = _decode_actor_cookie(request.cookies.get(COOKIE_KEY))
-    return _coerce_actor_me(parsed)
+    actor = _coerce_actor_me(parsed)
+    if actor is not None:
+        return actor
+    # Dev UI mirrors sop_actor on the page origin; forward it when the API cookie
+    # is not sent cross-origin (localhost:3000 → 127.0.0.1:8000).
+    header_val = request.headers.get(ACTOR_HEADER_KEY)
+    if header_val:
+        parsed_header = _decode_actor_cookie(header_val)
+        return _coerce_actor_me(parsed_header)
+    return None
 
 
 def get_current_actor(request: Request) -> ActorMeOut:
@@ -194,6 +204,6 @@ async def login(
 
 @router.post("/logout")
 async def logout(response: Response) -> dict[str, str]:
-    response.delete_cookie(key=COOKIE_KEY)
+    response.delete_cookie(key=COOKIE_KEY, path="/", samesite="lax")
     return {"status": "ok"}
 

@@ -1,3 +1,4 @@
+import type { Context, DerivedFact } from "@/shared/schemas";
 import type { TelemetrySample, TelemetryStatusChip } from "@/lib/liveStore";
 
 /** Per-asset ops signals derived from live telemetry status chips. */
@@ -50,27 +51,41 @@ function applyCategory(
     cur.workerCount += 1;
     if (lower.includes("hazardous")) cur.workerHazardous = true;
   } else if (category === "ppe_status") {
-    if (lower.includes("missing")) cur.workerHazardous = true;
+    if (lower.includes("missing") || lower.includes("non")) {
+      cur.workerHazardous = true;
+    }
   }
 }
 
-function labelFromSample(sample: TelemetrySample): string {
-  const p = sample.payload;
-  if (sample.category === "permit") {
-    return `Permit ${String(p.status ?? "?")} · ${String(p.work_type ?? "").replaceAll("_", " ")}`;
+function labelFromPayload(
+  category: string,
+  payload: Record<string, unknown>,
+): string {
+  if (category === "permit") {
+    return `Permit ${String(payload.status ?? "?")} · ${String(payload.work_type ?? "").replaceAll("_", " ")}`;
   }
-  if (sample.category === "isolation_status") {
-    return p.complete ? "Isolation complete" : "Isolation incomplete";
+  if (category === "isolation_status") {
+    return payload.complete ? "Isolation complete" : "Isolation incomplete";
   }
-  if (sample.category === "worker_location") {
-    return `Worker · ${String(p.zone ?? "?")}`;
+  if (category === "worker_location") {
+    return `Worker · ${String(payload.zone ?? "?")}`;
   }
-  if (sample.category === "ppe_status") {
-    return p.compliant === false
-      ? `PPE missing ${String(p.missing ?? "")}`
+  if (category === "ppe_status") {
+    return payload.compliant === false
+      ? `PPE missing ${String(payload.missing ?? "")}`
       : "PPE compliant";
   }
-  return sample.category;
+  return category;
+}
+
+function labelFromSample(sample: TelemetrySample): string {
+  return labelFromPayload(sample.category, sample.payload);
+}
+
+function ensure(out: Record<string, AssetOpsChips>, assetId: string): AssetOpsChips {
+  const cur = out[assetId] ?? emptyChips();
+  out[assetId] = cur;
+  return cur;
 }
 
 /**
@@ -89,16 +104,78 @@ export function buildOpsChipsByAsset(
       // Skip bare source keys like "scada" / "ptw" without an asset id.
       if (!key.includes(":")) continue;
       if (!STATUS_CATEGORIES.has(sample.category)) continue;
-      const cur = out[sample.asset_id] ?? emptyChips();
-      applyCategory(cur, sample.category, labelFromSample(sample));
-      out[sample.asset_id] = cur;
+      applyCategory(
+        ensure(out, sample.asset_id),
+        sample.category,
+        labelFromSample(sample),
+      );
     }
   }
 
   for (const chip of telemetryStatus) {
-    const cur = out[chip.asset_id] ?? emptyChips();
-    applyCategory(cur, chip.category, chip.label);
-    out[chip.asset_id] = cur;
+    if (!STATUS_CATEGORIES.has(chip.category)) continue;
+    applyCategory(ensure(out, chip.asset_id), chip.category, chip.label);
+  }
+
+  return out;
+}
+
+/** Fold open-review context + derived facts into ops chips (demo / hard ingest). */
+export function mergeReviewOpsIntoChips(
+  base: Record<string, AssetOpsChips>,
+  details: Record<
+    string,
+    {
+      asset: { id: string };
+      review: { state: string };
+      context: Context[];
+      derived_facts: DerivedFact[];
+    }
+  >,
+): Record<string, AssetOpsChips> {
+  const out: Record<string, AssetOpsChips> = { ...base };
+  for (const id of Object.keys(out)) {
+    out[id] = { ...out[id] };
+  }
+
+  for (const detail of Object.values(details)) {
+    if (detail.review.state === "closed") continue;
+    const assetId = detail.asset.id;
+
+    for (const ctx of detail.context) {
+      if (!STATUS_CATEGORIES.has(ctx.category)) continue;
+      applyCategory(
+        ensure(out, assetId),
+        ctx.category,
+        labelFromPayload(ctx.category, ctx.payload),
+      );
+    }
+
+    for (const fact of detail.derived_facts) {
+      if (!(fact.value === true || fact.value === "true")) continue;
+      const cur = ensure(out, assetId);
+      switch (fact.fact_type) {
+        case "permit_conflict":
+        case "simultaneous_ops":
+        case "lifting_operation_conflict":
+          cur.hasPermit = true;
+          cur.permitActive = true;
+          break;
+        case "zone_occupied":
+          cur.workerCount = Math.max(cur.workerCount, 1);
+          cur.workerHazardous = true;
+          break;
+        case "incomplete_isolation":
+          cur.hasIsolation = true;
+          cur.isolationIncomplete = true;
+          break;
+        case "ppe_noncompliance":
+          cur.workerHazardous = true;
+          break;
+        default:
+          break;
+      }
+    }
   }
 
   return out;
@@ -154,8 +231,20 @@ export function refreshOpsChipsByAsset(
   prev: Record<string, AssetOpsChips>,
   telemetryStatus: TelemetryStatusChip[],
   telemetryBySource: Record<string, TelemetrySample>,
+  reviewDetails?: Record<
+    string,
+    {
+      asset: { id: string };
+      review: { state: string };
+      context: Context[];
+      derived_facts: DerivedFact[];
+    }
+  >,
 ): Record<string, AssetOpsChips> {
-  const next = buildOpsChipsByAsset(telemetryStatus, telemetryBySource);
+  const fromTelemetry = buildOpsChipsByAsset(telemetryStatus, telemetryBySource);
+  const next = reviewDetails
+    ? mergeReviewOpsIntoChips(fromTelemetry, reviewDetails)
+    : fromTelemetry;
   return opsChipsByAssetEqual(prev, next) ? prev : next;
 }
 

@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import io
 import zipfile
+from uuid import UUID
 
 import pytest
 from httpx import AsyncClient
@@ -109,6 +110,62 @@ async def test_close_rolls_back_entirely_when_the_freeze_fails(
 
     reports = (await client.get(f"/reviews/{review_id}/reports")).json()
     assert reports == [], "no orphan report may survive a failed close"
+
+
+@pytest.mark.asyncio
+async def test_close_promotes_report_into_historical_incidents(client: AsyncClient):
+    """
+    Elevated/blocked closures join the incident corpus so the next assessment can
+    retrieve them as plant precedent (deterministic SQL + knowledge_chunks).
+    """
+    from app.db.seed_embeddings import INCIDENTS
+    from app.incidents.service import incident_id_for_review
+
+    review_id, report = await _close_one(client)
+    incident_id = incident_id_for_review(UUID(review_id))
+    seed_ids = {UUID(iid) for iid, *_ in INCIDENTS}
+    assert incident_id not in seed_ids
+
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        row = (
+            await session.execute(
+                text(
+                    """
+                    SELECT description, applies_to_category, linked_review_ids
+                    FROM incidents
+                    WHERE id = CAST(:id AS uuid)
+                    """
+                ),
+                {"id": str(incident_id)},
+            )
+        ).first()
+        assert row is not None, "closure must mint an incidents row"
+        m = row._mapping
+        assert "Plant closure" in m["description"]
+        assert UUID(review_id) in (m["linked_review_ids"] or [])
+        # Hero gas path should classify under elevated_gas for deterministic lookup.
+        assert m["applies_to_category"] == "elevated_gas"
+
+        chunk = (
+            await session.execute(
+                text(
+                    """
+                    SELECT chunk_text, source_type
+                    FROM knowledge_chunks
+                    WHERE source_type = 'historical_incidents'
+                      AND source_id = CAST(:id AS uuid)
+                    """
+                ),
+                {"id": str(incident_id)},
+            )
+        ).first()
+        assert chunk is not None, "promoted incident must be embeddable for RAG"
+        assert chunk._mapping["chunk_text"] == m["description"]
+
+    # Audit payload records the link for investigators.
+    assert report["content"]["decision"]["outcome"] == "blocked"
 
 
 @pytest.mark.asyncio

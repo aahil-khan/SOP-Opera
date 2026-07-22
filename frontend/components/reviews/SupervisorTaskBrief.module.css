@@ -1,0 +1,110 @@
+.root {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-muted);
+  border-left: 3px solid var(--status-elevated);
+  background: color-mix(in srgb, var(--surface-panel) 70%, transparent);
+}
+
+.header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.title {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+  line-height: var(--leading-tight);
+}
+
+.decisionBlock,
+.taskBlock,
+.actionsBlock {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.sectionLabel {
+  margin: 0;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.outcomeRow {
+  margin: 0;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.35rem 0.5rem;
+}
+
+.meta {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.conditions,
+.comments,
+.instruction,
+.taskDetail,
+.taskStatus {
+  margin: 0;
+  font-size: var(--text-sm);
+  line-height: var(--leading-relaxed);
+  color: var(--text-secondary);
+}
+
+.conditions strong,
+.taskStatus strong {
+  color: var(--text-primary);
+  font-weight: var(--weight-semibold);
+}
+
+.instruction {
+  color: var(--text-primary);
+}
+
+.actionList {
+  margin: 0;
+  padding: 0 0 0 1.15rem;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.actionItem {
+  color: var(--text-secondary);
+}
+
+.actionText {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-primary);
+  line-height: var(--leading-relaxed);
+}
+
+.actionRationale {
+  margin: 0.15rem 0 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  line-height: var(--leading-relaxed);
+}

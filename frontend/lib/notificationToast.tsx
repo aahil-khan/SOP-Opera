@@ -156,7 +156,7 @@ export function showReassessmentToast(options: {
     <ToastBody
       title="Situation updated — reassessment started"
       detail="New signals arrived while this case was open. Hold any decision until the updated recommendation is ready."
-      href={`/reviews/${options.reviewId}`}
+      href={`/operator?review=${options.reviewId}`}
       onOpen={options.onOpen}
       onDismiss={() => toast.dismiss(toastId)}
     />,

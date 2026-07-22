@@ -27,7 +27,9 @@ export function HeroSection() {
     <section className={styles.hero} id="hero">
       <div className={styles.backdrop} aria-hidden="true">
         <div className={styles.aurora} />
-        <div className={styles.grid} />
+        <div className={styles.rings} />
+        <div className={styles.sweep} />
+        <div className={styles.baselines} />
         <div className={styles.vignette} />
       </div>
 

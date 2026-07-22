@@ -8,7 +8,14 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.schemas import ActorMeOut
 from app.realtime.connection_manager import manager
-from app.tasks.schemas import TaskAcknowledgeOut, TaskDoneIn, TaskDoneOut, TaskListOut, TaskSummaryOut
+from app.tasks.schemas import (
+    ReviewTaskOut,
+    TaskAcknowledgeOut,
+    TaskDoneIn,
+    TaskDoneOut,
+    TaskListOut,
+    TaskSummaryOut,
+)
 from app.notifications.service import create_notification
 from app.reviews.comments_service import create_review_comment
 
@@ -95,6 +102,67 @@ async def cancel_open_tasks_for_review(
     return cancelled_ids
 
 
+async def list_tasks_for_review(
+    session: AsyncSession,
+    *,
+    review_id: UUID,
+) -> list[ReviewTaskOut]:
+    result = await session.execute(
+        text(
+            """
+            SELECT
+              t.id,
+              t.assigned_worker_id,
+              w.name AS assigned_worker_name,
+              t.task_type,
+              t.title,
+              t.detail,
+              t.status,
+              t.created_at,
+              t.acknowledged_at,
+              t.done_at,
+              t.done_note
+            FROM review_tasks t
+            LEFT JOIN workers w ON w.id = t.assigned_worker_id
+            WHERE t.review_id = CAST(:rid AS uuid)
+              AND t.status <> 'cancelled'
+            ORDER BY
+              CASE t.status
+                WHEN 'open' THEN 0
+                WHEN 'acknowledged' THEN 1
+                ELSE 2
+              END ASC,
+              t.created_at ASC
+            """
+        ),
+        {"rid": str(review_id)},
+    )
+
+    out: list[ReviewTaskOut] = []
+    for row in result.fetchall():
+        m = row._mapping
+        out.append(
+            ReviewTaskOut(
+                id=m["id"],
+                assigned_worker_id=m["assigned_worker_id"],
+                assigned_worker_name=m["assigned_worker_name"],
+                task_type=m["task_type"],
+                title=m["title"],
+                detail=m["detail"],
+                status=m["status"],
+                created_at=m["created_at"].isoformat()
+                if hasattr(m["created_at"], "isoformat")
+                else str(m["created_at"]),
+                acknowledged_at=m["acknowledged_at"].isoformat()
+                if m["acknowledged_at"] is not None
+                else None,
+                done_at=m["done_at"].isoformat() if m["done_at"] is not None else None,
+                done_note=m["done_note"],
+            )
+        )
+    return out
+
+
 async def list_tasks(
     session: AsyncSession,
     *,
@@ -126,11 +194,13 @@ async def list_tasks(
               d.outcome AS decision_outcome,
               d.conditions AS decision_conditions,
               d.comments AS decision_comments,
-              d.submitted_at AS decision_submitted_at
+              d.submitted_at AS decision_submitted_at,
+              u.name AS decision_decided_by_name
             FROM review_tasks t
             JOIN reviews r ON r.id = t.review_id
             JOIN assets a ON a.id = r.asset_id
             LEFT JOIN decisions d ON d.id = t.decision_id
+            LEFT JOIN users u ON u.id = d.decided_by
             WHERE t.assigned_worker_id = CAST(:wid AS uuid)
               AND t.status <> 'cancelled'
             ORDER BY
@@ -179,6 +249,7 @@ async def list_tasks(
                 decision_submitted_at=m["decision_submitted_at"].isoformat()
                 if m["decision_submitted_at"] is not None
                 else None,
+                decision_decided_by_name=m["decision_decided_by_name"],
             )
         )
     return out
@@ -342,6 +413,56 @@ async def complete_task(
     )
 
 
+def _task_detail_for_decision(
+    *,
+    task_type: str,
+    outcome: str,
+    conditions: str | None,
+    accepted_action_texts: list[str],
+) -> str:
+    lines: list[str] = []
+    if task_type == "unblock":
+        lines.append(
+            "Clear the physical lockout and make the asset safe to restart."
+        )
+    if accepted_action_texts:
+        lines.extend(accepted_action_texts)
+    if conditions:
+        lines.append(f"Conditions: {conditions}")
+    if lines:
+        return "\n".join(lines)
+    return f"Decision outcome: {outcome.replace('_', ' ')}"
+
+
+async def _accepted_recommendation_texts(
+    session: AsyncSession,
+    *,
+    assessment_id: UUID,
+    recommendation_dispositions: dict[str, str],
+) -> list[str]:
+    result = await session.execute(
+        text(
+            """
+            SELECT id, text
+            FROM recommendations
+            WHERE assessment_id = CAST(:aid AS uuid)
+            ORDER BY id ASC
+            """
+        ),
+        {"aid": str(assessment_id)},
+    )
+    texts: list[str] = []
+    for row in result.fetchall():
+        m = row._mapping
+        rec_id = str(m["id"])
+        if recommendation_dispositions.get(rec_id, "accepted") == "rejected":
+            continue
+        text_val = str(m["text"] or "").strip()
+        if text_val:
+            texts.append(text_val)
+    return texts
+
+
 async def create_tasks_for_decision(
     session: AsyncSession,
     *,
@@ -350,6 +471,9 @@ async def create_tasks_for_decision(
     assigned_worker_ids: list[UUID],
     outcome: str,
     actor: str,
+    assessment_id: UUID | None = None,
+    recommendation_dispositions: dict[str, str] | None = None,
+    conditions: str | None = None,
 ) -> list[UUID]:
     if not assigned_worker_ids:
         return []
@@ -360,7 +484,19 @@ async def create_tasks_for_decision(
         if task_type == "unblock"
         else "Follow up actions (HITL)"
     )
-    detail = f"Decision outcome: {outcome.replace('_', ' ')}"
+    accepted_texts: list[str] = []
+    if assessment_id is not None:
+        accepted_texts = await _accepted_recommendation_texts(
+            session,
+            assessment_id=assessment_id,
+            recommendation_dispositions=recommendation_dispositions or {},
+        )
+    detail = _task_detail_for_decision(
+        task_type=task_type,
+        outcome=outcome,
+        conditions=conditions,
+        accepted_action_texts=accepted_texts,
+    )
 
     task_pairs: list[tuple[UUID, UUID]] = []
     for wid in sorted({UUID(str(x)) for x in assigned_worker_ids}, key=lambda u: str(u)):

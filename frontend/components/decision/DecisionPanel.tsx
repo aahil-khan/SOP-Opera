@@ -350,6 +350,16 @@ function ClosedReportLink({
   outcome: DecisionOutcome | null | undefined;
 }) {
   const reopenReview = useLiveStore((s) => s.reopenReview);
+  const clearMapMarker = useLiveStore((s) => s.clearMapMarker);
+  const mapCleared = useLiveStore(
+    (s) => s.mapClearedReviewIds[reviewId] === true,
+  );
+  const sensorCritical = useLiveStore((s) => {
+    const review = s.reviews.find((r) => r.id === reviewId);
+    return review
+      ? (s.sensorCriticalByAsset[review.asset_id] ?? false)
+      : false;
+  });
   const [report, setReport] = useState<Report | null>(null);
   const [reopening, setReopening] = useState(false);
   const [reopenError, setReopenError] = useState<string | null>(null);
@@ -366,10 +376,17 @@ function ClosedReportLink({
     };
   }, [reviewId]);
 
+  const canClearMap =
+    outcome === "blocked" && !mapCleared && !sensorCritical;
+
   return (
     <div className={styles.panel}>
       <p className={styles.done}>
-        {outcome === "blocked" ? "Incident closed · work halted" : "All clear"}
+        {mapCleared
+          ? "Map cleared · all ok"
+          : outcome === "blocked"
+            ? "Incident closed · work halted"
+            : "All clear"}
       </p>
       {report ? (
         <p className={styles.hint}>
@@ -382,7 +399,27 @@ function ClosedReportLink({
       ) : (
         <p className={styles.hint}>Generating report…</p>
       )}
+      {canClearMap ? (
+        <p className={styles.hint}>
+          Clear the map marker when the area is safe — the report stays on file.
+        </p>
+      ) : null}
+      {sensorCritical && outcome === "blocked" && !mapCleared ? (
+        <p className={styles.warning}>
+          Live sensors still exceed the incident threshold — keep the asset
+          offline until readings normalize.
+        </p>
+      ) : null}
       <div className={styles.actionRow}>
+        {canClearMap ? (
+          <button
+            type="button"
+            className={`btn btn-primary ${styles.submit}`}
+            onClick={() => clearMapMarker(reviewId)}
+          >
+            All ok now
+          </button>
+        ) : null}
         <button
           type="button"
           className={`btn ${styles.secondaryAction}`}

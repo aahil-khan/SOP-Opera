@@ -38,7 +38,7 @@ const ORIGIN_BY_SOURCE: Record<FeedSourceId, string> = {
 
 const METRIC_META: Record<TelemetryMetricKey, { label: string; unit: string; warnAt?: number }> = {
   gas_reading:   { label: "Gas",           unit: "ppm",  warnAt: 20 },
-  temp_reading:  { label: "Temperature",   unit: "°C",   warnAt: 80 },
+  temp_reading:  { label: "Temp",          unit: "°C",   warnAt: 80 },
   vibration_mm_s:{ label: "Vibration",     unit: "mm/s", warnAt: 7.1 },
   level_pct:     { label: "Level",         unit: "%" },
   ph:            { label: "pH",            unit: "" },
@@ -458,7 +458,7 @@ function OverviewFeedOverlay({
           <section
             key={card.id}
             className={styles.categoryCard}
-            data-warn={card.warn ? "true" : undefined}
+            data-tone={card.warn ? "warn" : undefined}
             data-active={visiblePaneSource === card.id ? "true" : undefined}
           >
             <header className={styles.categoryHead}>
@@ -479,60 +479,65 @@ function OverviewFeedOverlay({
                 title={`Expand ${meta.label}`}
                 aria-label={`Expand ${meta.label}`}
               >
-                ⤢
+                Expand
               </button>
             </header>
 
-            <div className={styles.categoryStat}>
-              <span className={styles.categoryPrimary} data-warn={card.warn ? "true" : undefined}>
-                {card.primary}
-              </span>
-              <span className={styles.categoryPrimaryLabel}>{card.primaryLabel}</span>
-              <span className={styles.categorySecondary}>{card.secondary}</span>
-            </div>
+            <div className={styles.categoryBody}>
+              <div className={styles.categoryStat}>
+                <span
+                  className={styles.categoryPrimary}
+                  data-tone={card.warn ? "warn" : undefined}
+                >
+                  {card.primary}
+                </span>
+                <span className={styles.categoryPrimaryLabel}>{card.primaryLabel}</span>
+                <span className={styles.categorySecondary}>{card.secondary}</span>
+              </div>
 
-            {card.preview.length === 0 ? (
-              <p className={styles.categoryEmpty}>No live data yet</p>
-            ) : (
-              <ul className={styles.previewList}>
-                {card.preview.map((row) => {
-                  const fresh = isNew(row.key);
-                  return (
-                    <li
-                      key={row.key}
-                      className={
-                        fresh
-                          ? `${styles.previewItem} ${styles.enter}`
-                          : styles.previewItem
-                      }
-                      data-risk={row.risk === "elevated" ? "elevated" : undefined}
-                    >
-                      <span className={styles.previewTop}>
-                        <span className={styles.previewTitle}>
-                          {fresh ? <span className={styles.dot} aria-label="New" /> : null}
-                          {row.title}
+              {card.preview.length === 0 ? (
+                <p className={styles.categoryEmpty}>No live data yet</p>
+              ) : (
+                <ul className={styles.previewList}>
+                  {card.preview.map((row) => {
+                    const fresh = isNew(row.key);
+                    return (
+                      <li
+                        key={row.key}
+                        className={
+                          fresh
+                            ? `${styles.previewItem} ${styles.enter}`
+                            : styles.previewItem
+                        }
+                        data-risk={row.risk === "elevated" ? "elevated" : undefined}
+                      >
+                        <span className={styles.previewTop}>
+                          <span className={styles.previewTitle}>
+                            {fresh ? <span className={styles.dot} aria-label="New" /> : null}
+                            {row.title}
+                          </span>
                         </span>
-                      </span>
-                      <span className={styles.previewDetail}>{row.detail}</span>
-                      {row.ts ? (
-                        <span className={styles.previewWhen}>{relativeTime(row.ts, now)}</span>
-                      ) : null}
-                    </li>
-                  );
-                })}
-              </ul>
-            )}
+                        <span className={styles.previewDetail}>{row.detail}</span>
+                        {row.ts ? (
+                          <span className={styles.previewWhen}>{relativeTime(row.ts, now)}</span>
+                        ) : null}
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
 
-            <button
-              type="button"
-              className={styles.viewAll}
-              onClick={() => {
-                setPaneClosing(false);
-                setExpandedSource(card.id);
-              }}
-            >
-              Expand {meta.label}
-            </button>
+              <button
+                type="button"
+                className={styles.viewAll}
+                onClick={() => {
+                  setPaneClosing(false);
+                  setExpandedSource(card.id);
+                }}
+              >
+                View by floor
+              </button>
+            </div>
           </section>
         );
       })}
@@ -554,43 +559,54 @@ function OverviewFeedOverlay({
           if (overlayClosing) onClosed();
         }}
       >
-        <div className={styles.header}>
-          <span className={styles.panelTitle}>
-            {expandedMeta ? expandedMeta.label : "Overview"}
-          </span>
-          {sampleCount > 0 && <span className={styles.liveDot} title="Live data" />}
+        <header className={styles.overlayHeader}>
+          <div className={styles.headerText}>
+            <div className={styles.titleRow}>
+              <h2 className={styles.overlayTitle}>
+                {expandedMeta ? expandedMeta.label : "Plant overview"}
+              </h2>
+              {sampleCount > 0 ? (
+                <span className={styles.liveDot} title="Live data" />
+              ) : null}
+            </div>
+            <p className={styles.overlaySubtitle}>
+              {expandedMeta
+                ? `${expandedMeta.mark} · by floor`
+                : "Ops impact and live plant feed across SCADA, permits, maintenance, and workforce"}
+            </p>
+          </div>
           <div className={styles.controls}>
             <button
               type="button"
               className={styles.ctrl}
               onClick={onRequestClose}
-              title="Close"
               aria-label="Close overview"
             >
-              ⤓
+              Close
             </button>
           </div>
-        </div>
+        </header>
 
         <div className={styles.overlayBody}>
-          <div className={styles.section} data-recessed={visiblePaneSource ? "true" : undefined}>
+          <div
+            className={styles.section}
+            data-hidden={visiblePaneSource ? "true" : undefined}
+          >
             <div className={styles.sectionHeader}>
-              <span className={styles.sectionMark}>Impact</span>
-              <span className={styles.sectionTitle}>Ops KPIs</span>
+              <h3 className={styles.sectionTitle}>Ops KPIs</h3>
             </div>
             {kpiGrid}
           </div>
-          <div className={styles.divider} />
-          <div className={`${styles.section} ${styles.liveSection}`}>
-            <div className={styles.sectionHeader}>
-              <span className={styles.sectionMarkGreen}>Live</span>
-              <span className={styles.sectionTitle}>
-                {expandedMeta ? expandedMeta.mark : "Plant feed"}
-              </span>
-              <span className={styles.feedSummary}>
-                {visiblePaneSource ? "By floor" : "All sources"}
-              </span>
-            </div>
+          <div
+            className={`${styles.section} ${styles.liveSection}`}
+            data-expanded={visiblePaneSource ? "true" : undefined}
+          >
+            {!visiblePaneSource ? (
+              <div className={styles.sectionHeader}>
+                <h3 className={styles.sectionTitle}>Plant feed</h3>
+                <span className={styles.feedSummary}>All sources</span>
+              </div>
+            ) : null}
 
             <div className={styles.feedStage}>
               <div className={styles.feedScroll}>{allCategoriesGrid}</div>
@@ -615,7 +631,7 @@ function OverviewFeedOverlay({
                       onClick={collapsePane}
                       aria-label="Back to overview"
                     >
-                      ←
+                      Back
                     </button>
                     <div className={styles.expandPaneTitles}>
                       <span className={styles.categoryMark}>{expandedMeta?.mark}</span>
@@ -625,10 +641,9 @@ function OverviewFeedOverlay({
                       type="button"
                       className={styles.ctrl}
                       onClick={collapsePane}
-                      title="Collapse"
                       aria-label="Collapse category"
                     >
-                      ⤓
+                      Collapse
                     </button>
                   </div>
                   <div className={styles.expandPaneBody}>{floorBoard}</div>
@@ -708,9 +723,13 @@ export function OverviewPanel() {
   );
 
   const kpiGrid = (
-    <div className={styles.kpis}>
+    <div className={styles.kpis} aria-label="Ops KPIs">
       {kpis.map((k) => (
-        <div key={k.key} className={styles.kpi} data-warn={k.warn ? "true" : undefined}>
+        <div
+          key={k.key}
+          className={styles.kpi}
+          data-tone={k.warn ? "warn" : k.value === 0 ? "good" : undefined}
+        >
           <span className={styles.kpiValue}>{k.value}</span>
           <span className={styles.kpiLabel}>{k.label}</span>
         </div>
@@ -722,29 +741,27 @@ export function OverviewPanel() {
     <>
       <div className={styles.embedded} role="region" aria-label="Plant overview">
         <div className={styles.header}>
-          <span className={styles.panelTitle}>Overview</span>
-          {opsSummary.assetsWithOps > 0 ? (
-            <span className={styles.liveDot} title="Live data" />
-          ) : null}
+          <div className={styles.headerText}>
+            <div className={styles.titleRow}>
+              <h2 className={styles.panelTitle}>Overview</h2>
+              {opsSummary.assetsWithOps > 0 ? (
+                <span className={styles.liveDot} title="Live data" />
+              ) : null}
+            </div>
+            <p className={styles.panelSubtitle}>Ops impact across open work</p>
+          </div>
           <div className={styles.controls}>
             <button
               type="button"
               className={styles.ctrl}
               onClick={openMaximize}
-              title="Maximize"
-              aria-label="Maximize panel"
+              aria-label="Expand overview"
             >
-              ⤢
+              Expand
             </button>
           </div>
         </div>
-        <div className={styles.embeddedBody}>
-          <div className={styles.sectionHeader}>
-            <span className={styles.sectionMark}>Impact</span>
-            <span className={styles.sectionTitle}>Ops KPIs</span>
-          </div>
-          {kpiGrid}
-        </div>
+        <div className={styles.embeddedBody}>{kpiGrid}</div>
       </div>
       {mounted && overlayOpen ? (
         <OverviewFeedOverlay

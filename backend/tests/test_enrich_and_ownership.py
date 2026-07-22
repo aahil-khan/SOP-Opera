@@ -67,6 +67,10 @@ async def test_enrich_references_sops_and_incidents(session):
     assert "sops" in sources or "regulations" in sources
     assert "historical_incidents" in sources
     assert all(r.title or r.snippet for r in enriched)
+    incident_titles = [r.title for r in enriched if r.source == "historical_incidents"]
+    assert incident_titles
+    assert len(set(incident_titles)) == len(incident_titles), incident_titles
+    assert all(t != "Historical incident" for t in incident_titles)
 
 
 @pytest.mark.asyncio

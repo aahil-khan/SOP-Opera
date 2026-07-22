@@ -36,12 +36,23 @@ async def post_decision(
     actor = _decision_actor(request)
     if actor is None:
         # Match submit_decision's decided_by fallback for unauthenticated API clients.
+        from sqlalchemy import text
+
         owner_id = UUID(get_settings().default_owner_user_id)
+        row = (
+            await session.execute(
+                text("SELECT id, name, role FROM users WHERE id = CAST(:id AS uuid)"),
+                {"id": str(owner_id)},
+            )
+        ).first()
+        if row is None:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+        m = row._mapping
         actor = ActorMeOut(
-            id=owner_id,
+            id=m["id"],
             kind="user",
-            name="Operator",
-            role="decision_maker",
+            name=m["name"],
+            role=m["role"],
             owned_zones=[],
         )
     try:

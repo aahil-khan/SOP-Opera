@@ -30,7 +30,7 @@ export function ReviewList() {
           return (
             <Link
               key={review.id}
-              href={`/reviews/${review.id}`}
+              href={`/operator?review=${review.id}`}
               className={styles.item}
             >
               <div className={styles.itemMeta}>

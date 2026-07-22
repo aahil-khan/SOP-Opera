@@ -153,6 +153,7 @@ async def select_reports(
     session: AsyncSession,
     *,
     review_id: UUID | None = None,
+    asset_id: UUID | None = None,
     include_superseded: bool = False,
     outcome: str | None = None,
     risk_level: str | None = None,
@@ -164,13 +165,19 @@ async def select_reports(
 
     Filtering on outcome/risk reads the frozen `content`, because those live on
     the packet rather than on a column — they are properties of what was frozen,
-    not of the row.
+    not of the row. Asset scope joins through `reviews` (reports have no
+    asset_id column).
     """
     clauses: list[str] = []
     params: dict[str, Any] = {}
+    join = ""
     if review_id is not None:
         clauses.append("r.review_id = CAST(:review_id AS uuid)")
         params["review_id"] = str(review_id)
+    if asset_id is not None:
+        join = "JOIN reviews rev ON rev.id = r.review_id"
+        clauses.append("rev.asset_id = CAST(:asset_id AS uuid)")
+        params["asset_id"] = str(asset_id)
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     # `is_current` filters in SQL via the window; outcome/risk read JSONB and are
@@ -184,6 +191,7 @@ async def select_reports(
             SELECT * FROM (
                 SELECT {_REPORT_COLUMNS}
                 FROM reports r
+                {join}
                 {where}
             ) ranked
             {current_clause}

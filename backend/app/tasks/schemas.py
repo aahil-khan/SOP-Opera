@@ -20,6 +20,22 @@ class TaskSummaryOut(BaseModel):
     all_done: bool = True
 
 
+class ReviewTaskOut(BaseModel):
+    """Task row embedded on review detail (operator follow-through visibility)."""
+
+    id: UUID
+    assigned_worker_id: UUID
+    assigned_worker_name: str | None = None
+    task_type: TaskType
+    title: str
+    detail: str | None
+    status: TaskStatus
+    created_at: str
+    acknowledged_at: str | None = None
+    done_at: str | None = None
+    done_note: str | None = None
+
+
 class TaskListOut(BaseModel):
     id: UUID
     review_id: UUID
@@ -46,6 +62,7 @@ class TaskListOut(BaseModel):
     decision_conditions: str | None = None
     decision_comments: str | None = None
     decision_submitted_at: str | None = None
+    decision_decided_by_name: str | None = None
 
 
 class TaskAcknowledgeOut(BaseModel):

@@ -1,3 +1,8 @@
+import {
+  actorRequestHeaders,
+  clearActorCookie,
+  setActorCookie,
+} from "@/lib/actorCookie";
 import { API_BASE } from "@/lib/api";
 import type { Actor, ActorKind, RosterEntry } from "@/lib/authTypes";
 
@@ -10,6 +15,7 @@ async function request<T>(
     credentials: "include",
     headers: {
       "Content-Type": "application/json",
+      ...actorRequestHeaders(),
       ...(init?.headers ?? {}),
     },
     cache: "no-store",
@@ -34,15 +40,22 @@ export async function fetchRoster(): Promise<RosterEntry[]> {
   return request<RosterEntry[]>(`/auth/roster`, { method: "GET" });
 }
 
-export async function loginAs(actorId: string): Promise<void> {
+export async function loginAs(actor: Actor): Promise<void> {
   await request(`/auth/login`, {
     method: "POST",
-    body: JSON.stringify({ actor_id: actorId }),
+    body: JSON.stringify({ actor_id: actor.id }),
   });
+  // Mirror on the page origin — do not call /auth/me here; the API cookie may
+  // not be readable from the UI origin until the next credentialed request.
+  setActorCookie(actor);
 }
 
 export async function logout(): Promise<void> {
-  await request(`/auth/logout`, { method: "POST" });
+  try {
+    await request(`/auth/logout`, { method: "POST" });
+  } finally {
+    clearActorCookie();
+  }
 }
 
 export async function fetchMe(): Promise<Actor> {
