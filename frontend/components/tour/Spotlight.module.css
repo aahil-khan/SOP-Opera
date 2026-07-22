@@ -9,8 +9,8 @@
 }
 
 /*
- * Viewport-sized dim with a clip-path cutout. Visual only — the blocker above
- * owns hit-testing so the hole can't leak clicks to the page.
+ * Viewport-sized dim with a clip-path cutout. Visual only — the blocker (or
+ * interactive bands) owns hit-testing so the hole can't leak clicks.
  */
 .blocker {
   position: fixed;
@@ -27,6 +27,16 @@
   backdrop-filter: blur(1.5px);
   animation: dim-in var(--duration-normal, 200ms) var(--ease-out) both;
   transition: clip-path var(--duration-normal, 200ms) var(--ease-out);
+}
+
+/*
+ * Interactive-step framing. Each band swallows clicks outside the cutout while
+ * the cutout itself stays live, so the user clicks the real UI.
+ */
+.band {
+  position: fixed;
+  pointer-events: auto;
+  background: transparent;
 }
 
 /* Accent frame around the revealed target — separate from the dim so glow

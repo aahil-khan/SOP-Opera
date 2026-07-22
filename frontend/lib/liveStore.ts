@@ -38,6 +38,7 @@ import {
   showReassessmentToast,
 } from "@/lib/notificationToast";
 import { isDndEnabled } from "@/lib/dndMode";
+import { useTourStore } from "@/lib/tourStore";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import {
   assetHasSensorCritical,
@@ -306,7 +307,7 @@ export interface LiveAssetView {
   detail: ReviewDetail | null;
 }
 
-interface LiveState {
+export interface LiveState {
   assets: Asset[];
   reviews: Review[];
   reviewDetails: Record<string, ReviewDetail>;
@@ -1104,6 +1105,10 @@ export const useLiveStore = create<LiveState>((set, get) => {
     }
     if (
       !isDndEnabled() &&
+      // The Grand Tour narrates its own re-assessment beat (VSP break #2), so
+      // suppress the focus-pulling toast while a tour is running — otherwise it
+      // fires over the overlay and yanks the map away from the spotlit step.
+      !useTourStore.getState().active &&
       type === "review.status_changed" &&
       reviewId &&
       payload.state === "assessing" &&
