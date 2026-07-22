@@ -1,6 +1,7 @@
-# Full production stack: Postgres + API + Next.js web.
+# Production stack on the home server: Postgres + API only.
+# Frontend is deployed on Vercel.
 #
-#   cp .env.prod.example .env.prod   # set host/IP URLs + secrets
+#   cp .env.prod.example .env.prod
 #   ./scripts/deploy-prod.sh
 #
 # Dev DB-only compose remains: docker compose up -d db
@@ -38,19 +39,6 @@ services:
     depends_on:
       db:
         condition: service_healthy
-    restart: unless-stopped
-
-  web:
-    build:
-      context: .
-      dockerfile: frontend/Dockerfile
-      args:
-        NEXT_PUBLIC_API_BASE_URL: ${NEXT_PUBLIC_API_BASE_URL}
-        NEXT_PUBLIC_WS_URL: ${NEXT_PUBLIC_WS_URL}
-    ports:
-      - "${WEB_PORT:-3000}:3000"
-    depends_on:
-      - api
     restart: unless-stopped
 
 volumes:
