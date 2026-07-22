@@ -308,6 +308,25 @@
   background: var(--surface-panel);
   overflow: hidden;
   scroll-margin-top: var(--space-6);
+  transition:
+    box-shadow var(--duration-normal, 200ms) ease,
+    border-color var(--duration-normal, 200ms) ease;
+}
+
+.panel[data-expanded="true"] {
+  scroll-margin-top: calc(var(--nav-height, 48px) + var(--space-8, 32px));
+  border-color: color-mix(in srgb, var(--accent-ai, #6b8cae) 40%, var(--border-default));
+  box-shadow: var(--shadow-md, 0 8px 24px rgba(0, 0, 0, 0.12));
+}
+
+.panel[data-expanded="true"] .panelHeader {
+  padding: var(--space-5) var(--space-6);
+}
+
+.panel[data-expanded="true"] .panelBody {
+  padding: var(--space-6) var(--space-6) var(--space-7);
+  gap: var(--space-5);
+  min-height: 12rem;
 }
 
 .panelHeader {

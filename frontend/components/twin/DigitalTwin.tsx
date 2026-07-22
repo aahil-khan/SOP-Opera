@@ -170,6 +170,19 @@ export function DigitalTwin() {
 
   useEffect(() => () => clearViewTransition(), [clearViewTransition]);
 
+  // Opening + curtain always show All floors — never resume a leftover floor
+  // dive from before Take the tour, or from the scoreboard acts before Finish.
+  useEffect(() => {
+    if (tourStepId !== "overture" && tourStepId !== "curtain") return;
+    lastFocusedRef.current = null;
+    pendingFocusRef.current = null;
+    selectAsset(null);
+    clearViewTransition();
+    setOverviewExiting(false);
+    setSlideDir("in");
+    setViewMode("overview");
+  }, [tourStepId, selectAsset, clearViewTransition]);
+
   useEffect(() => {
     setEnabledLayers(readEnabledLayers());
   }, []);

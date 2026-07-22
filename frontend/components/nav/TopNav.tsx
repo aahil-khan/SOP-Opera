@@ -25,7 +25,11 @@ export function TopNav() {
   const onEval = pathname.startsWith("/eval");
   const onHandover = pathname.startsWith("/handover");
   const selectAsset = useLiveStore((s) => s.selectAsset);
-  const handover = useLiveStore((s) => s.handover);
+  const handoverId = useLiveStore((s) => {
+    const h = s.handover;
+    if (!h || h.state !== "issued" || h.viewer_role !== "incoming") return null;
+    return h.id;
+  });
   const loadHandover = useLiveStore((s) => s.loadHandover);
 
   // Cookie is only available in the browser — start null so SSR and the
@@ -49,9 +53,8 @@ export function TopNav() {
   // a handover is genuinely waiting on this operator.
   const handoverOpen =
     onOperator &&
-    handover?.state === "issued" &&
-    handover.viewer_role === "incoming" &&
-    handover.id !== dismissedHandoverId;
+    handoverId != null &&
+    handoverId !== dismissedHandoverId;
 
   async function onLogout() {
     try {
@@ -64,13 +67,13 @@ export function TopNav() {
 
   const handleStartShift = useCallback(
     (attentionAssetId: string | null) => {
-      setDismissedHandoverId(handover?.id ?? null);
+      setDismissedHandoverId(handoverId);
       if (attentionAssetId) {
         selectAsset(attentionAssetId);
         if (!onOperator) router.push("/operator");
       }
     },
-    [handover?.id, onOperator, router, selectAsset],
+    [handoverId, onOperator, router, selectAsset],
   );
 
   return (
@@ -130,7 +133,7 @@ export function TopNav() {
       </nav>
       {handoverOpen ? (
         <ShiftGate
-          onClose={() => setDismissedHandoverId(handover?.id ?? null)}
+          onClose={() => setDismissedHandoverId(handoverId)}
           onStartShift={handleStartShift}
         />
       ) : null}

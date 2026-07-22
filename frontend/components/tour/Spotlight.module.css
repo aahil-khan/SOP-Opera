@@ -25,8 +25,9 @@
   pointer-events: none;
   background: color-mix(in srgb, #000 62%, transparent);
   backdrop-filter: blur(1.5px);
-  animation: dim-in var(--duration-normal, 200ms) var(--ease-out) both;
-  transition: clip-path var(--duration-normal, 200ms) var(--ease-out);
+  animation: dim-in var(--duration-fast, 120ms) var(--ease-out) both;
+  /* Instant clip updates — animating clip-path between steps felt like lag. */
+  transition: none;
 }
 
 /*
@@ -49,11 +50,8 @@
   box-shadow:
     0 0 0 1px color-mix(in srgb, #000 35%, transparent),
     0 0 22px 4px color-mix(in srgb, var(--accent-ai) 45%, transparent);
-  transition:
-    top var(--duration-normal, 200ms) var(--ease-out),
-    left var(--duration-normal, 200ms) var(--ease-out),
-    width var(--duration-normal, 200ms) var(--ease-out),
-    height var(--duration-normal, 200ms) var(--ease-out);
+  /* Snap the ring; pulse still gives life without layout lag. */
+  transition: none;
   animation: halo-pulse 2.4s ease-in-out infinite;
 }
 

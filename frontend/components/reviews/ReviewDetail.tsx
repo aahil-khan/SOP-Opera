@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import {
   findViewByReviewId,
   useLiveStore,
+  useSensorCritical,
 } from "@/lib/liveStore";
 import type { AssessmentHistoryItem } from "@/lib/liveApi";
 import { AssessmentPanel } from "@/components/assessment/AssessmentPanel";
@@ -59,7 +60,12 @@ export function ReviewDetail({
   });
   const detail = useLiveStore((s) => s.reviewDetails[reviewId]);
   const assessments = useLiveStore((s) => s.assessmentsByReview[reviewId]);
-  const sensorCriticalByAsset = useLiveStore((s) => s.sensorCriticalByAsset);
+  const assetIdForCritical =
+    detail?.asset.id ??
+    listAsset?.id ??
+    listReview?.asset_id ??
+    null;
+  const sensorCritical = useSensorCritical(assetIdForCritical);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [otherActionsOpen, setOtherActionsOpen] = useState(true);
 
@@ -83,11 +89,13 @@ export function ReviewDetail({
         assessmentsByReview: assessments
           ? { [reviewId]: assessments }
           : {},
-        sensorCriticalByAsset,
+        sensorCriticalByAsset: sensorCritical
+          ? { [listAsset.id]: true }
+          : {},
       },
       reviewId,
     );
-  }, [listReview, listAsset, detail, assessments, reviewId, sensorCriticalByAsset]);
+  }, [listReview, listAsset, detail, assessments, reviewId, sensorCritical]);
 
   const assessmentList = assessments ?? [];
   const latest = useMemo(() => {

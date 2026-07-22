@@ -41,19 +41,21 @@ export function latestNotificationCreatedAt(
   return latest;
 }
 
+type SeenNotification = {
+  id: string;
+  created_at: string;
+  recipient_ids: string[];
+};
+
 /**
  * Inbox items newer than the last-seen watermark.
  * First visit for an actor seeds the watermark to the latest item so historical
  * inbox rows do not flood the badge; later logins restore anything newer.
  */
 export function unreadIdsSinceSeen(
-  notifications: {
-    id: string;
-    created_at: string;
-    recipient_ids: string[];
-  }[],
+  notifications: SeenNotification[],
   actorId: string | null,
-  isInbox: (n: { id: string }) => boolean,
+  isInbox: (n: SeenNotification) => boolean,
 ): string[] {
   const relevant = notifications.filter((n) => {
     if (!isInbox(n)) return false;

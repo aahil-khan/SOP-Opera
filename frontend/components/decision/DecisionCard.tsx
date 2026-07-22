@@ -11,8 +11,6 @@ interface DecisionCardProps {
   /** Marks the exit animation for mount/unmount in the AssetPanel drawer. */
   closing?: boolean;
   cardRef?: Ref<HTMLDivElement>;
-  /** Tour spotlight target (e.g. Act V decision). */
-  "data-tour"?: string;
 }
 
 /**
@@ -25,14 +23,12 @@ export function DecisionCard({
   onClose,
   closing = false,
   cardRef,
-  "data-tour": dataTour,
 }: DecisionCardProps) {
   return (
     <div
       ref={cardRef}
       className={styles.card}
       data-closing={closing ? "true" : undefined}
-      data-tour={dataTour}
       role="region"
       aria-label={title}
     >

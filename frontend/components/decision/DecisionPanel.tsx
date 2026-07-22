@@ -135,66 +135,81 @@ function DecisionForm({
     }
   }
 
+  const hasRecommendations = assessment.recommendations.length > 0;
+
   return (
     <div className={styles.panel}>
-      {assessment.recommendations.length > 0 && (
-        <section className={styles.section} aria-labelledby="decision-recs-heading">
-          <p id="decision-recs-heading" className={styles.label}>
-            Review recommendations
-          </p>
+      {/* Tour Act V frames recommended actions — not the outcomes block or
+          the whole DecisionCard (taller than the drawer; clamp filled the
+          scrollport). Keep a compact heading target when the list is empty. */}
+      <section
+        className={styles.section}
+        aria-labelledby="decision-recs-heading"
+        data-tour="decision"
+      >
+        <p id="decision-recs-heading" className={styles.label}>
+          Review recommendations
+        </p>
+        {hasRecommendations ? (
+          <>
+            <p className={styles.sectionHint}>
+              Accept or reject each action before making your call.
+            </p>
+            <div className={styles.recList}>
+              {assessment.recommendations.map((rec, index) => {
+                const disposition = dispositions[rec.id];
+                return (
+                  <article
+                    key={rec.id}
+                    className={styles.recCard}
+                    data-rejected={disposition === "rejected"}
+                  >
+                    <div className={styles.recCardHeader}>
+                      <span className={styles.recIndex} aria-hidden>
+                        {index + 1}
+                      </span>
+                      <div className={styles.recBody}>
+                        <p className={styles.recText}>{rec.text}</p>
+                        {rec.rationale ? (
+                          <p className={styles.recRationale}>{rec.rationale}</p>
+                        ) : null}
+                      </div>
+                      <div
+                        className={styles.recToggle}
+                        role="group"
+                        aria-label={`Disposition for recommendation ${index + 1}`}
+                      >
+                        {(["accepted", "rejected"] as const).map((kind) => (
+                          <button
+                            key={kind}
+                            type="button"
+                            className={styles.recToggleBtn}
+                            data-active={disposition === kind}
+                            data-kind={kind}
+                            aria-pressed={disposition === kind}
+                            onClick={() =>
+                              setDispositions((d) => ({ ...d, [rec.id]: kind }))
+                            }
+                          >
+                            <span className={styles.recToggleIcon} aria-hidden>
+                              {kind === "accepted" ? "✓" : "✕"}
+                            </span>
+                            {kind === "accepted" ? "Accept" : "Reject"}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  </article>
+                );
+              })}
+            </div>
+          </>
+        ) : (
           <p className={styles.sectionHint}>
-            Accept or reject each action before making your call.
+            No recommended actions on this assessment.
           </p>
-          <div className={styles.recList}>
-            {assessment.recommendations.map((rec, index) => {
-              const disposition = dispositions[rec.id];
-              return (
-                <article
-                  key={rec.id}
-                  className={styles.recCard}
-                  data-rejected={disposition === "rejected"}
-                >
-                  <div className={styles.recCardHeader}>
-                    <span className={styles.recIndex} aria-hidden>
-                      {index + 1}
-                    </span>
-                    <div className={styles.recBody}>
-                      <p className={styles.recText}>{rec.text}</p>
-                      {rec.rationale ? (
-                        <p className={styles.recRationale}>{rec.rationale}</p>
-                      ) : null}
-                    </div>
-                    <div
-                      className={styles.recToggle}
-                      role="group"
-                      aria-label={`Disposition for recommendation ${index + 1}`}
-                    >
-                      {(["accepted", "rejected"] as const).map((kind) => (
-                        <button
-                          key={kind}
-                          type="button"
-                          className={styles.recToggleBtn}
-                          data-active={disposition === kind}
-                          data-kind={kind}
-                          aria-pressed={disposition === kind}
-                          onClick={() =>
-                            setDispositions((d) => ({ ...d, [rec.id]: kind }))
-                          }
-                        >
-                          <span className={styles.recToggleIcon} aria-hidden>
-                            {kind === "accepted" ? "✓" : "✕"}
-                          </span>
-                          {kind === "accepted" ? "Accept" : "Reject"}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </article>
-              );
-            })}
-          </div>
-        </section>
-      )}
+        )}
+      </section>
 
       {workers.length > 0 ? (
         <section className={styles.section} aria-labelledby="decision-tag-heading">
@@ -239,7 +254,10 @@ function DecisionForm({
         </section>
       ) : null}
 
-      <section className={styles.section} aria-labelledby="decision-outcome-heading">
+      <section
+        className={styles.section}
+        aria-labelledby="decision-outcome-heading"
+      >
         <p id="decision-outcome-heading" className={styles.label}>
           Make the call
         </p>

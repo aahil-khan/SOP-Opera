@@ -1,12 +1,13 @@
 "use client";
 
 /**
- * Tour transport: mode toggle (▶ Auto ⇄ ⏸ Interactive), Back / Next, Skip, and
- * a progress rail. In auto mode a bar animates each step's dwell so the viewer
- * (and a demo audience) can see the pacing; pausing freezes it.
+ * Tour transport: mode toggle (▶ Auto ⇄ ⏸ Interactive), Start over / Next,
+ * Skip, and a progress rail. In auto mode a bar animates each step's dwell so
+ * the viewer (and a demo audience) can see the pacing; pausing freezes it.
  */
 
 import { DEFAULT_DWELL, TOUR_STEPS } from "@/lib/tourScript";
+import { useLiveStore } from "@/lib/liveStore";
 import { useTourStore } from "@/lib/tourStore";
 import styles from "./TourControls.module.css";
 
@@ -25,23 +26,28 @@ export function TourControls({
   const mode = useTourStore((s) => s.mode);
   const paused = useTourStore((s) => s.paused);
   const next = useTourStore((s) => s.next);
-  const prev = useTourStore((s) => s.prev);
+  const restart = useTourStore((s) => s.restart);
   const stop = useTourStore((s) => s.stop);
   const goTo = useTourStore((s) => s.goTo);
   const setMode = useTourStore((s) => s.setMode);
   const togglePause = useTourStore((s) => s.togglePause);
 
+  const step = TOUR_STEPS[stepIndex];
+  const nextReady = useLiveStore((s) =>
+    step?.holdNextUntil ? step.holdNextUntil(s) : true,
+  );
+
   const isFirst = stepIndex === 0;
   const isLast = stepIndex === total - 1;
-  const autoRunning = mode === "auto" && !paused;
-  const dwell = TOUR_STEPS[stepIndex]?.autoMs ?? DEFAULT_DWELL;
+  const autoRunning = mode === "auto" && !paused && nextReady;
+  const dwell = step?.autoMs ?? DEFAULT_DWELL;
 
   return (
     <div className={styles.controls}>
       {mode === "auto" ? (
         <div className={styles.progressTrack} aria-hidden="true">
           <div
-            key={`${stepIndex}-${paused}`}
+            key={`${stepIndex}-${paused}-${nextReady}`}
             className={styles.progressFill}
             data-running={autoRunning ? "true" : undefined}
             style={{ animationDuration: `${dwell}ms` }}
@@ -78,17 +84,26 @@ export function TourControls({
         <button
           type="button"
           className={styles.ghostBtn}
-          onClick={prev}
+          onClick={restart}
           disabled={isFirst}
+          title="Restart the tour from the beginning"
         >
-          Back
+          Start over
         </button>
         <button
           type="button"
           className={interactive ? styles.ghostBtn : styles.primaryBtn}
           onClick={next}
+          disabled={!nextReady}
+          aria-busy={!nextReady ? true : undefined}
         >
-          {isLast ? "Finish" : interactive ? "Skip step ›" : "Next"}
+          {!nextReady
+            ? "Wait for completion…"
+            : isLast
+              ? "Finish"
+              : interactive
+                ? "Skip step ›"
+                : "Next"}
         </button>
       </div>
 

@@ -865,7 +865,11 @@ export const useLiveStore = create<LiveState>((set, get) => {
       const unreadNotificationIds = unreadIdsSinceSeen(
         notifications,
         actorId,
-        isInboxNotification,
+        isInboxNotification as (n: {
+          id: string;
+          created_at: string;
+          recipient_ids: string[];
+        }) => boolean,
       );
       const unreadThreadReviewIds = [
         ...new Set(
@@ -1320,9 +1324,8 @@ export const useLiveStore = create<LiveState>((set, get) => {
     }
     if (
       !isDndEnabled() &&
-      // The Grand Tour narrates its own re-assessment beat (VSP break #2), so
-      // suppress the focus-pulling toast while a tour is running — otherwise it
-      // fires over the overlay and yanks the map away from the spotlit step.
+      // Suppress focus-pulling re-assessment toasts while the tour is running —
+      // otherwise they fire over the overlay and yank the map off the spotlit step.
       !useTourStore.getState().active &&
       type === "review.status_changed" &&
       reviewId &&
@@ -1441,11 +1444,45 @@ export function selectAgentStepsForReview(reviewId: string) {
 }
 
 export function useAgentStepsForReview(reviewId: string): AgentStepEvent[] {
-  return useLiveStore((s) => s.agentStepsByReview[reviewId] ?? EMPTY_AGENT_STEPS);
+  return useLiveStore(
+    (s) => s.agentStepsByReview[reviewId] ?? EMPTY_AGENT_STEPS,
+  );
+}
+
+/** Shared across twin panels so DigitalTwin + sidebar + overview don't rebuild thrice. */
+let sharedLiveViews: LiveAssetView[] | null = null;
+let sharedLiveViewsKey: {
+  assets: LiveState["assets"];
+  reviews: LiveState["reviews"];
+  reviewDetails: LiveState["reviewDetails"];
+  assessmentsByReview: LiveState["assessmentsByReview"];
+  sensorCriticalByAsset: LiveState["sensorCriticalByAsset"];
+  mapClearedReviewIds: LiveState["mapClearedReviewIds"];
+} | null = null;
+
+function getLiveAssetViewsShared(
+  state: NonNullable<typeof sharedLiveViewsKey>,
+): LiveAssetView[] {
+  const prev = sharedLiveViewsKey;
+  if (
+    prev &&
+    sharedLiveViews &&
+    prev.assets === state.assets &&
+    prev.reviews === state.reviews &&
+    prev.reviewDetails === state.reviewDetails &&
+    prev.assessmentsByReview === state.assessmentsByReview &&
+    prev.sensorCriticalByAsset === state.sensorCriticalByAsset &&
+    prev.mapClearedReviewIds === state.mapClearedReviewIds
+  ) {
+    return sharedLiveViews;
+  }
+  sharedLiveViewsKey = state;
+  sharedLiveViews = getLiveAssetViews(state);
+  return sharedLiveViews;
 }
 
 /**
- * Subscribe once to the four overview slices and memoize derived views.
+ * Subscribe once to the overview slices and memoize derived views.
  * Prefer this over calling getLiveAssetViews in every twin panel.
  */
 export function useLiveAssetViews(): LiveAssetView[] {
@@ -1457,7 +1494,7 @@ export function useLiveAssetViews(): LiveAssetView[] {
   const mapClearedReviewIds = useLiveStore((s) => s.mapClearedReviewIds);
   return useMemo(
     () =>
-      getLiveAssetViews({
+      getLiveAssetViewsShared({
         assets,
         reviews,
         reviewDetails,
@@ -1561,6 +1598,7 @@ export function findViewByReviewId(
     detail,
     risk_level: deriveRisk(review, assessment, detail),
     sensor_critical: state.sensorCriticalByAsset[asset.id] ?? false,
+    map_cleared: false,
   };
 }
 

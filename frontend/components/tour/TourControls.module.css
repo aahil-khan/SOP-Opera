@@ -103,8 +103,14 @@
   font-weight: var(--weight-semibold, 600);
 }
 
-.primaryBtn:hover {
+.primaryBtn:hover:not(:disabled) {
   background: color-mix(in srgb, var(--accent-ai) 88%, #fff);
+}
+
+.primaryBtn:disabled {
+  opacity: 0.72;
+  cursor: wait;
+  background: color-mix(in srgb, var(--accent-ai) 55%, var(--surface-panel));
 }
 
 .footer {

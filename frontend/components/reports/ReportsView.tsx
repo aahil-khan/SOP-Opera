@@ -103,10 +103,12 @@ export function ReportsView() {
   );
 
   useEffect(() => load(true), [load]);
-  // A freeze happens elsewhere in the app; the register must not go stale.
+  // A freeze happens elsewhere in the app; coalesce bursts so the register
+  // stays fresh without stacking overlapping fetches.
   useEffect(() => {
     if (reportEventSeq === 0) return;
-    return load(false);
+    const timer = window.setTimeout(() => load(false), 350);
+    return () => window.clearTimeout(timer);
   }, [reportEventSeq, load]);
 
   const toggleRisk = (risk: string) =>

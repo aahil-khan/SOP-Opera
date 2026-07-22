@@ -17,12 +17,15 @@ interface NarrationCardProps {
   stepIndex: number;
   /** This step is a hands-on "your turn" beat in interactive mode. */
   interactive?: boolean;
+  /** Gesture completes the step — Next reads as "Skip step". */
+  awaitingGesture?: boolean;
 }
 
 export function NarrationCard({
   step,
   stepIndex,
   interactive = false,
+  awaitingGesture = false,
 }: NarrationCardProps) {
   const fallbackScripted = useTourStore((s) => s.fallbackScripted);
   const body =
@@ -47,7 +50,7 @@ export function NarrationCard({
       <TourControls
         stepIndex={stepIndex}
         total={TOUR_STEPS.length}
-        interactive={interactive}
+        interactive={awaitingGesture}
       />
     </div>
   );

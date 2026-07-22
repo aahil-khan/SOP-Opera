@@ -11,7 +11,11 @@
 .cardAnchor {
   position: fixed;
   pointer-events: auto;
-  animation: tour-card-in var(--duration-slow, 400ms) var(--ease-out) both;
+  /* Never clip off the bottom of the viewport — scroll the card itself if tall. */
+  max-height: calc(100vh - var(--nav-height, 48px) - 24px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  animation: tour-card-in var(--duration-fast, 150ms) var(--ease-out) both;
 }
 
 @keyframes tour-card-in {
@@ -25,6 +29,22 @@
    inline (top/left placement uses translate to sit above the target). */
 .cardAnchor[data-placement="center"] {
   animation-name: tour-card-in-center;
+}
+
+.cardAnchor[data-placement="corner"] {
+  /* Slide up from the docked corner instead of dropping from above. */
+  animation-name: tour-card-in-corner;
+}
+
+@keyframes tour-card-in-corner {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
 }
 
 @keyframes tour-card-in-center {

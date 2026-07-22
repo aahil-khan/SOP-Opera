@@ -20,6 +20,7 @@ import {
   shortHash,
   splitSummary,
 } from "@/lib/humanize";
+import { useTourStepId } from "@/lib/tourStore";
 import styles from "./ReportDetailView.module.css";
 
 /* Outcomes borrow the risk badge palette so the masthead reads at a glance. */
@@ -188,6 +189,7 @@ function Panel({
   count,
   children,
   anchor,
+  expanded,
 }: {
   id: string;
   title: string;
@@ -195,9 +197,16 @@ function Panel({
   children: React.ReactNode;
   /** Optional data-tour value so the guided tour can spotlight this panel. */
   anchor?: string;
+  /** Tour vault: give the audit packet a bit more breathing room. */
+  expanded?: boolean;
 }) {
   return (
-    <section id={id} className={styles.panel} data-tour={anchor}>
+    <section
+      id={id}
+      className={styles.panel}
+      data-tour={anchor}
+      data-expanded={expanded ? "true" : undefined}
+    >
       <div className={styles.panelHeader}>
         <h2 className={styles.panelTitle}>{title}</h2>
         {count != null && <span className={styles.panelCount}>{count}</span>}
@@ -222,6 +231,8 @@ function LoadingDoc() {
 export function ReportDetailView({ reportId }: { reportId: string }) {
   const [report, setReport] = useState<Report | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const tourStepId = useTourStepId();
+  const tourVault = tourStepId === "vault";
 
   useEffect(() => {
     let cancelled = false;
@@ -241,6 +252,17 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
       cancelled = true;
     };
   }, [reportId]);
+
+  // Tour vault: bring the audit packet into view once the doc has painted.
+  useEffect(() => {
+    if (!tourVault || !report) return;
+    const el = document.getElementById("audit");
+    if (!el) return;
+    const id = window.setTimeout(() => {
+      el.scrollIntoView({ block: "center", behavior: "smooth" });
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [tourVault, report]);
 
   if (error) {
     return (
@@ -690,6 +712,7 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
               title="Audit trail"
               count={auditTrail.length}
               anchor="audit-chain"
+              expanded={tourVault}
             >
               <span
                 className={styles.chainChip}

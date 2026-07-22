@@ -4,10 +4,13 @@
  * Tour ↔ backend bridge.
  *
  * The Grand Tour drives the *real* platform: Act II asks the backend to replay
- * the scripted VSP coke-oven scenario so the Brain panel streams genuine
+ * the scripted `compound_risk` scenario so the Brain panel streams genuine
  * `agent.step` events and telemetry moves for real. This mirrors the exact
  * start sequence in components/demo/DemoControls.tsx (clear → POST → refresh),
  * kept in one place so the two never drift.
+ *
+ * We deliberately use the short compound demo — not `vsp_coke_oven` — so the
+ * tour never fights a late re-assessment when gas later crosses critical.
  *
  * If the backend is unreachable the tour must never stall: `startTourScenario`
  * resolves `{ ok: false }` and the caller flips the tour into scripted-fallback
@@ -17,8 +20,8 @@
 import { API_BASE } from "@/lib/api";
 import { useLiveStore } from "@/lib/liveStore";
 
-/** The hero scenario every judge sees — compound risk below the single-sensor line. */
-export const TOUR_SCENARIO = "vsp_coke_oven";
+/** Short compound demo — one assessment arc, no late critical re-break. */
+export const TOUR_SCENARIO = "compound_risk";
 
 export interface TourDemoResult {
   ok: boolean;
@@ -44,7 +47,7 @@ async function post(path: string): Promise<void> {
 }
 
 /**
- * Launch the VSP coke-oven replay. Same order DemoControls.onStart uses:
+ * Launch the compound-risk replay. Same order DemoControls.onStart uses:
  * clear stale steps/telemetry, start the scenario, then re-hydrate the store.
  * Returns `{ ok: false }` (never throws) so the overlay can fall back cleanly.
  */
@@ -63,8 +66,10 @@ export async function startTourScenario(): Promise<TourDemoResult> {
     if (status < 200 || status >= 300) {
       throw new Error(`start scenario failed (${status})`);
     }
+    // Don't await bootstrap — overview refresh is enough for the twin to paint;
+    // WS + later acts hydrate the rest. Awaiting bootstrap lagged Act II.
     void store.refreshOverview();
-    await store.bootstrap();
+    void store.bootstrap();
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

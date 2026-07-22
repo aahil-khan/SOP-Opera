@@ -161,7 +161,6 @@ function QuickDecisionSection({
       title={decisionTaken ? "Close Review" : "Make a decision"}
       onClose={onClose}
       closing={closing}
-      data-tour="decision"
     >
       <DecisionPanel
         reviewId={reviewId}
@@ -509,6 +508,7 @@ export function AssetPanel({
               <section
                 className={styles.whyCard}
                 data-risk={workStatus.badgeRisk}
+                data-tour="why-brief"
                 aria-labelledby="why-heading"
               >
                 <h3 id="why-heading" className={styles.sectionTitle}>

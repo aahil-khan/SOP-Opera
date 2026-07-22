@@ -9,7 +9,7 @@
  *
  * Auto-advance is NOT timed here — TourOverlay owns the per-step timer because
  * only it knows when a step's anchor has finished resolving. This store just
- * exposes `next/prev/goTo` and the play state the overlay reacts to.
+ * exposes `next/restart/goTo` and the play state the overlay reacts to.
  */
 
 import { create } from "zustand";
@@ -45,11 +45,14 @@ interface TourState {
   fallbackScripted: boolean;
   /** Cached "already seen the tour" flag, hydrated on the client after mount. */
   hasSeen: boolean;
+  /** Bumped on start / restart so step onEnter hooks re-run from the overture. */
+  generation: number;
 
   start: (mode?: TourMode) => void;
   stop: () => void;
   next: () => void;
-  prev: () => void;
+  /** Jump to the overture and re-run onEnter hooks (replaces Back). */
+  restart: () => void;
   goTo: (index: number) => void;
   setMode: (mode: TourMode) => void;
   togglePause: () => void;
@@ -68,6 +71,7 @@ export const useTourStore = create<TourState>((set, get) => ({
   paused: false,
   fallbackScripted: false,
   hasSeen: true,
+  generation: 0,
 
   start: (mode = "interactive") => {
     writeSeen();
@@ -78,6 +82,7 @@ export const useTourStore = create<TourState>((set, get) => ({
       paused: false,
       fallbackScripted: false,
       hasSeen: true,
+      generation: get().generation + 1,
     });
   },
 
@@ -92,11 +97,13 @@ export const useTourStore = create<TourState>((set, get) => ({
     set({ stepIndex: stepIndex + 1 });
   },
 
-  prev: () => {
-    const { stepIndex } = get();
-    if (stepIndex <= 0) return;
-    set({ stepIndex: stepIndex - 1 });
-  },
+  restart: () =>
+    set((s) => ({
+      stepIndex: 0,
+      paused: false,
+      fallbackScripted: false,
+      generation: s.generation + 1,
+    })),
 
   goTo: (index) => {
     const clamped = Math.max(0, Math.min(index, TOUR_STEPS.length - 1));

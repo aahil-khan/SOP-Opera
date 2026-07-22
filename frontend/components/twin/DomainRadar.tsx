@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { LiveAssetView } from "@/lib/liveStore";
 import { useAssetTelemetrySlice, useLiveStore } from "@/lib/liveStore";
-import { fetchAssetOwner } from "@/lib/liveApi";
+import { fetchAssetOwnerCached } from "@/lib/assetOwnerCache";
 import {
   fetchGraphNeighbors,
   peekGraphNeighborCount,
@@ -139,7 +139,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
     }
     let cancelled = false;
     setFetchedOwner(null);
-    void fetchAssetOwner(assetId)
+    void fetchAssetOwnerCached(assetId)
       .then((owner) => {
         if (!cancelled) setFetchedOwner(owner);
       })
