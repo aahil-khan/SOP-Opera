@@ -46,14 +46,12 @@ export function latestNotificationCreatedAt(
  * First visit for an actor seeds the watermark to the latest item so historical
  * inbox rows do not flood the badge; later logins restore anything newer.
  */
-export function unreadIdsSinceSeen(
-  notifications: {
-    id: string;
-    created_at: string;
-    recipient_ids: string[];
-  }[],
+export function unreadIdsSinceSeen<
+  T extends { id: string; created_at: string; recipient_ids: string[] },
+>(
+  notifications: T[],
   actorId: string | null,
-  isInbox: (n: { id: string }) => boolean,
+  isInbox: (n: T) => boolean,
 ): string[] {
   const relevant = notifications.filter((n) => {
     if (!isInbox(n)) return false;
