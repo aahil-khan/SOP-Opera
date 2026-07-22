@@ -36,8 +36,8 @@ export function isAlertNotification(n: Notification): boolean {
 }
 
 /**
- * Mentions, tags, decisions, elevated risk — inbox but no toast.
- * Thread replies toast so cross-party comments are hard to miss.
+ * Decisions / elevated risk / routine lifecycle — inbox but no toast.
+ * Mentions, tags, and thread replies toast so they are hard to miss.
  */
 export function isUpdateNotification(n: Notification): boolean {
   return !isAlertNotification(n);
@@ -128,7 +128,7 @@ export function presentNotification(n: Notification): NotificationPresentation {
         title: "Floor issue shared with you",
         detail: n.summary,
         severity: "info",
-        toastable: false,
+        toastable: true,
       };
     case "comment.mentioned":
       return {
@@ -136,7 +136,7 @@ export function presentNotification(n: Notification): NotificationPresentation {
         title: "You were mentioned",
         detail: n.summary,
         severity: "info",
-        toastable: false,
+        toastable: true,
       };
     case "comment.replied":
       return {
@@ -193,6 +193,5 @@ export function notificationOpenHref(
   if (actorKind === "worker") {
     return `/supervisor?review=${n.review_id}`;
   }
-  // Operator deep-link opens twin full-review via /reviews/[id].
-  return `/reviews/${n.review_id}`;
+  return `/operator?review=${n.review_id}`;
 }

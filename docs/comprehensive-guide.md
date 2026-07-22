@@ -330,7 +330,6 @@ Next.js 15 App Router + React 19 + Zustand. `lib/liveStore.ts` is the single cli
 | `/` | Public landing page (hero, problem/gap, how-it-works, architecture) | Logged-out visitors — signed-in users are redirected to their dashboard |
 | `/operator` | **Digital Twin** — the live 2D plant map, the hero surface of the product | `user` actors (control-room/operator) |
 | `/supervisor` | Task list, floor reports, review queues (raised by me / shared with me / in my zones), decision flow | `worker` actors (shift supervisor) |
-| `/reviews`, `/reviews/[id]` | Review list and detail — full case file view | Both |
 | `/reports`, `/reports/[id]` | Frozen audit-packet reports, with PDF/Excel export | Both |
 | `/handover` | Shift handover ledger — carried-forward hazards, acknowledgement status | Both |
 | `/eval` | Compound-vs-single-sensor scorecard, threshold editor, handover coverage | Both / demo audience |

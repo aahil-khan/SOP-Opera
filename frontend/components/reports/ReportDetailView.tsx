@@ -12,6 +12,7 @@ import type {
 } from "@/shared/schemas";
 import { fetchReport, reportPdfUrl, reportXlsxUrl } from "@/lib/liveApi";
 import {
+  citationLabel,
   formatDate,
   formatDateTime,
   formatDuration,
@@ -103,19 +104,26 @@ function EvidenceEntry({ entry }: { entry: PacketContextEntry }) {
 }
 
 function CitationCard({ citation }: { citation: PacketCitation }) {
+  const hasCode = Boolean(citation.code);
+  const label = hasCode
+    ? citation.title ?? citation.code ?? citationLabel(citation)
+    : citationLabel(citation);
+  const snippet = citation.snippet?.trim() ?? "";
+  const showSnippet =
+    Boolean(snippet) && snippet !== label && snippet.length > label.length;
+
   return (
     <div className={styles.citationCard}>
       <div className={styles.citationTop}>
         {citation.code && (
           <span className={styles.citationCode}>{citation.code}</span>
         )}
-        {citation.title && (
-          <span className={styles.citationTitle}>{citation.title}</span>
-        )}
+        {label && <span className={styles.citationTitle}>{label}</span>}
         {citation.cited_in_summary && (
           <span className={styles.citedMark}>Cited in summary</span>
         )}
       </div>
+      {showSnippet && <p className={styles.clause}>{snippet}</p>}
       {citation.clause && <p className={styles.clause}>{citation.clause}</p>}
       {citation.source_url && (
         <a
@@ -280,7 +288,9 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
         <p className={styles.breadcrumb}>
           <Link href="/reports">← Reports</Link>
           <span aria-hidden="true">·</span>
-          <Link href={`/reviews/${report.review_id}`}>Open live review</Link>
+          <Link href={`/operator?review=${report.review_id}`}>
+            Open on Digital Twin
+          </Link>
         </p>
 
         <header className={styles.masthead}>

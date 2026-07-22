@@ -126,7 +126,7 @@ No migration system. `backend/app/db/schema.sql` is idempotent (`CREATE TABLE IF
 
 ### Frontend (`frontend/`, Next.js 15 App Router + React 19 + Zustand)
 
-`app/page.tsx` is the Digital Twin (the hero surface); other routes are `supervisor`, `reviews/[id]`, `reports/[id]`, `notifications`, `handover`, `ai-ops`, `eval`, `landing`, `login`. `app/layout.tsx` mounts `AppShell`, `ThemeProvider`, `AppToaster`, and `RealtimeProvider`.
+`app/operator/page.tsx` is the Digital Twin (the hero surface); other routes are `supervisor`, `reports/[id]`, `notifications`, `handover`, `ai-ops`, `eval`, landing (`/`), `login`. `app/layout.tsx` mounts `AppShell`, `ThemeProvider`, `AppToaster`, and `RealtimeProvider`.
 
 `lib/liveStore.ts` (Zustand) is the single client-side source of truth: `hooks/useRealtimeEvents.ts` holds one reconnecting WebSocket that funnels every domain event into `handleRealtimeEvent`, which refetches through the typed client in `lib/liveApi.ts`. Components subscribe with narrow selectors — this store is large and hot, so **select the minimum slice**; recent work specifically cut re-renders from hover, the overview feed, and the notification badge.
 
