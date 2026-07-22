@@ -36,7 +36,8 @@ export function isAlertNotification(n: Notification): boolean {
 }
 
 /**
- * Mentions, thread replies, tags, decisions, elevated risk — inbox but no toast.
+ * Mentions, tags, decisions, elevated risk — inbox but no toast.
+ * Thread replies toast so cross-party comments are hard to miss.
  */
 export function isUpdateNotification(n: Notification): boolean {
   return !isAlertNotification(n);
@@ -143,7 +144,7 @@ export function presentNotification(n: Notification): NotificationPresentation {
         title: "New comment on your review",
         detail: n.summary,
         severity: "info",
-        toastable: false,
+        toastable: true,
       };
     case "task.unblocked":
       return {

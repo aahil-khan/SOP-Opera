@@ -31,7 +31,7 @@
 }
 
 .trigger[data-unread="true"] {
-  color: var(--text-secondary);
+  color: var(--text-primary);
 }
 
 .trigger[data-dnd="true"] {
@@ -49,19 +49,29 @@
 
 .badge {
   position: absolute;
-  top: -3px;
-  right: -3px;
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--radius-sm);
+  top: -5px;
+  right: -6px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
   background: var(--status-blocking);
   color: var(--text-on-accent);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  line-height: 16px;
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  line-height: 18px;
   text-align: center;
   pointer-events: none;
+  box-shadow:
+    0 0 0 2px var(--surface-nav, var(--surface-overlay)),
+    0 1px 4px color-mix(in srgb, var(--status-blocking) 45%, transparent);
+}
+
+.trigger[data-dnd="true"] .badge {
+  background: var(--status-info);
+  box-shadow:
+    0 0 0 2px var(--surface-nav, var(--surface-overlay)),
+    0 1px 4px color-mix(in srgb, var(--status-info) 40%, transparent);
 }
 
 .panel {
@@ -199,16 +209,21 @@
 }
 
 .tabCount {
-  min-width: 16px;
-  height: 16px;
-  padding: 0 4px;
-  border-radius: var(--radius-sm);
-  background: var(--interactive-hover);
-  color: var(--text-secondary);
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  line-height: 16px;
+  min-width: 17px;
+  height: 17px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--text-muted) 22%, transparent);
+  color: var(--text-primary);
+  font-size: 10px;
+  font-weight: var(--weight-bold);
+  line-height: 17px;
   text-align: center;
+}
+
+.tabCount[data-unread="true"] {
+  background: var(--status-blocking);
+  color: var(--text-on-accent);
 }
 
 .list {

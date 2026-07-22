@@ -212,11 +212,12 @@ async def create_review_comment(
         mentioned_worker_ids=mentioned_worker_ids,
     )
     if reply_ids:
+        who = "Supervisor" if author.kind == "worker" else "Operator"
         await create_notification(
             session,
             review_id=review_id,
             event_type="comment.replied",
-            summary=f"New comment · {author.name}",
+            summary=f"{who} comment · {author.name}",
             recipient_ids=reply_ids,
         )
         await session.commit()

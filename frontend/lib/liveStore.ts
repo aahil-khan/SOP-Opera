@@ -46,6 +46,11 @@ import {
   type ThresholdsConfig,
 } from "@/lib/sensorThresholds";
 import {
+  latestNotificationCreatedAt,
+  setNotificationSeenAt,
+  unreadIdsSinceSeen,
+} from "@/lib/notificationSeen";
+import {
   isInboxNotification,
   presentNotification,
 } from "@/lib/notificationPresentation";
@@ -335,6 +340,11 @@ export interface LiveState {
   assetPanelMode: "summary" | "fullReview";
   /** One-shot pin request for DomainRadar (map spatial links → pentagon). */
   domainFocusRequest: DomainFocusRequest | null;
+  /**
+   * One-shot open request for the supervisor board drawer (mention / reply
+   * deep-links). Nonce so re-opening the same review still fires.
+   */
+  supervisorReviewFocusRequest: { reviewId: string; nonce: number } | null;
   /** Effective sensor/rule thresholds from GET /api/config/thresholds. */
   thresholdsConfig: ThresholdsConfig;
   setThresholdsConfig: (config: ThresholdsConfig) => void;
@@ -378,6 +388,9 @@ export interface LiveState {
   /** Open asset summary panel with a domain pinned on the pentagon radar. */
   openAssetDomain: (assetId: string, domain: AssetDomainFocus) => void;
   clearDomainFocusRequest: () => void;
+  /** Open a review drawer on the supervisor board (mentions, thread replies). */
+  focusSupervisorReview: (reviewId: string) => void;
+  clearSupervisorReviewFocusRequest: () => void;
   loadNotifications: () => Promise<void>;
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
@@ -673,6 +686,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
   selectedAssetId: null,
   assetPanelMode: "summary",
   domainFocusRequest: null,
+  supervisorReviewFocusRequest: null,
   thresholdsConfig: DEFAULT_THRESHOLDS,
   sensorCriticalByAsset: {},
   opsChipsByAsset: {},
@@ -706,6 +720,14 @@ export const useLiveStore = create<LiveState>((set, get) => {
 
   clearDomainFocusRequest: () => set({ domainFocusRequest: null }),
 
+  focusSupervisorReview: (reviewId) =>
+    set({
+      supervisorReviewFocusRequest: { reviewId, nonce: Date.now() },
+    }),
+
+  clearSupervisorReviewFocusRequest: () =>
+    set({ supervisorReviewFocusRequest: null }),
+
   bootstrap: async () => {
     if (get().loading) return;
     set({ loading: true, error: null });
@@ -737,12 +759,17 @@ export const useLiveStore = create<LiveState>((set, get) => {
           mode: s.mode,
         })),
       );
+      const actorId = getActorFromCookie()?.id ?? null;
       set({
         assets,
         reviews,
         notifications,
-        // Existing history should not flood the badge / banners.
-        unreadNotificationIds: [],
+        // Unread survives refresh via a per-actor last-seen watermark.
+        unreadNotificationIds: unreadIdsSinceSeen(
+          notifications,
+          actorId,
+          isInboxNotification,
+        ),
         reviewDetails: {},
         assessmentsByReview: {},
         selectedAssetId: null,
@@ -843,18 +870,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
       const notifications = await fetchNotifications();
       const existing = new Set(get().notifications.map((n) => n.id));
       const actorId = getActorFromCookie()?.id ?? null;
-      const incomingUnread = isDndEnabled()
-        ? []
-        : notifications
-            .filter((n) => {
-              if (existing.has(n.id)) return false;
-              if (!isInboxNotification(n)) return false;
-              if (actorId != null && !n.recipient_ids.includes(actorId)) {
-                return false;
-              }
-              return true;
-            })
-            .map((n) => n.id);
+      const incomingUnread = notifications
+        .filter((n) => {
+          if (existing.has(n.id)) return false;
+          if (!isInboxNotification(n)) return false;
+          if (actorId != null && !n.recipient_ids.includes(actorId)) {
+            return false;
+          }
+          return true;
+        })
+        .map((n) => n.id);
       set((state) => ({
         notifications,
         unreadNotificationIds: [
@@ -881,6 +906,9 @@ export const useLiveStore = create<LiveState>((set, get) => {
 
   clearNotifications: () => {
     dismissAllNotificationToasts();
+    const actorId = getActorFromCookie()?.id ?? null;
+    const latest = latestNotificationCreatedAt(get().notifications);
+    if (latest) setNotificationSeenAt(actorId, latest);
     set({
       notifications: [],
       unreadNotificationIds: [],
@@ -888,6 +916,9 @@ export const useLiveStore = create<LiveState>((set, get) => {
   },
 
   markNotificationsRead: () => {
+    const actorId = getActorFromCookie()?.id ?? null;
+    const latest = latestNotificationCreatedAt(get().notifications);
+    if (latest) setNotificationSeenAt(actorId, latest);
     set({ unreadNotificationIds: [] });
   },
 
@@ -1134,7 +1165,7 @@ export const useLiveStore = create<LiveState>((set, get) => {
             ...state.notifications.filter((x) => x.id !== n.id),
           ].slice(0, NOTIFICATION_CAP);
           const unreadNotificationIds =
-            forMe && !isDndEnabled() && isInboxNotification(n)
+            forMe && isInboxNotification(n)
               ? [n.id, ...state.unreadNotificationIds.filter((x) => x !== n.id)]
               : state.unreadNotificationIds.filter((x) => x !== n.id);
           return {
@@ -1346,4 +1377,9 @@ export async function focusReviewAssetOnTwin(
   if (view) {
     state.selectAsset(view.asset.id);
   }
+}
+
+/** Open a review on the supervisor board (mention / reply Open actions). */
+export function focusSupervisorReview(reviewId: string): void {
+  useLiveStore.getState().focusSupervisorReview(reviewId);
 }

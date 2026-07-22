@@ -5,6 +5,7 @@ import { toast, type TypeOptions } from "react-toastify";
 import type { Notification } from "@/shared/schemas";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import { isDndEnabled } from "@/lib/dndMode";
+import { focusSupervisorReview } from "@/lib/liveStore";
 import {
   notificationOpenHref,
   notificationToastId,
@@ -103,7 +104,12 @@ export function showNotificationToast(
       title={presentation.title}
       detail={presentation.detail}
       href={href}
-      onOpen={options?.onOpen}
+      onOpen={() => {
+        if (actor?.kind === "worker" && n.review_id) {
+          focusSupervisorReview(n.review_id);
+        }
+        options?.onOpen?.();
+      }}
       onDismiss={
         options?.onClear
           ? () => {

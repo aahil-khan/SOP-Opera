@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import { fetchRoster } from "@/lib/authApi";
 import type { RosterEntry } from "@/lib/authTypes";
@@ -73,6 +74,7 @@ function ListeningOrbit({ compact = false }: { compact?: boolean }) {
 }
 
 export default function SupervisorPage() {
+  const router = useRouter();
   const actor = getActorFromCookie();
   const zones = useMemo(() => {
     if (!actor || actor.kind !== "worker") return [];
@@ -83,6 +85,12 @@ export default function SupervisorPage() {
   const bootstrap = useLiveStore((s) => s.bootstrap);
   const taskEventSeq = useLiveStore((s) => s.taskEventSeq);
   const boardEventSeq = useLiveStore((s) => s.boardEventSeq);
+  const supervisorReviewFocusRequest = useLiveStore(
+    (s) => s.supervisorReviewFocusRequest,
+  );
+  const clearSupervisorReviewFocusRequest = useLiveStore(
+    (s) => s.clearSupervisorReviewFocusRequest,
+  );
 
   const [tasks, setTasks] = useState<ReviewTask[]>([]);
   const [sharedReviews, setSharedReviews] = useState<SharedReview[]>([]);
@@ -158,7 +166,10 @@ export default function SupervisorPage() {
     [raisedReviews, selectedReviewId],
   );
 
-  const closeDrawer = useCallback(() => setSelectedReviewId(null), []);
+  const closeDrawer = useCallback(() => {
+    setSelectedReviewId(null);
+    router.replace("/supervisor", { scroll: false });
+  }, [router]);
 
   const openReportPanel = useCallback(
     (prefill?: {
@@ -167,6 +178,7 @@ export default function SupervisorPage() {
       concernType?: SupervisorConcernType;
     }) => {
       setSelectedReviewId(null);
+      router.replace("/supervisor", { scroll: false });
       setRaiseError(null);
       setRaiseDescription(prefill?.description?.trim() ?? "");
       setRaiseConcernType(prefill?.concernType ?? "equipment");
@@ -183,7 +195,7 @@ export default function SupervisorPage() {
       }
       setRaiseOpen(true);
     },
-    [assetOptions],
+    [assetOptions, router],
   );
 
   const closeReportPanel = useCallback(() => {
@@ -191,10 +203,16 @@ export default function SupervisorPage() {
     setRaiseError(null);
   }, []);
 
-  const selectReview = useCallback((reviewId: string) => {
-    setRaiseOpen(false);
-    setSelectedReviewId(reviewId);
-  }, []);
+  const selectReview = useCallback(
+    (reviewId: string) => {
+      setRaiseOpen(false);
+      setSelectedReviewId(reviewId);
+      router.replace(`/supervisor?review=${encodeURIComponent(reviewId)}`, {
+        scroll: false,
+      });
+    },
+    [router],
+  );
 
   const closeRightPanel = useCallback(() => {
     closeReportPanel();
@@ -222,15 +240,8 @@ export default function SupervisorPage() {
       setSharedReviews(shared);
       setRaisedReviews(raised);
       setZoneReviews(zone);
-      setSelectedReviewId((current) => {
-        if (!current) return null;
-        const stillVisible =
-          items.some((t) => t.review_id === current) ||
-          shared.some((s) => s.review_id === current) ||
-          raised.some((s) => s.review_id === current) ||
-          zone.some((s) => s.review_id === current);
-        return stillVisible ? current : null;
-      });
+      // Keep deep-linked mention/reply targets open even when the review is
+      // not on the visible board lists (zone/task/shared/raised).
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -250,8 +261,26 @@ export default function SupervisorPage() {
     const reviewFromUrl = new URLSearchParams(window.location.search).get(
       "review",
     );
-    if (reviewFromUrl) setSelectedReviewId(reviewFromUrl);
+    if (reviewFromUrl) {
+      setRaiseOpen(false);
+      setSelectedReviewId(reviewFromUrl);
+    }
   }, []);
+
+  useEffect(() => {
+    if (!supervisorReviewFocusRequest) return;
+    const { reviewId } = supervisorReviewFocusRequest;
+    setRaiseOpen(false);
+    setSelectedReviewId(reviewId);
+    router.replace(`/supervisor?review=${encodeURIComponent(reviewId)}`, {
+      scroll: false,
+    });
+    clearSupervisorReviewFocusRequest();
+  }, [
+    supervisorReviewFocusRequest,
+    clearSupervisorReviewFocusRequest,
+    router,
+  ]);
 
   useEffect(() => {
     if (!raiseOpen || filteredAssets.length === 0) return;

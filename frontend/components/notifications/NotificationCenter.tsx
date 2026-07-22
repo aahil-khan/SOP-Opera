@@ -6,6 +6,7 @@ import { useDndMode } from "@/lib/dndMode";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import {
   focusReviewAssetOnTwin,
+  focusSupervisorReview,
   useLiveStore,
 } from "@/lib/liveStore";
 import { dismissAllNotificationToasts } from "@/lib/notificationToast";
@@ -61,7 +62,9 @@ function NotificationRow({
             onClick={() => {
               onOpen();
               onDismiss();
-              if (actorKind !== "worker" && n.review_id) {
+              if (actorKind === "worker" && n.review_id) {
+                focusSupervisorReview(n.review_id);
+              } else if (actorKind !== "worker" && n.review_id) {
                 void focusReviewAssetOnTwin(n.review_id);
               }
             }}
@@ -95,9 +98,9 @@ export function NotificationCenter() {
   const hydrateDnd = useDndMode((s) => s.hydrate);
   const setDndEnabled = useDndMode((s) => s.setEnabled);
 
-  /** Number-stable: re-render only when badge count changes. */
+  /** Number-stable: re-render only when badge count changes. Always count
+   * unread — DND mutes toasts/sounds, not the badge (soft style via data-dnd). */
   const unreadCount = useLiveStore((s) => {
-    if (dndEnabled) return 0;
     const unread = new Set(s.unreadNotificationIds);
     let n = 0;
     for (const notif of s.notifications) {
@@ -128,21 +131,28 @@ export function NotificationCenter() {
   const updates = visibleNotifications.filter(isUpdateNotification);
   const inboxCount = alerts.length + updates.length;
 
+  const unreadAlertCount = alerts.filter((n) => unreadIds.includes(n.id)).length;
+  const unreadUpdateCount = updates.filter((n) =>
+    unreadIds.includes(n.id),
+  ).length;
+
   useEffect(() => {
     hydrateDnd();
   }, [hydrateDnd]);
 
-  /** Prefer Mentions when opening if that is where unread (or any) updates live. */
+  /** Prefer Mentions only when the panel opens — not on every list re-render. */
   useEffect(() => {
     if (!open) return;
     const unread = new Set(unreadIds);
     const unreadUpdates = updates.some((n) => unread.has(n.id));
     const unreadAlerts = alerts.some((n) => unread.has(n.id));
     if (unreadUpdates && !unreadAlerts) setTab("updates");
-    else if (!unreadAlerts && updates.length > 0 && alerts.length === 0) {
-      setTab("updates");
-    }
-  }, [open, alerts, updates, unreadIds]);
+    else if (alerts.length === 0 && updates.length > 0) setTab("updates");
+    else setTab("alerts");
+    // Intentionally keyed only on `open`. alerts/updates are new arrays every
+    // render; including them re-forced the Mentions tab and broke switching.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   useEffect(() => {
     if (!open) return;
@@ -271,8 +281,7 @@ export function NotificationCenter() {
 
           {dndEnabled && (
             <p className={styles.dndHint}>
-              Alerts are still logged here, but toasts, sounds, and badges are
-              muted.
+              Alerts are still logged here, but toasts and sounds are muted.
             </p>
           )}
 
@@ -287,7 +296,12 @@ export function NotificationCenter() {
             >
               Alerts
               {alerts.length > 0 && (
-                <span className={styles.tabCount}>{alerts.length}</span>
+                <span
+                  className={styles.tabCount}
+                  data-unread={unreadAlertCount > 0 ? "true" : undefined}
+                >
+                  {unreadAlertCount > 0 ? unreadAlertCount : alerts.length}
+                </span>
               )}
             </button>
             <button
@@ -300,7 +314,12 @@ export function NotificationCenter() {
             >
               Mentions & updates
               {updates.length > 0 && (
-                <span className={styles.tabCount}>{updates.length}</span>
+                <span
+                  className={styles.tabCount}
+                  data-unread={unreadUpdateCount > 0 ? "true" : undefined}
+                >
+                  {unreadUpdateCount > 0 ? unreadUpdateCount : updates.length}
+                </span>
               )}
             </button>
           </div>
@@ -313,7 +332,7 @@ export function NotificationCenter() {
                 <NotificationRow
                   key={n.id}
                   n={n}
-                  unread={!dndEnabled && unreadIds.includes(n.id)}
+                  unread={unreadIds.includes(n.id)}
                   actorKind={actor?.kind}
                   onOpen={() => setOpen(false)}
                   onDismiss={() => dismissNotification(n.id)}
