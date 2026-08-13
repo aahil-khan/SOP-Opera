@@ -16,8 +16,10 @@ from app.db.session import SessionLocal
 from app.simulator.dsl import (
     ScenarioFile,
     ScenarioNotFoundError,
+    ScenarioStep,
     load_scenario,
     resolve_asset_id,
+    step_display_label,
 )
 from app.simulator.random_engine import (
     RandomModeConfig,
@@ -53,10 +55,19 @@ _RESET_DELETE_ORDER = (
 )
 
 DemoMode = Literal["idle", "scripted", "random"]
+PlaybackMode = Literal["auto", "manual"]
 
 
 class ScenarioAlreadyRunningError(RuntimeError):
-    """Raised when start() is called while a scenario is already in flight."""
+    """Raised when start/arm is called while a scenario is already in flight."""
+
+
+class ScenarioNotArmedError(RuntimeError):
+    """Raised when step() is called without an armed manual scenario."""
+
+
+class ScenarioCompleteError(RuntimeError):
+    """Raised when step() is called but every step has already been emitted."""
 
 
 @dataclass
@@ -79,6 +90,8 @@ class DemoController:
         self._started_at: datetime | None = None
         self._running: bool = False
         self._mode: DemoMode = "idle"
+        self._playback: PlaybackMode | None = None
+        self._manual_scenario: ScenarioFile | None = None
         self._random_config: RandomModeConfig | None = None
         self._issues_spawned: int = 0
         self._active_issue_count: int = 0
@@ -150,12 +163,24 @@ class DemoController:
     def status(self) -> dict[str, Any]:
         from app.simulator.ambient import ambient_loop
 
+        next_label: str | None = None
+        if (
+            self._playback == "manual"
+            and self._manual_scenario is not None
+            and self._step_index < self._total_steps
+        ):
+            next_label = step_display_label(
+                self._manual_scenario.steps[self._step_index]
+            )
+
         return {
             "mode": self._mode,
+            "playback": self._playback,
             "scenario": self._scenario_name,
             "step_index": self._step_index,
             "total_steps": self._total_steps,
             "running": self._running,
+            "next_step_label": next_label,
             "started_at": (
                 self._started_at.isoformat() if self._started_at else None
             ),
@@ -172,11 +197,69 @@ class DemoController:
         }
 
     def _assert_idle(self) -> None:
-        if self._running and self._task is not None and not self._task.done():
+        auto_running = (
+            self._running and self._task is not None and not self._task.done()
+        )
+        manual_armed = (
+            self._playback == "manual" and self._manual_scenario is not None
+        )
+        if auto_running or manual_armed:
             raise ScenarioAlreadyRunningError(
                 f"Demo mode {self._mode!r} "
                 f"({self._scenario_name or 'random'}) is already running; "
                 "POST /demo/reset or wait for it to finish"
+            )
+
+    async def _prepare_scripted(self, scenario: ScenarioFile) -> None:
+        """Wipe runtime, lock assets, and stamp shared scripted session fields."""
+        await self._wipe_runtime()
+        self.clear_locks()
+
+        self._mode = "scripted"
+        self._scenario_name = scenario.name
+        self._step_index = 0
+        self._total_steps = len(scenario.steps)
+        self._started_at = datetime.now(timezone.utc)
+        self._running = True
+        self._random_config = None
+        self._issues_spawned = 0
+        self._active_issue_count = 0
+        self._sources_used = []
+        self._orch_sim = OrchestratorSim()
+
+        async with SessionLocal() as session:
+            for step in scenario.steps:
+                try:
+                    aid = await resolve_asset_id(session, step.asset)
+                    self.lock_asset(aid)
+                except Exception:  # noqa: BLE001
+                    logger.debug(
+                        "could not pre-lock scenario asset %s", step.asset
+                    )
+
+    async def _emit_step(self, step: ScenarioStep, step_index: int) -> None:
+        async with SessionLocal() as session:
+            asset_id = await resolve_asset_id(session, step.asset)
+        await self.wait_until_asset_active(asset_id)
+
+        async with SessionLocal() as session:
+            result = await self._orch_sim.run_step(
+                session,
+                step,
+                step_index=step_index,
+                total_steps=self._total_steps,
+            )
+            self.lock_asset(result.asset_id)
+            if result.source not in self._sources_used:
+                self._sources_used.append(result.source)
+            logger.info(
+                "demo step %d/%d via %s (%s) → review=%s facts=%s",
+                step_index + 1,
+                self._total_steps,
+                result.source,
+                step.category,
+                result.ingest.review.id if result.ingest.review else None,
+                [f.fact_type for f in result.ingest.derived_facts],
             )
 
     async def _wipe_runtime(self) -> None:
@@ -207,40 +290,51 @@ class DemoController:
         orchestrator.start()
 
     async def start(self, name: str) -> dict[str, Any]:
+        """Auto-play a scenario (timed delays). Used by the Grand Tour."""
         self._assert_idle()
 
         scenario = load_scenario(name)  # raises ScenarioNotFoundError
-
-        # Replay requires a clean runtime — unchanged derived facts skip review open.
-        await self._wipe_runtime()
-        self.clear_locks()
-
-        self._mode = "scripted"
-        self._scenario_name = scenario.name
-        self._step_index = 0
-        self._total_steps = len(scenario.steps)
-        self._started_at = datetime.now(timezone.utc)
-        self._running = True
-        self._random_config = None
-        self._issues_spawned = 0
-        self._active_issue_count = 0
-        self._sources_used = []
-        self._orch_sim = OrchestratorSim()
-
-        # Pre-lock scenario assets so ambient hard-ingest cannot clear demo facts
-        async with SessionLocal() as session:
-            for step in scenario.steps:
-                try:
-                    aid = await resolve_asset_id(session, step.asset)
-                    self.lock_asset(aid)
-                except Exception:  # noqa: BLE001
-                    logger.debug(
-                        "could not pre-lock scenario asset %s", step.asset
-                    )
+        await self._prepare_scripted(scenario)
+        self._playback = "auto"
+        self._manual_scenario = None
 
         self._task = asyncio.create_task(
             self._run(scenario), name=f"demo-{scenario.name}"
         )
+        return self.status()
+
+    async def arm(self, name: str) -> dict[str, Any]:
+        """
+        Load a scenario for manual step-through. Emits nothing until step().
+
+        Preferred for live demos / video narration — each beat waits for a click.
+        """
+        self._assert_idle()
+
+        scenario = load_scenario(name)
+        await self._prepare_scripted(scenario)
+        self._playback = "manual"
+        self._manual_scenario = scenario
+        self._task = None
+        return self.status()
+
+    async def step(self) -> dict[str, Any]:
+        """Emit the next armed manual step immediately (no delay)."""
+        if self._playback != "manual" or self._manual_scenario is None:
+            raise ScenarioNotArmedError(
+                "No manual scenario armed; POST /demo/scenarios/{name}/arm first"
+            )
+        if self._step_index >= self._total_steps:
+            raise ScenarioCompleteError(
+                f"Scenario {self._scenario_name!r} has no remaining steps"
+            )
+
+        i = self._step_index
+        step = self._manual_scenario.steps[i]
+        await self._emit_step(step, i)
+        self._step_index = i + 1
+        if self._step_index >= self._total_steps:
+            self._running = False
         return self.status()
 
     async def start_random(
@@ -249,6 +343,8 @@ class DemoController:
         self._assert_idle()
         cfg = config or default_config_from_settings()
         self._mode = "random"
+        self._playback = "auto"
+        self._manual_scenario = None
         self._scenario_name = "random"
         self._step_index = 0
         self._total_steps = cfg.issue_cap or 0
@@ -280,25 +376,7 @@ class DemoController:
                 await self.wait_until_asset_active(asset_id)
 
                 self._step_index = i
-                async with SessionLocal() as session:
-                    result = await self._orch_sim.run_step(
-                        session,
-                        step,
-                        step_index=i,
-                        total_steps=self._total_steps,
-                    )
-                    self.lock_asset(result.asset_id)
-                    if result.source not in self._sources_used:
-                        self._sources_used.append(result.source)
-                    logger.info(
-                        "demo step %d/%d via %s (%s) → review=%s facts=%s",
-                        i + 1,
-                        self._total_steps,
-                        result.source,
-                        step.category,
-                        result.ingest.review.id if result.ingest.review else None,
-                        [f.fact_type for f in result.ingest.derived_facts],
-                    )
+                await self._emit_step(step, i)
                 self._step_index = i + 1
         except asyncio.CancelledError:
             logger.info("demo scenario %s cancelled", scenario.name)
@@ -311,8 +389,9 @@ class DemoController:
             )
         finally:
             self._running = False
-            if self._mode == "scripted":
+            if self._mode == "scripted" and self._playback == "auto":
                 self._mode = "idle"
+                self._playback = None
             # Keep locks until reset so ambient doesn't clear the showcase state
 
     async def _run_random(self, config: RandomModeConfig) -> None:
@@ -416,6 +495,8 @@ class DemoController:
         self._started_at = None
         self._running = False
         self._mode = "idle"
+        self._playback = None
+        self._manual_scenario = None
         self._random_config = None
         self._issues_spawned = 0
         self._active_issue_count = 0

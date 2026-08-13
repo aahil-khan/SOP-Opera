@@ -43,7 +43,7 @@ def test_load_all_scenarios():
 
 
 def test_vsp_coke_oven_stays_subcritical_until_final_step():
-    """Hero story: compound facts assemble while gas is still below critical."""
+    """Eval hero: compound facts assemble while gas is still below critical."""
     from app.core.config import get_settings
 
     settings = get_settings()
@@ -63,6 +63,40 @@ def test_vsp_coke_oven_stays_subcritical_until_final_step():
     categories = {s.category for s in scenario.steps}
     assert "permit" in categories
     assert "worker_location" in categories
+
+
+def test_compound_risk_demo_story_is_paced_and_subcritical():
+    """Live demo hero: gas → unisolated hot work → worker; no critical climb."""
+    from app.core.config import get_settings
+    from app.risk.policy import classify
+    from app.simulator.dsl import step_display_label
+
+    settings = get_settings()
+    scenario = load_scenario("compound_risk")
+    assert len(scenario.steps) == 4
+
+    categories = [s.category for s in scenario.steps]
+    assert categories == ["sensor", "permit", "worker_location", "permit"]
+    assert all(step_display_label(s) for s in scenario.steps)
+
+    gas = scenario.steps[0]
+    assert float(gas.payload["gas_reading"]) > settings.gas_elevated_threshold
+    assert float(gas.payload["gas_reading"]) < settings.gas_critical_threshold
+    # Every gas sample in the demo stays sub-critical (no late re-break).
+    for step in scenario.steps:
+        if step.category == "sensor" and "gas_reading" in step.payload:
+            assert float(step.payload["gas_reading"]) < settings.gas_critical_threshold
+
+    hot = scenario.steps[1]
+    assert hot.payload.get("work_type") == "hot_work"
+    assert "isolation_confirmed" not in hot.payload
+
+    # Pathway completes at the hot-work step (before the worker arrives).
+    assert classify(["elevated_gas"]).level == "elevated"
+    assert classify(["elevated_gas", "incomplete_isolation"]).level == "blocking"
+    assert classify(
+        ["elevated_gas", "incomplete_isolation", "zone_occupied"]
+    ).level == "blocking"
 
 
 def test_unknown_scenario_raises():

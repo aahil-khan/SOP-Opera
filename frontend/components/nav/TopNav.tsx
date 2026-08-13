@@ -6,6 +6,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { ShiftGate } from "@/components/twin/ShiftGate";
 import { DemoMenu } from "./DemoMenu";
+import { DemoStepBar } from "@/components/demo/DemoStepBar";
 import { LiveFeedPill } from "./LiveFeedPill";
 import { SettingsMenu } from "./SettingsMenu";
 import { TourLaunchButton } from "@/components/tour/TourLaunchButton";
@@ -111,6 +112,7 @@ export function TopNav() {
         <LiveFeedPill />
 
         <div className={styles.toolbar}>
+          <DemoStepBar />
           <TourLaunchButton />
           <DemoMenu />
           <SettingsMenu />

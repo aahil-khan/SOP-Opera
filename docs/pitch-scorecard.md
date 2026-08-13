@@ -69,16 +69,16 @@ escalate to *elevated* but can never ground a block.
 Each row carries a `clause` and a primary-source `source_url` in the database, so
 a citation can be checked rather than trusted.
 
-## Demo beat (90 seconds)
+## Demo beat (manual Next-step)
 
-1. Run **vsp_coke_oven** on Digital Twin.
-2. Compound **blocks at step 2** — elevated gas + hot work with unverified
-   isolation — while gas is still below critical and *before* anyone enters the
-   zone. Single-sensor stays silent for another 28 minutes of process time.
-3. Open **Eval** (nav) — FN table, lead time, regulatory coverage.
-4. (Optional) Nav → **Settings** — show live threshold editor if a judge asks how bands are tuned.
-5. Supervisor decision → close (report freezes; elevated/hold closures promote into the incident corpus).
-6. Webhook curl → Vessel A elevated → same twin path; show `/api/assessment-jobs/queue`.
+1. Top nav → **Compound Risk** (loads/arms; emits nothing yet).
+2. Click **Next** for each beat and narrate between them:
+   elevated gas → hot work without isolation → **block** → worker enters →
+   overlapping cold work. No timed autoplay; no late critical climb.
+3. Open **Eval** — FN table, lead time (still measured on `vsp_coke_oven`), coverage.
+4. Supervisor decision → close (report freezes).
+5. **Reset** when finished. Grand Tour still uses timed `/start` auto-play.
+
 
 ## Where to look live
 

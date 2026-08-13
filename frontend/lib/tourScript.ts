@@ -452,13 +452,13 @@ export const TOUR_STEPS: TourStep[] = [
     act: "Act II · Rising Tension",
     title: "Watch the conditions converge.",
     body:
-      "We're replaying a short compound-risk demo for real. Gas rises. A crew enters the zone. Overlapping permits activate. No single reading has to scream on its own — the compound engine fuses them and flags the pathway.",
+      "We're replaying the compound-risk demo for real. Gas rises — elevated, still below the conventional critical alarm. Hot work opens without verified isolation. The pathway completes and the engine blocks — before a worker walks into the zone.",
     fallbackBody:
-      "The backend isn't reachable, so we'll narrate over the static twin: gas rises, a crew enters the zone, overlapping permits activate — and the compound engine flags the pathway even when no single alarm owns the call.",
+      "The backend isn't reachable, so we'll narrate over the static twin: elevated gas, hot work without isolation, then a worker in the zone — and the compound engine flags the pathway even when no single alarm owns the call.",
     route: "/operator",
     anchor: "twin-map",
     placement: "right",
-    autoMs: 9000,
+    autoMs: 14000,
     onEnter: async (ctx) => {
       const result = await startTourScenario();
       if (!result.ok) ctx.markFallback();

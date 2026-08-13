@@ -12,6 +12,7 @@ def _client() -> AsyncOpenAI:
     return AsyncOpenAI(
         api_key=settings.openai_api_key or "no-key",
         base_url=settings.openai_base_url,
+        timeout=settings.agent_llm_timeout_seconds,
     )
 
 

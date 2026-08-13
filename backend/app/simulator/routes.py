@@ -8,6 +8,8 @@ from pydantic import BaseModel, Field
 from app.simulator.dsl import ScenarioNotFoundError, list_scenarios
 from app.simulator.engine import (
     ScenarioAlreadyRunningError,
+    ScenarioCompleteError,
+    ScenarioNotArmedError,
     demo_controller,
 )
 from app.simulator.random_engine import RandomModeConfig, default_config_from_settings
@@ -98,11 +100,37 @@ async def stop_ambient() -> dict:
 
 @router.post("/scenarios/{name}/start", status_code=202)
 async def start_scenario(name: str) -> dict:
+    """Auto-play with timed delays (Grand Tour / unattended replay)."""
     try:
         return await demo_controller.start(name)
     except ScenarioNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ScenarioAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/scenarios/{name}/arm", status_code=202)
+async def arm_scenario(name: str) -> dict:
+    """
+    Load a scenario for manual step-through. Nothing is emitted until
+    POST /demo/step — use this for live demos and video narration.
+    """
+    try:
+        return await demo_controller.arm(name)
+    except ScenarioNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ScenarioAlreadyRunningError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post("/step", status_code=200)
+async def step_scenario() -> dict:
+    """Emit the next armed manual scenario step immediately."""
+    try:
+        return await demo_controller.step()
+    except ScenarioNotArmedError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ScenarioCompleteError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
 
 
