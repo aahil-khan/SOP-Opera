@@ -49,10 +49,17 @@ export function secondsRemaining(
 
 /** An armed action can still be stopped; an executed one must be revoked. */
 export function canAbort(action: ResponseAction): boolean {
-  return action.status === "armed";
+  return action.status === "armed" && action.tier > 0;
 }
 
+/**
+ * Tier 0 is excluded on purpose. Preserving evidence drives no equipment and
+ * changes no plant state, so there is nothing to undo — offering the control
+ * would invite an action that does nothing and imply the record can be
+ * withdrawn, which is the opposite of what an evidence snapshot is for.
+ */
 export function canRevoke(action: ResponseAction): boolean {
+  if (action.tier === 0) return false;
   return action.status === "armed" || action.status === "active";
 }
 
