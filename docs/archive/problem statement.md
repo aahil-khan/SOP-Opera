@@ -4,4 +4,12 @@ AI-Powered Industrial Safety Intelligence for Zero-Harm Operations Theme: Indust
   
 Evaluation Focus  Compound risk detection accuracy versus single-sensor baselines, prediction lead time before incident threshold, geospatial evidence quality, regulatory compliance coverage (OISD/Factory Act/DGMS), and demonstrated reduction in false negative rate — the metric that actually saves lives.   
   
-JUDGING CRITERIA Criteria Innovation Weight Business Impact 25% Technical Excellence 25% Scalability 20% User Experience 15% 15% 
+JUDGING CRITERIA
+
+| Criteria | Weight |
+| --- | ---: |
+| Innovation | 15% |
+| Business Impact | 25% |
+| Technical Excellence | 25% |
+| Scalability | 20% |
+| User Experience | 15% |
