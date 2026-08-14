@@ -92,6 +92,14 @@ describe("affordances", () => {
     assert.equal(canRevoke(action({ status: "revoked" })), false);
     assert.equal(canRevoke(action({ status: "refused" })), false);
   });
+
+  it("never offers to undo evidence preservation", () => {
+    // Tier 0 drives no equipment. An "undo" there would do nothing and would
+    // imply the record can be withdrawn.
+    const tier0 = action({ tier: 0, status: "active", action_kind: "preserve_evidence" });
+    assert.equal(canRevoke(tier0), false);
+    assert.equal(canAbort(action({ tier: 0, status: "armed" })), false);
+  });
 });
 
 describe("sortForRail", () => {
