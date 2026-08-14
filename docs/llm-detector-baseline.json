@@ -1,0 +1,41 @@
+{
+  "n": 150,
+  "full_case_count": 593,
+  "seed": 20260825,
+  "provider": "ollama",
+  "model": "llama3.2",
+  "openai": "NOT RUN \u2014 no API key",
+  "disagreement_rate": 0.07333333333333333,
+  "runs": [
+    {
+      "recall": 0.9595959595959596,
+      "precision": 0.6737588652482269,
+      "fn": 4,
+      "fp": 46,
+      "tp": 95,
+      "tn": 5,
+      "unparseable": 0,
+      "latency_ms": {
+        "count": 150,
+        "mean_ms": 905.01,
+        "p50_ms": 883.76,
+        "p95_ms": 1176.23
+      }
+    },
+    {
+      "recall": 0.9696969696969697,
+      "precision": 0.6666666666666666,
+      "fn": 3,
+      "fp": 48,
+      "tp": 96,
+      "tn": 3,
+      "unparseable": 0,
+      "latency_ms": {
+        "count": 150,
+        "mean_ms": 939.28,
+        "p50_ms": 960.66,
+        "p95_ms": 1175.41
+      }
+    }
+  ]
+}
