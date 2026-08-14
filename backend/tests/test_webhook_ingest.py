@@ -5,17 +5,37 @@ from __future__ import annotations
 from uuid import UUID
 
 import pytest
+import pytest_asyncio
 from httpx import ASGITransport, AsyncClient
 
 VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 
-@pytest.fixture
-def client():
+@pytest_asyncio.fixture
+async def client():
+    """
+    Async client with the engine disposed either side of the test.
+
+    `asyncio_default_fixture_loop_scope = function` gives every test its own
+    event loop, while the app's engine and vector pool are module-level. A
+    connection pooled on one test's loop is terminated on a later one, which
+    raises `RuntimeError: Event loop is closed` during teardown — the assertions
+    having already passed. Disposing before and after keeps each pool inside a
+    single loop; this mirrors the fixture the other DB-backed test files use.
+    """
+    from app.db.session import engine
+    from app.db.vector import close_vector_pool
     from app.main import app
 
+    await close_vector_pool()
+    await engine.dispose()
+
     transport = ASGITransport(app=app)
-    return AsyncClient(transport=transport, base_url="http://test")
+    async with AsyncClient(transport=transport, base_url="http://test") as ac:
+        yield ac
+
+    await close_vector_pool()
+    await engine.dispose()
 
 
 @pytest.mark.asyncio

@@ -49,6 +49,30 @@ RETRIEVAL_RULES: dict[str, list[SourceType]] = {
 }
 
 
+# Corpus rows carry exactly one `applies_to_category`, so a fact type with no
+# row of its own retrieves nothing at all. Three had none, and `critical_gas` is
+# the worst of them: it is the single-sensor incident line, so a critical-gas
+# assessment was being produced with zero citations.
+#
+# These are not new clauses — inventing statute to close a gap is the one thing
+# the citation validator exists to prevent. They say that a fact is governed by
+# the corpus already seeded for the *same hazard*: a threshold breach is the
+# elevated condition of the same substance or energy, and the provisions that
+# govern it apply a fortiori at the higher reading.
+_CATEGORY_ALIASES: dict[str, str] = {
+    "critical_gas": "elevated_gas",
+    "critical_temperature": "over_temperature",
+    # Proximity to a hazardous zone rests on the same basis as occupancy of one.
+    # The weakest of the three — replace it if a dedicated clause is seeded.
+    "spatial_cooccurrence": "zone_occupied",
+}
+
+
+def _lookup_category(fact_type: str) -> str:
+    """The corpus category a fact type is cited against."""
+    return _CATEGORY_ALIASES.get(fact_type, fact_type)
+
+
 def source_types_for_facts(fact_types: list[str]) -> list[SourceType]:
     seen: set[str] = set()
     out: list[SourceType] = []
@@ -104,7 +128,7 @@ class DeterministicRetriever:
                     LIMIT 5
                     """
                 ),
-                {"cat": fact_type},
+                {"cat": _lookup_category(fact_type)},
             )
         elif source == "sops":
             result = await session.execute(
@@ -117,7 +141,7 @@ class DeterministicRetriever:
                     LIMIT 5
                     """
                 ),
-                {"cat": fact_type},
+                {"cat": _lookup_category(fact_type)},
             )
         else:  # historical_incidents
             result = await session.execute(
@@ -130,6 +154,6 @@ class DeterministicRetriever:
                     LIMIT 5
                     """
                 ),
-                {"cat": fact_type},
+                {"cat": _lookup_category(fact_type)},
             )
         return [row._mapping["id"] for row in result.fetchall()]

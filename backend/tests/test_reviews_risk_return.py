@@ -65,8 +65,31 @@ def test_should_reopen_on_critical_gas():
 
 
 def test_should_not_reopen_on_second_elevated_fact_only():
+    # `permit_conflict` supplies CONTROL_FAILURE only, so with `elevated_gas`
+    # the verdict is elevated, not blocking — a decided review stays decided.
+    # Deliberately *not* `incomplete_isolation`: that one also supplies
+    # IGNITION_ENERGY and so completes the pathway (see the test below).
+    facts = [_fact("elevated_gas"), _fact("permit_conflict")]
+    assert should_reopen_after_decision(["permit_conflict"], facts) is False
+
+
+def test_should_reopen_when_isolation_completes_pathway():
+    """
+    `elevated_gas` + `incomplete_isolation` is a *blocking* pair, not two
+    elevated facts.
+
+    `incomplete_isolation` maps to {IGNITION_ENERGY, CONTROL_FAILURE} — an
+    isolation that was never confirmed evidences both an energy source and the
+    failure of the barrier around it — so with a hazardous atmosphere it
+    completes the substance + energy + failed-barrier pathway that
+    `classify()` blocks on, with nobody yet present.
+
+    This pins that behaviour. If it starts failing, fix the caller, not the
+    dimension mapping in `risk/policy.py`: the mapping is the compound-risk
+    claim itself.
+    """
     facts = [_fact("elevated_gas"), _fact("incomplete_isolation")]
-    assert should_reopen_after_decision(["incomplete_isolation"], facts) is False
+    assert should_reopen_after_decision(["incomplete_isolation"], facts) is True
 
 
 def test_should_reopen_when_compound_blocking_forms():
