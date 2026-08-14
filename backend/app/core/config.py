@@ -94,20 +94,6 @@ class Settings(BaseSettings):
     # Soft telemetry ring size per asset (hydrates UI charts on open)
     ambient_telemetry_keep: int = 40
 
-    # Emergency Response Orchestrator (W1).
-    # `response_auto_enabled` is the master arm switch. Disarmed, actions are
-    # still evaluated and shown — the reasoning stays visible with nothing
-    # executing, which is also the safe mode for rehearsal.
-    response_auto_enabled: bool = True
-    # How long an armed action counts down before it executes. This is the
-    # supervisor's visible abort window, so it is deliberately long enough to
-    # read a rail row and react, and short enough to still be a response.
-    response_arm_window_seconds: int = 10
-    # A page with no acknowledgement inside this window escalates to the next
-    # contact in escalation_order.
-    response_page_ack_timeout_seconds: int = 120
-    response_tick_seconds: float = 2.0
-
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]

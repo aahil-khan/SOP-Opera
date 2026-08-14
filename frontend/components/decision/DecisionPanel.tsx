@@ -11,7 +11,6 @@ import { useLiveStore } from "@/lib/liveStore";
 import type { AreaOwner } from "@/shared/schemas";
 import { fetchRoster } from "@/lib/authApi";
 import type { RosterEntry } from "@/lib/authTypes";
-import { ResponseBlock } from "@/components/response/ResponseBlock";
 import styles from "./DecisionPanel.module.css";
 
 interface DecisionPanelProps {
@@ -140,11 +139,6 @@ function DecisionForm({
 
   return (
     <div className={styles.panel}>
-      {/* What the system already did, above the controls: the supervisor's
-          decision is the binding act, and they make it knowing the plant has
-          been put into a protective state on their behalf. */}
-      <ResponseBlock reviewId={reviewId} />
-
       {/* Tour Act V frames recommended actions — not the outcomes block or
           the whole DecisionCard (taller than the drawer; clamp filled the
           scrollport). Keep a compact heading target when the list is empty. */}

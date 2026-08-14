@@ -740,31 +740,6 @@ async def run_assessment_job(
             risk_level=result.risk_level,
             sensor_critical=sensor_critical,
         )
-
-        # W1 · Emergency Response Orchestrator. Runs on the verdict this
-        # assessment just produced, inside the same transaction, so a review can
-        # never be left recorded as blocking with no record of what the system
-        # did about it. A failure here must not lose the assessment — the
-        # response is an addition to the verdict, not a precondition for it.
-        # The savepoint matters: a plain rollback here would discard the
-        # assessment and its metadata too, since none of it has committed yet.
-        try:
-            from app.response.service import evaluate_and_arm
-
-            async with session.begin_nested():
-                await evaluate_and_arm(
-                    session,
-                    review_id=review_id,
-                    asset_id=review.asset_id,
-                    risk_level=result.risk_level,
-                    fact_types=list(fact_types),
-                )
-        except Exception:
-            logger.exception(
-                "response orchestration failed for review %s; assessment stands",
-                review_id,
-            )
-
         await session.commit()
 
         try:

@@ -212,13 +212,7 @@ class PingResponse(BaseModel):
 
 HandoverState = Literal["draft", "issued", "accepted", "expired"]
 HandoverItemType = Literal[
-    "open_review",
-    "active_fact",
-    "open_task",
-    "decision_condition",
-    # An automatic response still in effect that the incoming operator inherits.
-    "response_action",
-    "note",
+    "open_review", "active_fact", "open_task", "decision_condition", "note"
 ]
 HandoverAckState = Literal["pending", "acknowledged", "queried"]
 HandoverNarrationMode = Literal["llm", "deterministic", "fallback"]

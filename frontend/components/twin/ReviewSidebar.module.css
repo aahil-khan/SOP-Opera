@@ -61,26 +61,6 @@
   animation: none;
 }
 
-/*
- * Automatic-response summary. Shown on the collapsed rail so shutting the panel
- * never hides the fact that the system is holding equipment in a protective
- * state. Distinct colour from .railCount: this is not open work, it is work the
- * system already did.
- */
-.railAuto {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.15rem;
-  min-width: 1.25rem;
-  padding: 0.05rem 0.35rem;
-  border-radius: 999px;
-  background: var(--status-elevated-muted);
-  color: var(--status-elevated);
-  font-family: var(--font-mono);
-  font-size: var(--text-xs);
-  text-align: center;
-}
-
 @keyframes rail-count-pulse {
   0%,
   100% {

@@ -181,13 +181,6 @@ export function ReviewSidebar({
   const allViews = useLiveAssetViews();
   const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
   const selectAsset = useLiveStore((s) => s.selectAsset);
-  // Count only, not the array — this rail must not re-render on every rail tick.
-  const autoResponseCount = useLiveStore((s) =>
-    s.responseActions.reduce(
-      (n, a) => (a.status === "armed" || a.status === "active" ? n + 1 : n),
-      0,
-    ),
-  );
 
   const [activeColumn, setActiveColumn] = useState<OpenWorkColumnId>("awaiting_decision");
   const [searchQuery, setSearchQuery] = useState("");
@@ -309,20 +302,6 @@ export function ReviewSidebar({
         <span className={styles.railLabel}>Open work</span>
         {affectedCount > 0 && (
           <span className={styles.railCount}>{affectedCount}</span>
-        )}
-        {/* Collapsed summary of the automatic response. Without it, shutting the
-            panel would hide the fact that the system is holding equipment in a
-            protective state — which is the one thing that must stay visible. */}
-        {autoResponseCount > 0 && (
-          <span
-            className={styles.railAuto}
-            title={`${autoResponseCount} automatic response ${
-              autoResponseCount === 1 ? "action" : "actions"
-            } in effect`}
-          >
-            <span aria-hidden="true">⚡</span>
-            {autoResponseCount}
-          </span>
         )}
       </button>
 

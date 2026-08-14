@@ -75,15 +75,6 @@ export const WS_EVENTS = [
   "handover.issued",
   "handover.item_acknowledged",
   "handover.accepted",
-  // W1 · Emergency Response Orchestrator. `action_revoked` covers both an abort
-  // during the arming window and a revocation after execution — the rail shows
-  // the distinction from the action's status, not from the event name.
-  "response.action_armed",
-  "response.action_executed",
-  "response.action_revoked",
-  "response.page_dispatched",
-  "response.page_acknowledged",
-  "response.device_changed",
   "echo",
 ] as const;
 

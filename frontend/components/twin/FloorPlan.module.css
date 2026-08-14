@@ -484,17 +484,3 @@
   }
 }
 
-/* Automatic-response equipment currently engaged on this asset's zone. */
-.responseBadge rect {
-  fill: color-mix(in srgb, var(--status-elevated-muted) 92%, transparent);
-  stroke: var(--status-elevated);
-  stroke-width: 0.75;
-}
-
-.responseBadge text {
-  font-size: 7px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-  fill: var(--text-primary);
-}
-

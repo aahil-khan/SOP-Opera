@@ -17,7 +17,6 @@ const TYPE_LABELS: Record<HandoverItem["item_type"], string> = {
   active_fact: "Active fact",
   open_task: "Outstanding task",
   decision_condition: "Approval condition",
-  response_action: "Automatic response",
   note: "Operator note",
 };
 

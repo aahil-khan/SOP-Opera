@@ -184,7 +184,7 @@ export interface PacketMeta {
   hash_algorithm: string;
   evidence_id: string | null;
   snapshot_hash: string | null;
-  /** frozen_evidence | live_fallback | legacy_v1 | unreadable_packet */
+  /** frozen_evidence | live_fallback | legacy_v1 | unreadable_v2 */
   built_from: string;
   audit_tail_seq: number | null;
 }
@@ -433,8 +433,6 @@ export type HandoverItemType =
   | "active_fact"
   | "open_task"
   | "decision_condition"
-  /** An automatic response still in effect that the incoming operator inherits. */
-  | "response_action"
   | "note";
 
 export type HandoverAckState = "pending" | "acknowledged" | "queried";

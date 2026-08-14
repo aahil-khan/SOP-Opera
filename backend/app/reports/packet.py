@@ -28,7 +28,6 @@ from __future__ import annotations
 
 import hashlib
 import json
-import logging
 from datetime import datetime
 from typing import Any, Literal
 from uuid import UUID
@@ -40,20 +39,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.audit.chain import canonical_payload
 from app.reviews.concerns import normalize_concern_type
 
-# v3 adds `response_actions` (W1). Bumped rather than edited in place: reports
-# are immutable once frozen, so older rows keep their shape and are hydrated
-# through the compatibility path below.
-logger = logging.getLogger(__name__)
-
-PACKET_VERSION = 3
-
-MIN_STRUCTURED_PACKET_VERSION = 2
-"""
-Oldest version whose stored `content` still validates as a ReportPacket.
-
-Raise this only for a genuinely breaking shape change. Additive fields with
-defaults do not qualify — see hydrate_packet().
-"""
+PACKET_VERSION = 2
 GENERATOR = f"sop-opera/reports@{PACKET_VERSION}"
 
 SourceKind = Literal["frozen", "live", "unavailable"]
@@ -361,46 +347,6 @@ class PacketCitations(BaseModel):
     ok: bool = True
 
 
-class PacketResponsePage(BaseModel):
-    role: str
-    zone: str
-    channel: str
-    escalation_order: int
-    status: str
-    dispatched_at: str | None = None
-    acknowledged_at: str | None = None
-    acknowledged_by: str | None = None
-    simulated: bool = True
-
-
-class PacketResponseAction(BaseModel):
-    """
-    One automatic action the orchestrator took — or refused to take.
-
-    Refusals are carried into the frozen report deliberately: the record of what
-    the system declined to automate is part of the evidence, not noise. A reader
-    should be able to see that a shutdown was considered and left to a human.
-    """
-
-    id: str
-    tier: int
-    action_kind: str
-    label: str
-    status: str
-    device_label: str | None = None
-    device_zone: str | None = None
-    envelope: dict = Field(default_factory=dict)
-    refusal_reason: str | None = None
-    actor: str
-    armed_at: str | None = None
-    executed_at: str | None = None
-    revoked_at: str | None = None
-    revoked_by: str | None = None
-    revoke_reason: str | None = None
-    pages: list[PacketResponsePage] = Field(default_factory=list)
-    simulated: bool = True
-
-
 class PacketTask(BaseModel):
     id: str
     task_type: str
@@ -464,9 +410,6 @@ class ReportPacket(BaseModel):
     evidence: PacketEvidence = Field(default_factory=PacketEvidence)
     citations: PacketCitations = Field(default_factory=PacketCitations)
     tasks: PacketTasks = Field(default_factory=PacketTasks)
-    # Packet v3. Absent on v1/v2 rows, which the reader must tolerate rather
-    # than reject — existing frozen reports are immutable and keep their shape.
-    response_actions: list[PacketResponseAction] = Field(default_factory=list)
     discussion: list[PacketComment] = Field(default_factory=list)
     audit_trail: list[PacketAuditEntry] = Field(default_factory=list)
     timeline: list[PacketTimelineEvent] = Field(default_factory=list)
@@ -867,8 +810,6 @@ async def build_packet(
         risk_headline=humanize(risk_level).capitalize(),
     )
 
-    response_actions = await _build_response_actions(session, review_id)
-
     meta = PacketMeta(
         review_id=str(review_id),
         closure_event_seq=closure_event_seq,
@@ -894,7 +835,6 @@ async def build_packet(
         evidence=evidence,
         citations=citations,
         tasks=tasks,
-        response_actions=response_actions,
         discussion=discussion,
         audit_trail=audit_trail,
         timeline=timeline,
@@ -959,76 +899,6 @@ LEGACY_BANNER = (
 )
 
 
-async def _build_response_actions(
-    session: AsyncSession, review_id: UUID
-) -> list[PacketResponseAction]:
-    """
-    Freeze what the orchestrator did about this review.
-
-    Read live at freeze time rather than from the decision-time evidence
-    snapshot: actions continue after the decision (a supervisor can revoke one
-    while the review is still open), and the report should record how they
-    actually ended, not how they looked when the decision was recorded.
-
-    Best-effort — a review closed on a database without the response tables must
-    still produce a report.
-    """
-    try:
-        from app.response import repository as response_repo
-        from app.response.envelope import ACTION_REGISTRY
-
-        rows = await response_repo.list_actions_for_review(session, review_id)
-        if not rows:
-            return []
-        pages = await response_repo.pages_for_actions(
-            session, [r["id"] for r in rows]
-        )
-    except Exception:  # noqa: BLE001
-        logger.warning("response actions unavailable for review %s", review_id)
-        return []
-
-    pages_by_action: dict[Any, list[dict]] = {}
-    for p in pages:
-        pages_by_action.setdefault(p["action_id"], []).append(p)
-
-    out: list[PacketResponseAction] = []
-    for r in rows:
-        spec = ACTION_REGISTRY.get(r["action_kind"])
-        out.append(
-            PacketResponseAction(
-                id=str(r["id"]),
-                tier=int(r["tier"]),
-                action_kind=r["action_kind"],
-                label=spec.label if spec else r["action_kind"],
-                status=r["status"],
-                device_label=r.get("device_label"),
-                device_zone=r.get("device_zone"),
-                envelope=r.get("envelope") or {},
-                refusal_reason=r.get("refusal_reason"),
-                actor=r["actor"],
-                armed_at=_iso(r.get("armed_at")),
-                executed_at=_iso(r.get("executed_at")),
-                revoked_at=_iso(r.get("revoked_at")),
-                revoked_by=r.get("revoked_by"),
-                revoke_reason=r.get("revoke_reason"),
-                pages=[
-                    PacketResponsePage(
-                        role=p["role"],
-                        zone=p["zone"],
-                        channel=p["channel"],
-                        escalation_order=int(p["escalation_order"]),
-                        status=p["status"],
-                        dispatched_at=_iso(p.get("dispatched_at")),
-                        acknowledged_at=_iso(p.get("acknowledged_at")),
-                        acknowledged_by=p.get("acknowledged_by"),
-                    )
-                    for p in pages_by_action.get(r["id"], [])
-                ],
-            )
-        )
-    return out
-
-
 def hydrate_packet(raw: dict, *, row: Any) -> ReportPacket:
     """
     Turn a stored `content` blob into a v2 packet.
@@ -1044,17 +914,12 @@ def hydrate_packet(raw: dict, *, row: Any) -> ReportPacket:
     seq = int(row["closure_event_seq"])
     version = int(row.get("packet_version") or 1)
 
-    # Compare against the oldest *structured* version, not the current one. v3
-    # only adds `response_actions`, which defaults to empty — so a stored v2 row
-    # still validates directly. Testing `>= PACKET_VERSION` would push every
-    # existing v2 report through the legacy upcast and quietly drop sections
-    # from reports that were perfectly readable.
-    if version >= MIN_STRUCTURED_PACKET_VERSION:
+    if version >= PACKET_VERSION:
         try:
             packet = ReportPacket.model_validate(raw)
         except Exception:
             # A packet you cannot open is worse than one with empty sections.
-            return _legacy_packet(raw, row=row, seq=seq, note="unreadable_packet")
+            return _legacy_packet(raw, row=row, seq=seq, note="unreadable_v2")
         packet.meta.report_id = str(row["id"])
         packet.meta.closure_event_seq = seq
         return packet
