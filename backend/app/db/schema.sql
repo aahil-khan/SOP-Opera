@@ -571,7 +571,12 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_response_contacts_zone_order
 -- description, so it is persisted and rendered, not dropped.
 CREATE TABLE IF NOT EXISTS response_actions (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    review_id UUID NOT NULL REFERENCES reviews(id),
+    -- CASCADE: a response row is meaningless without its review, and several
+    -- existing paths delete reviews (the demo reset, test cleanups). Without it
+    -- this table silently becomes a foreign key that blocks all of them. The
+    -- audit entries describing these actions survive regardless — audit_entries
+    -- deliberately carries no FK.
+    review_id UUID NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
     asset_id UUID REFERENCES assets(id),
     tier INT NOT NULL,
     action_kind TEXT NOT NULL,
@@ -606,6 +611,38 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_response_actions_tier0_per_review
     ON response_actions(review_id)
     WHERE tier = 0;
 
+-- A review is re-assessed whenever new context arrives, and each pass evaluates
+-- the same action set. Without this, a second assessment arms a second
+-- "ventilation on" for the same incident: the rail shows the action twice, the
+-- responder is paged twice, and the audit records two commands where one was
+-- intended. At most one *live or currently-reported* action per kind per review.
+--
+-- Terminal rows (aborted, revoked, superseded) are excluded, so a hazard that
+-- returns after a revocation can legitimately re-arm.
+--
+-- Retire pre-existing duplicates before constraining. apply_schema() runs this
+-- file as one unit, so a failing CREATE UNIQUE INDEX would abort every statement
+-- after it on a dev database seeded before the index existed — the same trap the
+-- reports renumbering above avoids. Keep the newest row per key.
+WITH ranked AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+               PARTITION BY review_id, action_kind
+               ORDER BY created_at DESC, id DESC
+           ) AS rn
+    FROM response_actions
+    WHERE status IN ('armed', 'active', 'refused')
+)
+UPDATE response_actions a
+SET status = 'superseded'
+FROM ranked
+WHERE a.id = ranked.id
+  AND ranked.rn > 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_response_actions_live_per_kind
+    ON response_actions(review_id, action_kind)
+    WHERE status IN ('armed', 'active', 'refused');
+
 CREATE INDEX IF NOT EXISTS idx_response_actions_review
     ON response_actions(review_id, created_at DESC);
 
@@ -618,8 +655,8 @@ CREATE INDEX IF NOT EXISTS idx_response_actions_status
 -- one that went unanswered, so the chain of "who did we try, and when" survives.
 CREATE TABLE IF NOT EXISTS response_pages (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    action_id UUID NOT NULL REFERENCES response_actions(id),
-    review_id UUID NOT NULL REFERENCES reviews(id),
+    action_id UUID NOT NULL REFERENCES response_actions(id) ON DELETE CASCADE,
+    review_id UUID NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
     contact_id UUID NOT NULL REFERENCES response_contacts(id),
     role TEXT NOT NULL,
     zone TEXT NOT NULL,
@@ -639,3 +676,24 @@ CREATE TABLE IF NOT EXISTS response_pages (
 -- The escalation sweep polls for dispatched pages older than the ack timeout.
 CREATE INDEX IF NOT EXISTS idx_response_pages_status
     ON response_pages(status, dispatched_at);
+
+-- A database created before the cascade was added carries the plain FK, which
+-- blocks every existing path that deletes a review. DROP IF EXISTS + ADD is
+-- idempotent across boots; the constraint names are Postgres's defaults.
+ALTER TABLE response_actions
+    DROP CONSTRAINT IF EXISTS response_actions_review_id_fkey;
+ALTER TABLE response_actions
+    ADD CONSTRAINT response_actions_review_id_fkey
+    FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE;
+
+ALTER TABLE response_pages
+    DROP CONSTRAINT IF EXISTS response_pages_review_id_fkey;
+ALTER TABLE response_pages
+    ADD CONSTRAINT response_pages_review_id_fkey
+    FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE;
+
+ALTER TABLE response_pages
+    DROP CONSTRAINT IF EXISTS response_pages_action_id_fkey;
+ALTER TABLE response_pages
+    ADD CONSTRAINT response_pages_action_id_fkey
+    FOREIGN KEY (action_id) REFERENCES response_actions(id) ON DELETE CASCADE;
