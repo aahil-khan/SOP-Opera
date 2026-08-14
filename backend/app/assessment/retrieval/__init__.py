@@ -22,7 +22,10 @@ logger = logging.getLogger(__name__)
 RetrievalQuality = Literal["good", "weak", "empty"]
 RetrievalMode = Literal["rag", "deterministic", "skipped"]
 
-# Vector RAG only for incidents (orchestrator does not consume regs/SOPs today).
+# Default vector-search scope — incidents only (orchestrator does not consume
+# vector-searched regs/SOPs today). The effective list is the
+# `rag_vector_source_types` setting; this constant is kept as the documented
+# default and import-compat alias.
 RAG_VECTOR_SOURCE_TYPES: list[str] = ["historical_incidents"]
 
 
@@ -123,7 +126,12 @@ async def retrieve(
             source_types=list(source_types),
         )
 
-    if "historical_incidents" not in source_types:
+    vector_source_types = [
+        st
+        for st in (settings.rag_vector_source_types or RAG_VECTOR_SOURCE_TYPES)
+        if st in source_types
+    ]
+    if not vector_source_types:
         return HybridRetrievalResult(
             refs=det_refs,
             mode="deterministic" if det_refs else "skipped",
@@ -139,7 +147,7 @@ async def retrieve(
         rag = RagRetriever()
         timeout_s = max(0.1, settings.rag_timeout_ms / 1000.0)
         rag_refs = await asyncio.wait_for(
-            rag.retrieve(query, list(RAG_VECTOR_SOURCE_TYPES), settings.rag_top_k),
+            rag.retrieve(query, vector_source_types, settings.rag_top_k),
             timeout=timeout_s,
         )
         quality = assess_retrieval_quality(

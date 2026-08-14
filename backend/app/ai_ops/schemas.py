@@ -40,6 +40,14 @@ class AiOpsSummary(BaseModel):
     langsmith_project: str = "sop-opera"
     langsmith_url: str | None = None
 
+    # Last retrieval quality-gate trace (from assessment_metadata) — the W5
+    # demo beat: what vector search scored and why the mode won.
+    last_retrieval_mode: str | None = None
+    last_retrieval_quality: str | None = None
+    last_retrieval_score: float | None = None
+    last_retrieval_embedding_model: str | None = None
+    rag_gate_threshold: float | None = None
+
 
 class ProviderStateOut(BaseModel):
     """Effective AI provider selection for subsequent assessments."""

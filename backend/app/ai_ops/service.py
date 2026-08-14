@@ -149,7 +149,32 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
 
     langsmith_enabled, langsmith_project, langsmith_url = _langsmith_fields()
 
+    last_ret = await session.execute(
+        text(
+            """
+            SELECT am.retrieval_mode, am.retrieval_quality, am.retrieval_score,
+                   am.embedding_model
+            FROM assessment_metadata am
+            JOIN assessments a ON a.id = am.assessment_id
+            WHERE am.retrieval_mode IS NOT NULL
+            ORDER BY a.created_at DESC
+            LIMIT 1
+            """
+        )
+    )
+    last_ret_row = last_ret.first()
+    lr = last_ret_row._mapping if last_ret_row is not None else None
+
     return AiOpsSummary(
+        last_retrieval_mode=(lr["retrieval_mode"] if lr else None),
+        last_retrieval_quality=(lr["retrieval_quality"] if lr else None),
+        last_retrieval_score=(
+            float(lr["retrieval_score"])
+            if lr and lr["retrieval_score"] is not None
+            else None
+        ),
+        last_retrieval_embedding_model=(lr["embedding_model"] if lr else None),
+        rag_gate_threshold=float(get_settings().rag_score_threshold),
         data_source="local_db",
         persists_across_demo_reset=True,
         total_assessments=total,

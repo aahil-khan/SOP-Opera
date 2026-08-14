@@ -151,6 +151,7 @@ function agentLabel(agent: string): string {
     incident_pattern: "Incident",
     shift_handover: "Handover",
     orchestrator: "Orchestrator",
+    retrieval: "Retrieval",
   };
   return map[agent] ?? agent;
 }

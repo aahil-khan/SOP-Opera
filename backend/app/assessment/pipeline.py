@@ -12,6 +12,7 @@ from pydantic import ValidationError
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.events import broadcast_agent_step, make_step
 from app.agents.graph import run_agent_assessment
 from app.handover.repository import fetch_unacknowledged_for_asset
 from app.agents.routing import should_load_plant_neighborhood
@@ -53,6 +54,24 @@ def _classify_failure(exc: Exception | None) -> str:
 
 def _serialize_refs(refs: list[RetrievedReference]) -> list[dict]:
     return [serialize_ref(r) for r in refs]
+
+
+def _retrieval_trace_message(hybrid: Any, threshold: float) -> str:
+    """One judge-readable line: what vector search scored and why the mode won."""
+    best = hybrid.best_score
+    if hybrid.mode == "rag":
+        return (
+            f"Vector hit scored {best:.2f} ≥ gate {threshold:.2f} — "
+            f"using {len(hybrid.refs)} vector-backed references"
+        )
+    if hybrid.mode == "skipped":
+        return "No derived facts — retrieval skipped"
+    if best is not None:
+        return (
+            f"Vector hit scored {best:.2f} → below gate {threshold:.2f} → "
+            "deterministic SQL citations"
+        )
+    return "Deterministic SQL citations (vector search not applicable)"
 
 
 def _serialize_factors(factors: list) -> list[dict]:
@@ -469,6 +488,26 @@ async def run_assessment_job(
         enriched_refs = await enrich_references(session, hybrid.refs)
         evidence_ids = [r.id for r in enriched_refs]
 
+        # Quality-gate trace — visible in the Brain panel while assessing, and
+        # prepended to the persisted agent trace below.
+        retrieval_step = make_step(
+            "retrieval",
+            "observation",
+            _retrieval_trace_message(hybrid, settings.rag_score_threshold),
+            review_id=review_id,
+            assessment_id=assessment_id,
+            detail={
+                "mode": hybrid.mode,
+                "quality": hybrid.quality,
+                "best_score": hybrid.best_score,
+                "gate_threshold": settings.rag_score_threshold,
+                "embedding_model": hybrid.embedding_model,
+                "source_types": list(hybrid.source_types),
+                "reference_count": len(enriched_refs),
+            },
+        )
+        await broadcast_agent_step(retrieval_step)
+
         # Resolve context + worker names for structured reasoning factors
         ctx_views = await load_valid_context(session, review.asset_id)
         worker_ids = [
@@ -586,6 +625,8 @@ async def run_assessment_job(
                     assessment_id,
                     exc,
                 )
+
+        agent_trace = [retrieval_step.model_dump(), *agent_trace]
 
         if generation is None or last_error is not None:
             failure_reason = _classify_failure(last_error)

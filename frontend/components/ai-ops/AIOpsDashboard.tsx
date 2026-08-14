@@ -372,6 +372,24 @@ export function AIOpsDashboard() {
               hint="Average cosine-similarity score of the historical-incident chunks that cleared the RAG quality gate (RAG hits only, 0–1)"
               tone="neutral"
             />
+            {summary?.last_retrieval_mode ? (
+              <p className={styles.note}>
+                Last run:{" "}
+                {summary.last_retrieval_score != null
+                  ? `vector best ${summary.last_retrieval_score.toFixed(2)} ${
+                      summary.last_retrieval_mode === "rag" ? "≥" : "<"
+                    } gate ${summary.rag_gate_threshold?.toFixed(2) ?? "—"} → `
+                  : ""}
+                <strong>
+                  {summary.last_retrieval_mode === "rag"
+                    ? "vector references used"
+                    : "deterministic SQL citations"}
+                </strong>
+                {summary.last_retrieval_embedding_model
+                  ? ` · embeddings: ${summary.last_retrieval_embedding_model}`
+                  : ""}
+              </p>
+            ) : null}
             <div className={styles.statGrid}>
               <StatPair
                 label="Retrievals run"

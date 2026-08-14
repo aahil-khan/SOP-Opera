@@ -61,6 +61,11 @@ class Settings(BaseSettings):
     random_compound_probability: float = 0.25
 
     rag_enabled: bool = True
+    # Source types eligible for vector search. Regulations/SOPs stay on the
+    # deterministic SQL path until real embeddings land (W5) — extending this
+    # list is the switch. Env override is JSON, e.g.
+    # RAG_VECTOR_SOURCE_TYPES='["historical_incidents","regulations"]'
+    rag_vector_source_types: list[str] = ["historical_incidents"]
     embedding_provider: str = "mock"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536

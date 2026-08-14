@@ -195,6 +195,11 @@ export interface AiOpsSummary {
   langsmith_enabled: boolean;
   langsmith_project: string;
   langsmith_url: string | null;
+  last_retrieval_mode: string | null;
+  last_retrieval_quality: string | null;
+  last_retrieval_score: number | null;
+  last_retrieval_embedding_model: string | null;
+  rag_gate_threshold: number | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
