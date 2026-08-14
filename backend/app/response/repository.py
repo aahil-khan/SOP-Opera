@@ -170,6 +170,30 @@ async def insert_action(
     return dict(row._mapping) if row else None
 
 
+async def supersede_refusals(session: AsyncSession, review_id: UUID) -> int:
+    """
+    Retire this review's previous refusals before re-evaluating.
+
+    A refusal records "we considered this and declined it, on this verdict". A
+    re-assessment produces a fresh verdict, so the old refusals are stale — and
+    they would otherwise occupy the live-per-kind unique index and block the new
+    ones from being recorded. Armed and active rows are left alone: those are
+    live commitments, not stale opinions.
+    """
+    result = await session.execute(
+        text(
+            """
+            UPDATE response_actions
+            SET status = 'superseded'
+            WHERE review_id = CAST(:review_id AS uuid)
+              AND status = 'refused'
+            """
+        ),
+        {"review_id": str(review_id)},
+    )
+    return result.rowcount or 0
+
+
 async def get_action(
     session: AsyncSession, action_id: UUID
 ) -> dict[str, Any] | None:
@@ -177,7 +201,7 @@ async def get_action(
         text(
             """
             SELECT a.*, d.zone AS device_zone, d.kind AS device_kind,
-                   d.label AS device_label, d.fail_safe_state
+                   d.label AS device_label, d.fail_safe_state, d.default_state
             FROM response_actions a
             LEFT JOIN response_devices d ON d.id = a.device_id
             WHERE a.id = CAST(:id AS uuid)
