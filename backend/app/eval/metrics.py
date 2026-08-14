@@ -5,10 +5,27 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from app.eval.ablation import AblationRow, run_ablation
 from app.eval.coverage import CoverageReport, compute_coverage
 from app.eval.dataset import EvalCase, build_dataset, hero_checkpoint
+from app.eval.lead_time import (
+    LeadTimeDistribution,
+    ScenarioLeadTime,
+    compute_scenario_lead_time,
+    hero_lead_time,
+    lead_time_distribution,
+)
 from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
-from app.eval.lead_time import ScenarioLeadTime, compute_scenario_lead_time, hero_lead_time
+
+CRITERION_CAVEAT = (
+    "This is a criterion-coverage measurement, not a field trial: of the plant "
+    "states where a statutory provision requires stopping work, how many does "
+    "each detector catch? The compound engine implements those provisions, so "
+    "high recall is expected — the honest comparison is the single-sensor "
+    "baseline scored on the same labels. It is not a claim about generalizing "
+    "to unseen real-world incidents, and compound false positives are cases "
+    "where the engine is deliberately stricter than the statutory minimum."
+)
 
 
 @dataclass(frozen=True)
@@ -60,6 +77,8 @@ class EvalReport:
     hero_case_id: str = "vsp_coke_oven_step2"
     hero_lead_time: ScenarioLeadTime | None = None
     coverage: CoverageReport | None = None
+    lead_times: LeadTimeDistribution | None = None
+    ablation: list[AblationRow] = field(default_factory=list)
 
     @property
     def case_count(self) -> int:
@@ -112,6 +131,17 @@ class EvalReport:
                 "",
                 f"**FN reduction (compound vs single-sensor):** {self.fn_reduction_pct:.1f}%",
                 "",
+                "### Precision alongside recall",
+                "",
+                "The two detectors trade in opposite directions, and both rows above",
+                "state it: the single-sensor baseline is "
+                f"{self.single_sensor.precision:.1%} precise but recalls only "
+                f"{self.single_sensor.recall:.1%} of stop-work cases "
+                f"({self.single_sensor.fn} missed), while the compound engine "
+                f"recalls {self.compound.recall:.1%} at "
+                f"{self.compound.precision:.1%} precision — zero missed stop-work",
+                f"cases for {self.compound.fp} false alarms.",
+                "",
                 "### What this measures, and what it does not",
                 "",
                 "This is a **criterion-coverage** measurement: of the plant states where a",
@@ -151,6 +181,69 @@ class EvalReport:
                     "",
                 ]
             )
+        dist = self.lead_times
+        if dist is not None and dist.scenarios:
+            lines.extend(
+                [
+                    "## Lead time across all scenarios",
+                    "",
+                    "Lead time is defined where a scenario timeline crosses the",
+                    "single-sensor critical line after the compound alarm; scenarios that",
+                    "never reach the critical line are listed as `—` and excluded from the",
+                    "spread. Scenarios without an explicit `t_offset_minutes` fall back to",
+                    "one process-minute per step.",
+                    "",
+                    "| Scenario | Compound alarm | Single-sensor critical | Lead time |",
+                    "| --- | ---: | ---: | ---: |",
+                ]
+            )
+            for s in dist.scenarios:
+
+                def _fmt_t(v: float | None) -> str:
+                    return f"t+{v:.0f} min" if v is not None else "—"
+
+                lead = (
+                    f"**{s.lead_time_minutes:.0f} min**"
+                    if s.lead_time_minutes is not None
+                    else "—"
+                )
+                lines.append(
+                    f"| {s.scenario} | {_fmt_t(s.t_compound_minutes)} | "
+                    f"{_fmt_t(s.t_single_sensor_minutes)} | {lead} |"
+                )
+            if dist.median_minutes is not None:
+                lines.extend(
+                    [
+                        "",
+                        f"**Spread over the {dist.defined_count} scenario(s) with a "
+                        f"defined lead time:** min {dist.min_minutes:.0f} · median "
+                        f"{dist.median_minutes:.0f} · max {dist.max_minutes:.0f} "
+                        "minutes.",
+                    ]
+                )
+            lines.append("")
+
+        if self.ablation:
+            lines.extend(
+                [
+                    "## Hazard-dimension ablation",
+                    "",
+                    "Compound recall re-scored with each hazard dimension's facts",
+                    "suppressed, on the same statutory labels. The recall drop is that",
+                    "dimension's contribution to catching stop-work cases. The policy is",
+                    "treated as a black box — only its input fact set changes.",
+                    "",
+                    "| Dimension removed | Recall | Drop vs full | Missed |",
+                    "| --- | ---: | ---: | ---: |",
+                ]
+            )
+            for row in self.ablation:
+                lines.append(
+                    f"| {row.label} | {row.recall:.1%} | "
+                    f"−{row.recall_drop:.1%} | {row.fn} |"
+                )
+            lines.append("")
+
         cov = self.coverage
         if cov is not None:
             lines.extend(
@@ -267,6 +360,8 @@ def run_evaluation(cases: list[EvalCase] | None = None) -> EvalReport:
         hero_case_id=hero.case_id,
         hero_lead_time=hero_lead_time(),
         coverage=compute_coverage(cases),
+        lead_times=lead_time_distribution(),
+        ablation=run_ablation(cases),
     )
 
 

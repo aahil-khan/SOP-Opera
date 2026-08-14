@@ -2,8 +2,21 @@
 
 from __future__ import annotations
 
-from app.eval.metrics import DetectorMetrics, EvalReport, run_evaluation
-from app.eval.schemas import DetectorSummaryOut, EvalSummaryOut
+import time
+from datetime import datetime, timezone
+
+from app.eval.metrics import (
+    CRITERION_CAVEAT,
+    DetectorMetrics,
+    EvalReport,
+    run_evaluation,
+)
+from app.eval.schemas import (
+    AblationRowOut,
+    DetectorSummaryOut,
+    EvalSummaryOut,
+    ScenarioLeadTimeOut,
+)
 
 
 def _detector_out(m: DetectorMetrics) -> DetectorSummaryOut:
@@ -21,9 +34,41 @@ def _detector_out(m: DetectorMetrics) -> DetectorSummaryOut:
 
 
 def build_eval_summary(report: EvalReport | None = None) -> EvalSummaryOut:
+    t0 = time.perf_counter()
     report = report or run_evaluation()
+    run_duration_ms = (time.perf_counter() - t0) * 1000.0
     lt = report.hero_lead_time
+    dist = report.lead_times
     return EvalSummaryOut(
+        lead_times=[
+            ScenarioLeadTimeOut(
+                scenario=s.scenario,
+                t_forecast_minutes=s.t_forecast_minutes,
+                t_compound_minutes=s.t_compound_minutes,
+                t_single_sensor_minutes=s.t_single_sensor_minutes,
+                lead_time_minutes=s.lead_time_minutes,
+            )
+            for s in (dist.scenarios if dist else ())
+        ],
+        lead_time_min_minutes=(dist.min_minutes if dist else None),
+        lead_time_median_minutes=(dist.median_minutes if dist else None),
+        lead_time_max_minutes=(dist.max_minutes if dist else None),
+        lead_time_defined_count=(dist.defined_count if dist else 0),
+        ablation=[
+            AblationRowOut(
+                dimension=row.dimension,
+                label=row.label,
+                facts_removed=list(row.facts_removed),
+                recall=row.recall,
+                recall_drop=row.recall_drop,
+                fn=row.fn,
+                tp=row.tp,
+            )
+            for row in report.ablation
+        ],
+        criterion_caveat=CRITERION_CAVEAT,
+        generated_at=datetime.now(timezone.utc).isoformat(),
+        run_duration_ms=round(run_duration_ms, 1),
         fn_reduction_pct=report.fn_reduction_pct,
         hero_case_id=report.hero_case_id,
         hero_lead_time_minutes=(lt.lead_time_minutes if lt is not None else None),

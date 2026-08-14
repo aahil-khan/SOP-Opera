@@ -569,6 +569,37 @@ export interface EvalSummary {
   regulation_coverage_pct?: number;
   statutory_coverage_pct?: number;
   coverage_by_standard?: Record<string, number>;
+  // Lead time as a distribution across every scripted scenario.
+  lead_times: ScenarioLeadTime[];
+  lead_time_min_minutes: number | null;
+  lead_time_median_minutes: number | null;
+  lead_time_max_minutes: number | null;
+  lead_time_defined_count: number;
+  // Per-dimension recall contribution.
+  ablation: AblationRow[];
+  // What this harness measures — shown on the page.
+  criterion_caveat: string;
+  // Live-run proof: response computed on request.
+  generated_at: string;
+  run_duration_ms: number;
+}
+
+export interface ScenarioLeadTime {
+  scenario: string;
+  t_forecast_minutes: number | null;
+  t_compound_minutes: number | null;
+  t_single_sensor_minutes: number | null;
+  lead_time_minutes: number | null;
+}
+
+export interface AblationRow {
+  dimension: string;
+  label: string;
+  facts_removed: string[];
+  recall: number;
+  recall_drop: number;
+  fn: number;
+  tp: number;
 }
 
 export function fetchEvalSummary(): Promise<EvalSummary> {

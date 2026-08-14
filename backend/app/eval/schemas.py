@@ -17,6 +17,24 @@ class DetectorSummaryOut(BaseModel):
     fn: int
 
 
+class ScenarioLeadTimeOut(BaseModel):
+    scenario: str
+    t_forecast_minutes: float | None = None
+    t_compound_minutes: float | None = None
+    t_single_sensor_minutes: float | None = None
+    lead_time_minutes: float | None = None
+
+
+class AblationRowOut(BaseModel):
+    dimension: str
+    label: str
+    facts_removed: list[str]
+    recall: float
+    recall_drop: float
+    fn: int
+    tp: int
+
+
 class EvalSummaryOut(BaseModel):
     """Judge-facing compound vs single-sensor headline metrics."""
 
@@ -46,3 +64,20 @@ class EvalSummaryOut(BaseModel):
     regulation_coverage_pct: float = 0.0
     statutory_coverage_pct: float = 0.0
     coverage_by_standard: dict[str, int] = Field(default_factory=dict)
+
+    # Lead time as a distribution across every scripted scenario (W10c).
+    lead_times: list[ScenarioLeadTimeOut] = Field(default_factory=list)
+    lead_time_min_minutes: float | None = None
+    lead_time_median_minutes: float | None = None
+    lead_time_max_minutes: float | None = None
+    lead_time_defined_count: int = 0
+
+    # Per-dimension recall contribution (W10d).
+    ablation: list[AblationRowOut] = Field(default_factory=list)
+
+    # What this harness measures — rendered on the page, not just the report (W10f).
+    criterion_caveat: str = ""
+
+    # Live-run proof (W10e): this response was computed on request.
+    generated_at: str = ""
+    run_duration_ms: float = 0.0

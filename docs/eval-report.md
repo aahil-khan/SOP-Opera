@@ -27,10 +27,16 @@ scenario timelines.
 | Detector | Accuracy | Recall | FN rate | Precision |
 | --- | ---: | ---: | ---: | ---: |
 | Single-sensor baseline | 70.5% | 55.5% | 44.5% | 100.0% |
-| Predictive forecast (ML trend) | 66.3% | 68.2% | 31.8% | 78.1% |
+| Predictive forecast (ML trend) | 66.4% | 68.4% | 31.6% | 78.2% |
 | Compound engine | 98.0% | 100.0% | 0.0% | 97.0% |
 
 **FN reduction (compound vs single-sensor):** 100.0%
+
+### Precision alongside recall
+
+The two detectors trade in opposite directions, and both rows above
+state it: the single-sensor baseline is 100.0% precise but recalls only 55.5% of stop-work cases (175 missed), while the compound engine recalls 100.0% at 97.0% precision — zero missed stop-work
+cases for 12 false alarms.
 
 ### What this measures, and what it does not
 
@@ -54,6 +60,38 @@ Measured in **plant process time** from each scenario step's
 
 VSP coke-oven timeline: forecast alarm at **t+6 min**, compound alarm at **t+6 min**, single-sensor critical at **t+34 min** → **28 minutes of lead time** before the incident threshold.
 
+## Lead time across all scenarios
+
+Lead time is defined where a scenario timeline crosses the
+single-sensor critical line after the compound alarm; scenarios that
+never reach the critical line are listed as `—` and excluded from the
+spread. Scenarios without an explicit `t_offset_minutes` fall back to
+one process-minute per step.
+
+| Scenario | Compound alarm | Single-sensor critical | Lead time |
+| --- | ---: | ---: | ---: |
+| compound_risk | t+8 min | — | — |
+| gas_leak | — | — | — |
+| permit_conflict | — | — | — |
+| spatial_proximity | t+1 min | — | — |
+| vsp_coke_oven | t+6 min | t+34 min | **28 min** |
+
+**Spread over the 1 scenario(s) with a defined lead time:** min 28 · median 28 · max 28 minutes.
+
+## Hazard-dimension ablation
+
+Compound recall re-scored with each hazard dimension's facts
+suppressed, on the same statutory labels. The recall drop is that
+dimension's contribution to catching stop-work cases. The policy is
+treated as a black box — only its input fact set changes.
+
+| Dimension removed | Recall | Drop vs full | Missed |
+| --- | ---: | ---: | ---: |
+| Hazardous atmosphere / loss of containment | 62.6% | −37.4% | 147 |
+| Ignition or energy source | 77.1% | −22.9% | 90 |
+| Personnel exposure | 81.7% | −18.3% | 72 |
+| Control / barrier failure | 84.2% | −15.8% | 62 |
+
 ## Regulatory coverage
 
 Of the cases where the rules engine derives at least one fact, how many
@@ -65,8 +103,8 @@ have a regulation the deterministic retriever can cite for that fact?
 
 | Standard | Citations available |
 | --- | ---: |
-| Factories Act 1948 | 791 |
-| OISD | 106 |
+| Factories Act 1948 | 790 |
+| OISD | 107 |
 
 ## Hero checkpoint
 

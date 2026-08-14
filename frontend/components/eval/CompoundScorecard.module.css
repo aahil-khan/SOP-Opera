@@ -40,6 +40,25 @@
   line-height: var(--leading-normal);
 }
 
+.headerActions {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.runStamp {
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.caveat {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+
 .refresh {
   appearance: none;
   flex-shrink: 0;
