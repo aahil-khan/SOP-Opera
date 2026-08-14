@@ -241,6 +241,36 @@ async def test_abort_during_the_window_prevents_execution(session):
 
 
 @pytest.mark.asyncio
+async def test_actions_are_frozen_into_the_closure_report(session):
+    """
+    What the system did about an incident is part of its evidence, including
+    the Tier 3 actions it refused to take.
+    """
+    from app.reports.packet import PACKET_VERSION, _build_response_actions
+    from app.response.service import evaluate_and_arm
+
+    assert PACKET_VERSION >= 3, "response_actions landed in packet v3"
+
+    rid = await _new_review(session)
+    await evaluate_and_arm(
+        session, review_id=rid, asset_id=VESSEL_A,
+        risk_level="blocking",
+        fact_types=["elevated_gas", "incomplete_isolation", "zone_occupied"],
+    )
+    await session.commit()
+
+    frozen = await _build_response_actions(session, rid)
+    kinds = {a.action_kind for a in frozen}
+    assert "ventilation_on" in kinds
+    assert "unit_shutdown" in kinds, "a refusal is evidence, not noise"
+
+    shutdown = next(a for a in frozen if a.action_kind == "unit_shutdown")
+    assert shutdown.status == "refused"
+    assert shutdown.refusal_reason
+    assert shutdown.envelope["clauses"]["tier_permits_automation"] is False
+
+
+@pytest.mark.asyncio
 async def test_audit_chain_survives_a_full_response_cycle(session):
     """Every action and revocation chains; the chain must still verify."""
     from app.audit.service import verify_audit_chain
