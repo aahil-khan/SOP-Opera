@@ -16,7 +16,6 @@ import type { Asset } from "@/shared/schemas";
 import type { PlantFloor } from "@/shared/enums";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
-import { ResponseRail } from "@/components/response/ResponseRail";
 import styles from "./OverviewPanel.module.css";
 
 // ── Constants ──────────────────────────────────────────────────────────────
@@ -763,10 +762,6 @@ export function OverviewPanel() {
           </div>
         </div>
         <div className={styles.embeddedBody}>{kpiGrid}</div>
-        {/* What the system is doing on its own. Lives here rather than over the
-            map: the twin is already dense, and this belongs with the other
-            plant-wide read-outs. Renders nothing when there are no actions. */}
-        <ResponseRail />
       </div>
       {mounted && overlayOpen ? (
         <OverviewFeedOverlay
