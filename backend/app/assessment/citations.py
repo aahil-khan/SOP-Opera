@@ -95,6 +95,103 @@ def check_citations(
     )
 
 
+@dataclass(frozen=True)
+class CitationStripStats:
+    """
+    How often the guard had to intervene, over a set of assessments.
+
+    This is the per-model hallucination rate the bench reports: the guard is our
+    own measurement instrument, so the number is produced by the shipped code
+    path rather than by a separate scoring script.
+    """
+
+    assessments: int
+    assessments_with_strip: int
+    cited_tokens: int
+    stripped_tokens: int
+
+    @property
+    def strip_rate(self) -> float:
+        """Share of assessments where at least one citation was invented."""
+        return self.assessments_with_strip / self.assessments if self.assessments else 0.0
+
+    @property
+    def token_strip_rate(self) -> float:
+        """Share of citation tokens that were invented."""
+        return self.stripped_tokens / self.cited_tokens if self.cited_tokens else 0.0
+
+
+def stripped_citations_in_trace(agent_trace: Iterable[dict[str, Any]]) -> list[str]:
+    """
+    Recover the citations the guard removed from a persisted agent trace.
+
+    The orchestrator records each strip as an `error` step carrying
+    `detail.unsupported_citations` (`agents/nodes/orchestrator.py`), and the trace
+    is persisted to `assessment_metadata.agent_trace` — so the count is
+    measurable after the fact without a new column or a second write path.
+    """
+    out: list[str] = []
+    for step in agent_trace or []:
+        if not isinstance(step, dict):
+            continue
+        detail = step.get("detail")
+        if not isinstance(detail, dict):
+            continue
+        tokens = detail.get("unsupported_citations")
+        if isinstance(tokens, list):
+            out.extend(str(t) for t in tokens)
+    return out
+
+
+def supported_citations_in_trace(agent_trace: Iterable[dict[str, Any]]) -> list[str]:
+    out: list[str] = []
+    for step in agent_trace or []:
+        if not isinstance(step, dict):
+            continue
+        detail = step.get("detail")
+        if not isinstance(detail, dict):
+            continue
+        tokens = detail.get("supported_citations")
+        if isinstance(tokens, list):
+            out.extend(str(t) for t in tokens)
+    return out
+
+
+def aggregate_strip_stats(
+    traces: Iterable[Iterable[dict[str, Any]]],
+    *,
+    summaries: Iterable[str | None] | None = None,
+) -> CitationStripStats:
+    """
+    Aggregate strip statistics over many assessments.
+
+    `summaries` (post-strip prose) is used to count the citations that survived,
+    so `cited_tokens` covers assessments where the guard never fired and left no
+    trace step at all.
+    """
+    trace_list = [list(t or []) for t in traces]
+    summary_list = list(summaries or [])
+    assessments = len(trace_list)
+    with_strip = 0
+    stripped = 0
+    cited = 0
+    for i, trace in enumerate(trace_list):
+        removed = stripped_citations_in_trace(trace)
+        kept = supported_citations_in_trace(trace)
+        if not kept and i < len(summary_list):
+            kept = extract_citations(summary_list[i])
+        if removed:
+            with_strip += 1
+        stripped += len(removed)
+        cited += len(removed) + len(kept)
+    return CitationStripStats(
+        assessments=assessments,
+        assessments_with_strip=with_strip,
+        cited_tokens=cited,
+        stripped_tokens=stripped,
+    )
+
+
 def strip_unsupported(summary: str, unsupported: Iterable[str]) -> str:
     """
     Remove unsupported citation tokens from prose, leaving the sentence readable.
