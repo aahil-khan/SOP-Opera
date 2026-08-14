@@ -177,6 +177,11 @@ async def test_ai_ops_summary_math(client: AsyncClient):
     assert abs(body["total_cost_usd"] - 0.001) < 1e-9
     assert body["mean_latency_ms"] is not None
     assert abs(body["mean_latency_ms"] - 150.0) < 0.1
+    # Percentiles ride alongside the mean over the same two completed runs
+    # (100 ms, 200 ms): p50 is the midpoint, p95 is 95% of the way to the tail.
+    assert body["latency_sample_count"] == 2
+    assert abs(body["p50_latency_ms"] - 150.0) < 0.1
+    assert abs(body["p95_latency_ms"] - 195.0) < 0.1
     assert "langsmith_enabled" in body
     assert "langsmith_project" in body
     assert body["langsmith_project"] == "sop-opera"

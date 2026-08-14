@@ -188,6 +188,9 @@ export interface AiOpsSummary {
   mean_retrieval_relevance: number | null;
   retrieval_ran_count: number;
   mean_latency_ms: number | null;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  latency_sample_count: number;
   total_input_tokens: number;
   total_output_tokens: number;
   total_cost_usd: number;

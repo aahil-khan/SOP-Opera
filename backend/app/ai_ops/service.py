@@ -7,6 +7,10 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.ai_ops.schemas import AiOpsEventOut, AiOpsSummary
 from app.core.config import get_settings
+from app.core.stats import LatencySummary
+
+LATENCY_SAMPLE_WINDOW = 500
+"""Most recent completed assessments the latency percentiles are computed over."""
 
 
 async def list_recent_events(
@@ -147,6 +151,23 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
     mean_cost = row["mean_cost_usd"]
     mean_cost_usd = float(mean_cost) if mean_cost is not None else None
 
+    # Latency percentiles come from the raw sample rather than SQL so the bench
+    # harness and the page report the same numbers from the same code path
+    # (app/core/stats.py). Bounded window keeps this cheap as the log grows.
+    lat_rows = await session.execute(
+        text(
+            """
+            SELECT latency_ms
+            FROM ai_ops_events
+            WHERE status = 'complete' AND latency_ms IS NOT NULL
+            ORDER BY recorded_at DESC
+            LIMIT :window
+            """
+        ),
+        {"window": LATENCY_SAMPLE_WINDOW},
+    )
+    latency_summary = LatencySummary(r[0] for r in lat_rows.fetchall())
+
     langsmith_enabled, langsmith_project, langsmith_url = _langsmith_fields()
 
     last_ret = await session.execute(
@@ -208,6 +229,17 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
         mean_latency_ms=(
             round(mean_latency_ms, 2) if mean_latency_ms is not None else None
         ),
+        p50_latency_ms=(
+            round(latency_summary.p50_ms, 2)
+            if latency_summary.p50_ms is not None
+            else None
+        ),
+        p95_latency_ms=(
+            round(latency_summary.p95_ms, 2)
+            if latency_summary.p95_ms is not None
+            else None
+        ),
+        latency_sample_count=latency_summary.count,
         total_input_tokens=int(row["total_input_tokens"] or 0),
         total_output_tokens=int(row["total_output_tokens"] or 0),
         total_cost_usd=round(float(row["total_cost_usd"] or 0.0), 8),

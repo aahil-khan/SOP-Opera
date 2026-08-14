@@ -260,9 +260,13 @@ export function AIOpsDashboard() {
           tone={summary ? rateTone(summary.success_rate, 0.95, 0.85) : "neutral"}
         />
         <HeroStat
-          value={fmtLatency(summary?.mean_latency_ms)}
-          label="Mean latency"
-          hint="Average wall-clock time from job claim to persisted verdict"
+          value={fmtLatency(summary?.p50_latency_ms)}
+          label="Latency p50"
+          hint={
+            summary
+              ? `Median wall-clock time from job claim to persisted verdict. p95 ${fmtLatency(summary.p95_latency_ms)} · mean ${fmtLatency(summary.mean_latency_ms)}, over the last ${summary.latency_sample_count} completed run(s). The median is what a supervisor usually waits; p95 is the slow tail a mean hides.`
+              : "Median wall-clock time from job claim to persisted verdict"
+          }
         />
         <HeroStat
           value={summary ? fmtTokens(totalTokens) : "—"}
@@ -339,6 +343,20 @@ export function AIOpsDashboard() {
                 label="Provider errors"
                 value={summary ? String(summary.provider_error_count) : "—"}
                 hint="Failed runs where the provider call itself errored — timeout, API error, or similar"
+              />
+              <StatPair
+                label="Latency p95"
+                value={fmtLatency(summary?.p95_latency_ms)}
+                hint="Slowest 1 in 20 completed runs — the tail a mean hides, and the number a control room actually feels"
+              />
+              <StatPair
+                label="Latency p50"
+                value={fmtLatency(summary?.p50_latency_ms)}
+                hint={
+                  summary
+                    ? `Median completed run, over the last ${summary.latency_sample_count} sample(s)`
+                    : "Median completed run"
+                }
               />
               <StatPair
                 label="LLM-degraded"

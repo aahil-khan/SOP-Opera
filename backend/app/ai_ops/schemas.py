@@ -25,6 +25,11 @@ class AiOpsSummary(BaseModel):
     retrieval_ran_count: int = 0
     # Agent-path spend / latency (from ai_ops_events append log)
     mean_latency_ms: float | None = None
+    # Percentiles over the same sample. The mean is kept; p50/p95 are what a
+    # control room feels — see app/core/stats.py.
+    p50_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+    latency_sample_count: int = 0
     total_input_tokens: int = 0
     total_output_tokens: int = 0
     total_cost_usd: float = 0.0
