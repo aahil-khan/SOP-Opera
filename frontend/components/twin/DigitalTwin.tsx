@@ -30,7 +30,6 @@ import { AssetPanel } from "./AssetPanel";
 import { ReviewSidebar } from "./ReviewSidebar";
 import { MapControls, type MapLayerId } from "./MapControls";
 import { MapViewport, type MapViewportHandle } from "./MapViewport";
-import { ResponseRail } from "@/components/response/ResponseRail";
 import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
 import styles from "./DigitalTwin.module.css";
 
@@ -690,10 +689,6 @@ export function DigitalTwin() {
           />
         ) : null}
       </div>
-
-      {/* Plant-wide, under the map: what the system is doing on its own. Renders
-          nothing when there are no actions, so it costs no space at rest. */}
-      <ResponseRail />
 
       <div
         ref={floorTablistRef}
