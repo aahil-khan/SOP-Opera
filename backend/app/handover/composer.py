@@ -16,7 +16,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
+
 from app.risk.policy import dimensions_for
+
+logger = logging.getLogger(__name__)
 
 #: Presentation ordering only — the verdict itself is `risk/policy.classify`.
 _RISK_ORDER: dict[str, int] = {"blocking": 0, "elevated": 1, "nominal": 2}
@@ -24,10 +28,13 @@ _RISK_ORDER: dict[str, int] = {"blocking": 0, "elevated": 1, "nominal": 2}
 #: Item types, most urgent kind first, used as the tiebreak within a risk level.
 _TYPE_ORDER: dict[str, int] = {
     "open_review": 0,
-    "decision_condition": 1,
-    "active_fact": 2,
-    "open_task": 3,
-    "note": 4,
+    # Plant the system is actively holding in a protective state ranks just
+    # under the review itself — it is live equipment state, not a note.
+    "response_action": 1,
+    "decision_condition": 2,
+    "active_fact": 3,
+    "open_task": 4,
+    "note": 5,
 }
 
 
@@ -55,6 +62,7 @@ async def compose_carry_forward(
     items.extend(await _active_facts(session, since=since))
     items.extend(await _open_tasks(session))
     items.extend(await _decision_conditions(session, since=since))
+    items.extend(await _active_response_actions(session))
 
     items.sort(key=_rank)
     for position, item in enumerate(items):
@@ -108,6 +116,74 @@ async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
                 "risk_level": risk,
                 "hazard_dimensions": [],
                 "requires_ack": risk in ("elevated", "blocking"),
+                "source": "auto",
+            }
+        )
+    return items
+
+
+async def _active_response_actions(
+    session: AsyncSession,
+) -> list[dict[str, Any]]:
+    """
+    Automatic actions still in effect at the shift boundary (W1).
+
+    A fan the system started and a gate it shut are plant state the incoming
+    operator inherits, and nothing else in the carry-forward list would tell
+    them. These always require acknowledgement: the whole point of the handover
+    is that someone knowingly takes custody of them, and leaving that
+    unacknowledged is exactly what `unacknowledged_handover` exists to detect.
+
+    Best-effort — a database without the response tables must not stop a shift
+    handover from being composed.
+    """
+    try:
+        result = await session.execute(
+            text(
+                """
+                SELECT ra.id, ra.review_id, ra.asset_id, ra.action_kind, ra.tier,
+                       ra.executed_at, a.name AS asset_name,
+                       d.label AS device_label, d.state AS device_state
+                FROM response_actions ra
+                LEFT JOIN assets a ON a.id = ra.asset_id
+                LEFT JOIN response_devices d ON d.id = ra.device_id
+                WHERE ra.status = 'active' AND ra.tier > 0
+                ORDER BY ra.tier DESC, ra.executed_at DESC
+                """
+            )
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("response actions unavailable for handover composition")
+        return []
+
+    from app.response.envelope import ACTION_REGISTRY
+
+    items: list[dict[str, Any]] = []
+    for row in result.fetchall():
+        m = row._mapping
+        spec = ACTION_REGISTRY.get(str(m["action_kind"]))
+        label = spec.label if spec else str(m["action_kind"])
+        asset_name = m["asset_name"] or "the plant"
+        state = (
+            f" ({m['device_label']} is {m['device_state']})"
+            if m["device_label"]
+            else ""
+        )
+        items.append(
+            {
+                "item_type": "response_action",
+                "review_id": m["review_id"],
+                "asset_id": m["asset_id"],
+                "asset_name": m["asset_name"],
+                "task_id": None,
+                "title": f"{asset_name} — {label} still in effect",
+                "detail": (
+                    f"The system applied this automatically and it has not been "
+                    f"revoked{state}. It stays in effect until someone undoes it."
+                ),
+                "risk_level": "elevated" if m["tier"] == 1 else "blocking",
+                "hazard_dimensions": [],
+                "requires_ack": True,
                 "source": "auto",
             }
         )
