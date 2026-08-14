@@ -37,6 +37,22 @@ class ScenarioStep(BaseModel):
     that develops over 30 minutes of plant time is replayed in ~30 seconds; only
     `t_offset_minutes` is meaningful for lead-time measurement.
     """
+    label: str | None = None
+    """Short beat title for manual Next-step UI (optional)."""
+
+
+def step_display_label(step: ScenarioStep) -> str:
+    """Human label for a step — YAML `label` if set, else a category fallback."""
+    if step.label and step.label.strip():
+        return step.label.strip()
+    work = step.payload.get("work_type")
+    if step.category == "sensor" and "gas_reading" in step.payload:
+        return f"Gas {step.payload.get('gas_reading')} {step.payload.get('unit', 'ppm')}"
+    if step.category == "permit" and work:
+        return f"Permit · {str(work).replace('_', ' ')}"
+    if step.category == "worker_location":
+        return f"Worker · {step.payload.get('zone', 'zone')}"
+    return step.category.replace("_", " ").capitalize()
 
 
 class ScenarioFile(BaseModel):

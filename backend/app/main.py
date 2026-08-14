@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import logging
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
@@ -28,7 +29,11 @@ async def lifespan(_app: FastAPI):
         await apply_schema()
         await seed_minimal()
         try:
-            await seed_embeddings()
+            # OpenAI embedding seed can hang on a stalled HTTPS call; don't block boot.
+            await asyncio.wait_for(
+                seed_embeddings(),
+                timeout=settings.agent_timeout_seconds,
+            )
         except Exception as emb_exc:  # noqa: BLE001
             logger.warning("seed_embeddings skipped: %s", emb_exc)
         logger.info("schema applied + seed complete")

@@ -7,9 +7,11 @@ import { API_BASE } from "@/lib/api";
 export interface DemoStatus {
   running: boolean;
   mode?: "idle" | "scripted" | "random";
+  playback?: "auto" | "manual" | null;
   scenario: string | null;
   step_index: number;
   total_steps: number;
+  next_step_label?: string | null;
   started_at: string | null;
   issues_spawned?: number;
   active_issue_count?: number;
@@ -67,7 +69,11 @@ async function refreshDemoStatus() {
 }
 
 function pollIntervalMs() {
-  return useDemoStatusStore.getState().status?.running ? 1500 : 8000;
+  const st = useDemoStatusStore.getState().status;
+  if (st?.running) return 1500;
+  // Manual demos stay armed after the last step until reset — keep status fresh.
+  if (st?.playback === "manual") return 2000;
+  return 8000;
 }
 
 function restartPolling() {
@@ -115,7 +121,7 @@ export function useDemoStatus() {
   useEffect(() => {
     if (pollSubscribers === 0 || !pollTimer) return;
     restartPolling();
-  }, [status?.running]);
+  }, [status?.running, status?.playback]);
 
   return {
     status,

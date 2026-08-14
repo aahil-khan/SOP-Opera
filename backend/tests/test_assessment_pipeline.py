@@ -231,7 +231,13 @@ async def test_assessment_pipeline_compound_risk(client: AsyncClient):
     assert latest["recommendations"]
     assert latest["metadata"] is not None
     assert latest["metadata"]["retrieval_mode"] in ("rag", "deterministic", "skipped")
-    assert latest["metadata"]["provider"] == "mock"
+    # The agent graph records the execution path alongside the provider
+    # ("langgraph:mock"), and `normalize_provider` is how production code reads
+    # that back — see `agents/llm_outcomes.py`. Compare the same way, so this
+    # asserts which LLM ran rather than which graph ran it.
+    from app.agents.llm_outcomes import normalize_provider
+
+    assert normalize_provider(latest["metadata"]["provider"]) == "mock"
     assert "retrieved_references" in latest
     assert "reasoning_factors" in latest
     assert latest["reasoning_factors"], "expected structured why factors"

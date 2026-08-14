@@ -1,48 +1,66 @@
 name: compound_risk
 label: Compound Risk
 description: >
-  Signature demo sequence. Gas rises → worker enters hazardous zone →
-  conflicting permits activate → compound block. Matches TDS §12 build-up.
+  Signature demo sequence — paced for narration. Elevated (sub-critical) gas alone
+  is only an early warning. Hot work without verified isolation completes the
+  hazard pathway (atmosphere + ignition + failed barrier) and the compound engine
+  blocks while a single-sensor critical alarm is still silent. A worker then
+  enters the zone — the fatal moment in the real pattern, already stopped.
+  No late critical climb, so the demo stays on one assessment arc.
+
+  Prefer manual playback (Demo bar → Load → Next step) so each beat can be
+  narrated. Auto-play still honors delay_seconds for the Grand Tour.
+
+  Two clocks: `t_offset_minutes` is plant process time; `delay_seconds` is
+  auto-play pacing only.
 
 steps:
-  # Plant safe → gas rises → Elevated Gas
+  # Beat 1 — Gas elevated, still below the single-sensor critical line.
   - asset: Vessel A
     category: sensor
+    label: Elevated gas (sub-critical)
     payload:
-      gas_reading: 25.5
+      gas_reading: 25.0
       unit: ppm
     confidence: 0.98
     delay_seconds: 0
+    t_offset_minutes: 0
     valid_for_hours: 4
 
-  # Worker enters hazardous zone → Zone Occupied
+  # Beat 2 — Hot-work permit, isolation never confirmed → BLOCKS.
+  - asset: Vessel A
+    category: permit
+    label: Hot work · isolation unverified
+    payload:
+      permit_id: p-demo-hot-1
+      status: active
+      work_type: hot_work
+    confidence: 1.0
+    delay_seconds: 10
+    t_offset_minutes: 8
+    valid_for_hours: 4
+
+  # Beat 3 — Worker enters; already blocking.
   - asset: Vessel A
     category: worker_location
+    label: Worker enters hazardous zone
     payload:
       worker_id: "55555555-5555-5555-5555-555555555551"
       zone: hazardous
     confidence: 0.95
-    delay_seconds: 3
+    delay_seconds: 10
+    t_offset_minutes: 14
     valid_for_hours: 4
 
-  # First permit activates (hot work)
+  # Beat 4 — Overlapping cold work deepens control-failure evidence.
   - asset: Vessel A
     category: permit
+    label: Overlapping cold-work permit
     payload:
-      permit_id: p-1
-      status: active
-      work_type: hot_work
-    confidence: 1.0
-    delay_seconds: 3
-    valid_for_hours: 4
-
-  # Second overlapping permit → Permit Conflict (compound now present)
-  - asset: Vessel A
-    category: permit
-    payload:
-      permit_id: p-2
+      permit_id: p-demo-cold-1
       status: active
       work_type: cold_work
     confidence: 1.0
-    delay_seconds: 2
+    delay_seconds: 8
+    t_offset_minutes: 18
     valid_for_hours: 4

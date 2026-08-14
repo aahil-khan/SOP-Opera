@@ -2,6 +2,53 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Finals working agreement — active until 25 Aug 2026
+
+Four people are working this repo in parallel toward the hackathon finals. Scope, ownership and sequencing
+live in the finals work plan (kept outside this repo — ask for it if you don't have it). The rules in this
+section override normal judgement calls.
+
+### Owned files — call them, don't modify them
+
+Each file below is the **only** writer of something, which is why it exists. Changing one is a normal
+request, not a blocker to route around: raise it and it lands through review. **Never add a fast path that
+bypasses one** — a guard that runs at one call site is not a guard.
+
+| File | Sole responsibility |
+| --- | --- |
+| `backend/app/reviews/repository.py` — `transition_review()` | only writer of `reviews.state`; fires audit, broadcast and per-state side effects |
+| `backend/app/reviews/state_machine.py` | the transition table it validates against |
+| `backend/app/risk/policy.py` — `classify()` | the only place facts become a verdict |
+| `backend/app/audit/service.py` + `audit/chain.py` | only writer of `audit_entries`; hash-chained under an advisory lock |
+| `backend/app/agents/llm.py` | the only LLM seam |
+| `backend/app/db/schema.sql` | applied on every boot; there is no migration system to catch a mistake |
+| `shared/**` + `shared/python/schemas.py` | hand-kept source of truth for both languages |
+
+Two specific traps, because both look like reasonable fixes:
+
+- **Do not add a fourth `RiskLevel`.** `shared/enums.ts` is `nominal | elevated | blocking`. Anything that
+  isn't a risk level — sensor coverage, confidence, staleness — rides as a separate orthogonal field, or it
+  leaks an unrelated concept into `classify()`, the FSM and the eval harness at once.
+- **Do not put absence-of-data detection into a `rule_*` function.** Rules see one `ContextEntryView` and
+  never "what failed to arrive". That purity is load-bearing for the eval harness.
+
+### Branches and PRs
+
+Work on a feature branch, open a PR, one reviewer merges to `main`. Never push to `main` directly, never
+force-push, never merge someone else's PR.
+
+### Definition of done — every PR
+
+1. **Tests pass**, with the command and its output pasted in. Run DB-backed test files **one at a time**.
+2. **Skipped is not passed.** DB-backed tests skip silently with `Postgres unreachable` and the run still
+   reports green — see the warning under *Tests* below. If your output shows skips, the suite did not
+   actually exercise your change.
+3. **No owned file modified**, or it is called out in the PR title.
+4. **Every user-visible claim has a `file:line` behind it.** If a judge greps for it, it must exist. This
+   applies to UI copy, README lines and page labels.
+5. **Anything synthetic is labelled in the product**, not just in the PR.
+6. **A screenshot or CLI output** of the thing actually working.
+
 ## What this is
 
 SOP Opera is an AI-powered **industrial safety intelligence** platform, built for the hackathon brief in `docs/archive/problem statement.md`. The premise of that brief: in incidents like the Visakhapatnam Steel Plant coke-oven explosion, the sensor data existed but no intelligence layer connected it to an operational decision in time. This project is that layer — it fuses sensors, permits, maintenance state, worker location, and shift records into a compound-risk picture, surfaces it on a live plant twin, and drives it to a recorded human decision with an audit trail.
@@ -10,7 +57,21 @@ A supervisor sees a live 2D plant twin; rules turn plant context into named fact
 
 ### What the judges score
 
-Weighted: Business Impact 25% · Technical Excellence 25% · Scalability 20% · UX 15% · Innovation 15%. The evaluation focus is concrete and the codebase already targets it — **prefer changes that move these numbers or make them legible**:
+**Finals weights: Innovation 25% · Business Impact 25% · Technical Excellence 20% · Scalability 15% · UX 15%.**
+
+These changed after the prelims: Innovation gained 10 points and is now tied for the top weight, while
+Technical Excellence and Scalability lost 5 each. Two consequences worth holding onto — our deepest
+engineering investment now sits in the two categories that lost ground, and the archived brief in
+`docs/archive/problem statement.md` still carries the **prelims** table (Innovation 15%). That is correct for
+what it is; do not "fix" it to match this line.
+
+A second, apparently equal-weight six-criterion sheet also appears in the finals material — Relevance to
+Problem Statement · Innovation & Creativity · Technical Implementation · Impact & Scalability · Presentation
+& Clarity · Business Viability. Which is authoritative is unconfirmed, so **prefer work that scores on both**;
+note that "Presentation & Clarity" is worth ~17% on that sheet and has no equivalent on the weighted table.
+
+The evaluation focus is concrete and the codebase already targets it — **prefer changes that move these
+numbers or make them legible**:
 
 | Judged on | Where it lives |
 | --- | --- |
@@ -20,7 +81,7 @@ Weighted: Business Impact 25% · Technical Excellence 25% · Scalability 20% · 
 | Regulatory coverage (OISD / Factories Act) | clause-level statutory corpus in `db/seed_embeddings.py` (`INDIAN_REGULATIONS`, each with a `clause` and primary-source `source_url`), surfaced by **deterministic SQL** and validated by `assessment/citations.py`; measured by `eval/coverage.py` |
 | Scalability | durable `SKIP LOCKED` assessment queue, gated agent fan-out, webhook ingest |
 
-The headline story is the VSP coke-oven scenario (`simulator/scenarios/vsp_coke_oven.yaml`): the compound engine blocks while gas is still **below** the single-sensor critical threshold.
+The headline story for the live demo is `compound_risk` (elevated gas → unisolated hot work → block → worker enters). `vsp_coke_oven` remains the eval lead-time hero: the compound engine blocks while gas is still **below** the single-sensor critical threshold.
 
 ### Docs
 
@@ -58,6 +119,15 @@ cd frontend && npx tsx --test lib/*.test.ts
 ```
 
 Backend tests split into two kinds. Pure-logic ones (`test_state_machine.py`, `test_agent_routing.py`, `test_agents_langgraph.py`, `test_ambient.py`, `test_config_thresholds.py`, `test_scenario_dsl.py`) need nothing and finish in under a second. The rest spin an `httpx` `ASGITransport` client over the real app against Postgres on `:5433`, applying `schema.sql` and seeding per fixture — these are slow and share global tables, so **run them a file at a time** and prefer the pure-logic tests for fast iteration. Some of them (e.g. `test_ai_ops_summary.py`, `test_assessment_pipeline.py`, `test_assets_endpoint.py`) can hang rather than fail when the DB state is contended; if a run stalls, that's the cause, not your change.
+
+> **A green run may mean nothing.** When Postgres is unreachable those tests **skip** rather than fail, and
+> `pytest -q` still exits 0 — roughly 85 tests across ~22 files vanish silently. Confirm with `-rs`, which
+> prints the reason (`Postgres unreachable: password authentication failed for user "sop"`).
+>
+> The common cause is **another project's container holding port 5433**. Our compose expects
+> `pgvector/pgvector:pg16` there; check with `docker ps` and look at what is actually bound. A plain
+> `postgres:*` image on that port fails auth for user `sop`, and would lack the `vector` extension even if
+> auth succeeded. Free the port (or remap ours) before trusting a test run.
 
 ### Shared contracts
 
