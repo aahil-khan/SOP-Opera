@@ -1,7 +1,15 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchAiOpsSummary, type AiOpsSummary } from "@/lib/liveApi";
+import {
+  fetchAiOpsEvents,
+  fetchAiOpsSummary,
+  fetchProviderState,
+  putProviderState,
+  type AiOpsEvent,
+  type AiOpsSummary,
+  type ProviderState,
+} from "@/lib/liveApi";
 import styles from "./AIOpsDashboard.module.css";
 
 type Tone = "good" | "warn" | "bad" | "neutral";
@@ -113,14 +121,23 @@ function StatPair({
 
 export function AIOpsDashboard() {
   const [summary, setSummary] = useState<AiOpsSummary | null>(null);
+  const [events, setEvents] = useState<AiOpsEvent[] | null>(null);
+  const [provider, setProvider] = useState<ProviderState | null>(null);
+  const [providerBusy, setProviderBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAiOpsSummary();
+      const [data, recent, prov] = await Promise.all([
+        fetchAiOpsSummary(),
+        fetchAiOpsEvents(12),
+        fetchProviderState(),
+      ]);
       setSummary(data);
+      setEvents(recent);
+      setProvider(prov);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -132,6 +149,24 @@ export function AIOpsDashboard() {
   useEffect(() => {
     void refresh();
   }, [refresh]);
+
+  const selectProvider = useCallback(
+    async (value: string) => {
+      setProviderBusy(true);
+      try {
+        const next = await putProviderState(
+          value === "__default__" ? null : value,
+        );
+        setProvider(next);
+        setError(null);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setProviderBusy(false);
+      }
+    },
+    [],
+  );
 
   const totalTokens =
     (summary?.total_input_tokens ?? 0) + (summary?.total_output_tokens ?? 0);
@@ -150,6 +185,34 @@ export function AIOpsDashboard() {
           </p>
         </div>
         <div className={styles.headerControls}>
+          <label
+            className={styles.providerPicker}
+            title={
+              provider?.scope ??
+              "Provider for assessments enqueued from now on (in-process; resets on restart)"
+            }
+          >
+            <span className={styles.providerLabel}>Provider</span>
+            <select
+              className={styles.providerSelect}
+              disabled={providerBusy || provider == null}
+              value={
+                provider?.source === "runtime_override"
+                  ? provider.active_provider
+                  : "__default__"
+              }
+              onChange={(e) => void selectProvider(e.target.value)}
+            >
+              <option value="__default__">
+                default ({provider?.env_default ?? "mock"})
+              </option>
+              {(provider?.available ?? []).map((p) => (
+                <option key={p} value={p}>
+                  {p}
+                </option>
+              ))}
+            </select>
+          </label>
           <span
             className={styles.traceChip}
             data-on={tracingOn}
@@ -394,6 +457,72 @@ export function AIOpsDashboard() {
           </div>
         </section>
       </div>
+
+      <section className={styles.panel}>
+        <header className={styles.panelHeader}>
+          <h2 className={styles.panelTitle}>Recent assessments</h2>
+          <p className={styles.panelSubtitle}>
+            Every run stamped with the provider and model that produced it
+            {provider?.source === "runtime_override"
+              ? ` · runtime override: ${provider.active_provider} (in-process, resets on restart)`
+              : ""}
+          </p>
+        </header>
+        <div className={styles.panelBody}>
+          {events && events.length > 0 ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.eventsTable}>
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Status</th>
+                    <th>Provider</th>
+                    <th>Model</th>
+                    <th>Latency</th>
+                    <th>Tokens</th>
+                    <th>Cost</th>
+                    <th>Retrieval</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((e) => (
+                    <tr key={e.assessment_id} data-status={e.status}>
+                      <td title={e.recorded_at}>
+                        {new Date(e.recorded_at).toLocaleTimeString()}
+                      </td>
+                      <td>
+                        <span
+                          className={styles.statusChip}
+                          data-status={e.status}
+                        >
+                          {e.status}
+                          {e.degraded ? " · degraded" : ""}
+                        </span>
+                      </td>
+                      <td>{e.provider}</td>
+                      <td>{e.model ?? "—"}</td>
+                      <td>{fmtLatency(e.latency_ms)}</td>
+                      <td>{fmtTokens(e.tokens_in + e.tokens_out)}</td>
+                      <td>{fmtCost(e.cost_usd)}</td>
+                      <td>
+                        {e.retrieval_mode ?? "—"}
+                        {e.retrieval_score != null
+                          ? ` (${e.retrieval_score.toFixed(2)})`
+                          : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className={styles.note}>
+              No assessments recorded yet — run a scenario from Demo to
+              populate this log.
+            </p>
+          )}
+        </div>
+      </section>
 
       <p className={styles.sourceNote}>
         Source: local database

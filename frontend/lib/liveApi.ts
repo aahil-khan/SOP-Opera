@@ -489,6 +489,48 @@ export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
   return request<AiOpsSummary>("/ai-ops/summary");
 }
 
+export interface ProviderState {
+  active_provider: string;
+  source: "runtime_override" | "env_default";
+  env_default: string;
+  available: string[];
+  scope: string;
+}
+
+export function fetchProviderState(): Promise<ProviderState> {
+  return request<ProviderState>("/ai-ops/provider");
+}
+
+export function putProviderState(
+  provider: string | null,
+): Promise<ProviderState> {
+  return request<ProviderState>("/ai-ops/provider", {
+    method: "PUT",
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export interface AiOpsEvent {
+  assessment_id: string;
+  review_id: string;
+  status: string;
+  provider: string;
+  model: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  latency_ms: number;
+  retrieval_mode: string | null;
+  retrieval_score: number | null;
+  failure_reason: string | null;
+  degraded: boolean;
+  recorded_at: string;
+}
+
+export function fetchAiOpsEvents(limit = 20): Promise<AiOpsEvent[]> {
+  return request<AiOpsEvent[]>(`/ai-ops/events?limit=${limit}`);
+}
+
 export interface DetectorSummary {
   name: string;
   accuracy: number;

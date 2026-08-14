@@ -5,8 +5,58 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai_ops.schemas import AiOpsSummary
+from app.ai_ops.schemas import AiOpsEventOut, AiOpsSummary
 from app.core.config import get_settings
+
+
+async def list_recent_events(
+    session: AsyncSession, *, limit: int = 20
+) -> list[AiOpsEventOut]:
+    """Most recent terminal assessment outcomes, newest first."""
+    result = await session.execute(
+        text(
+            """
+            SELECT assessment_id, review_id, status, provider, model,
+                   tokens_in, tokens_out, cost_usd, latency_ms,
+                   retrieval_mode, retrieval_score, failure_reason,
+                   degraded, recorded_at
+            FROM ai_ops_events
+            ORDER BY recorded_at DESC
+            LIMIT :limit
+            """
+        ),
+        {"limit": max(1, min(int(limit), 100))},
+    )
+    events: list[AiOpsEventOut] = []
+    for row in result.fetchall():
+        m = row._mapping
+        events.append(
+            AiOpsEventOut(
+                assessment_id=str(m["assessment_id"]),
+                review_id=str(m["review_id"]),
+                status=m["status"],
+                provider=m["provider"],
+                model=m["model"],
+                tokens_in=int(m["tokens_in"] or 0),
+                tokens_out=int(m["tokens_out"] or 0),
+                cost_usd=float(m["cost_usd"] or 0.0),
+                latency_ms=int(m["latency_ms"] or 0),
+                retrieval_mode=m["retrieval_mode"],
+                retrieval_score=(
+                    float(m["retrieval_score"])
+                    if m["retrieval_score"] is not None
+                    else None
+                ),
+                failure_reason=m["failure_reason"],
+                degraded=bool(m["degraded"]),
+                recorded_at=(
+                    m["recorded_at"].isoformat()
+                    if hasattr(m["recorded_at"], "isoformat")
+                    else str(m["recorded_at"])
+                ),
+            )
+        )
+    return events
 
 
 def _langsmith_fields() -> tuple[bool, str, str | None]:

@@ -39,3 +39,41 @@ class AiOpsSummary(BaseModel):
     langsmith_enabled: bool = False
     langsmith_project: str = "sop-opera"
     langsmith_url: str | None = None
+
+
+class ProviderStateOut(BaseModel):
+    """Effective AI provider selection for subsequent assessments."""
+
+    active_provider: str
+    source: Literal["runtime_override", "env_default"]
+    env_default: str
+    available: list[str]
+    scope: str = (
+        "Applies to assessments enqueued by this API process from now on; "
+        "resets to the env default on restart."
+    )
+
+
+class ProviderStateIn(BaseModel):
+    """Set (or clear with null) the runtime default provider."""
+
+    provider: str | None = None
+
+
+class AiOpsEventOut(BaseModel):
+    """One terminal assessment outcome from the append-only ai_ops_events log."""
+
+    assessment_id: str
+    review_id: str
+    status: str
+    provider: str
+    model: str | None = None
+    tokens_in: int = 0
+    tokens_out: int = 0
+    cost_usd: float = 0.0
+    latency_ms: int = 0
+    retrieval_mode: str | None = None
+    retrieval_score: float | None = None
+    failure_reason: str | None = None
+    degraded: bool = False
+    recorded_at: str
