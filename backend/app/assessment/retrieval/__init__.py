@@ -10,6 +10,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from shared.python.schemas import RetrievedReference
 
+from app.assessment.embeddings import active_embedding_model
 from app.assessment.retrieval.deterministic import (
     DeterministicRetriever,
     source_types_for_facts,
@@ -99,9 +100,7 @@ async def retrieve(
     """
     settings = get_settings()
     source_types = source_types_for_facts(fact_types)
-    embedding_model = (
-        settings.embedding_model if settings.embedding_provider != "mock" else "mock-hash"
-    )
+    embedding_model = active_embedding_model()
 
     if not fact_types:
         return HybridRetrievalResult(

@@ -73,7 +73,12 @@ class Settings(BaseSettings):
     # list is the switch. Env override is JSON, e.g.
     # RAG_VECTOR_SOURCE_TYPES='["historical_incidents","regulations"]'
     rag_vector_source_types: list[str] = ["historical_incidents"]
+    # mock | local (both hash-based, no semantics) · openai_compatible (hosted,
+    # needs OPENAI_API_KEY) · ollama (local semantic vectors, no key)
     embedding_provider: str = "mock"
+    # Only used when EMBEDDING_PROVIDER=ollama. 768-dim; zero-padded to
+    # embedding_dim, which leaves cosine similarity unchanged.
+    ollama_embedding_model: str = "nomic-embed-text"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     rag_top_k: int = 5
