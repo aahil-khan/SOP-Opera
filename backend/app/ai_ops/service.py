@@ -165,7 +165,16 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
     last_ret_row = last_ret.first()
     lr = last_ret_row._mapping if last_ret_row is not None else None
 
+    from app.context.coverage import coverage_for_assets
+
+    coverage = await coverage_for_assets(session)
+    blind_count = sum(1 for c in coverage if c.coverage == "blind")
+    degraded_count_cov = sum(1 for c in coverage if c.coverage == "degraded")
+
     return AiOpsSummary(
+        blind_channel_count=blind_count,
+        degraded_channel_count=degraded_count_cov,
+        asset_count=len(coverage),
         last_retrieval_mode=(lr["retrieval_mode"] if lr else None),
         last_retrieval_quality=(lr["retrieval_quality"] if lr else None),
         last_retrieval_score=(

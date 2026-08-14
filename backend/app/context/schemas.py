@@ -41,6 +41,16 @@ class ContextIngestResult(BaseModel):
     review: Review | None
 
 
+class AssetCoverageOut(BaseModel):
+    """W3a sensor coverage — orthogonal to risk_level, never a risk level."""
+
+    asset_id: UUID
+    coverage: Literal["assessed", "degraded", "blind"]
+    last_sensor_seen: datetime | None = None
+    seconds_since_sensor: float | None = None
+    reason: str
+
+
 class CreateReviewIn(BaseModel):
     asset_id: UUID
     triggered_by: str = "manual_request"

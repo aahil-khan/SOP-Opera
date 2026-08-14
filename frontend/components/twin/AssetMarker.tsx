@@ -10,6 +10,8 @@ interface AssetMarkerProps {
   x: number;
   y: number;
   risk: RiskLevel;
+  /** W3a sensor coverage — orthogonal to risk; blind is "no data", not "safe". */
+  coverage?: "assessed" | "degraded" | "blind";
   sensorCritical?: boolean;
   resolved?: boolean;
   /** Same green "new" cue as the open-work list. */
@@ -26,6 +28,7 @@ export const AssetMarker = memo(
       x,
       y,
       risk,
+      coverage = "assessed",
       sensorCritical = false,
       resolved = false,
       fresh = false,
@@ -52,7 +55,7 @@ export const AssetMarker = memo(
         role="button"
         tabIndex={-1}
         data-map-marker=""
-        aria-label={`${label}, ${resolved ? "work halted" : `risk ${risk}`}${sensorCritical ? ", sensor critical" : ""}${fresh ? ", new data" : ""}`}
+        aria-label={`${label}, ${resolved ? "work halted" : `risk ${risk}`}${sensorCritical ? ", sensor critical" : ""}${coverage !== "assessed" ? `, sensor coverage ${coverage}` : ""}${fresh ? ", new data" : ""}`}
       >
         <circle className={styles.hit} r={22} />
         <circle
@@ -66,10 +69,33 @@ export const AssetMarker = memo(
         <circle
           className={styles.disk}
           data-risk={risk}
+          data-coverage={coverage !== "assessed" ? coverage : undefined}
           data-sensor-critical={sensorCritical ? "true" : undefined}
           data-resolved={resolved ? "true" : undefined}
           r={10}
         />
+        {coverage !== "assessed" ? (
+          // Not another risk color: a dashed ring + struck disk reads as
+          // "no signal", distinct from nominal green and from any alarm state.
+          <>
+            <circle
+              className={styles.coverageRing}
+              data-coverage={coverage}
+              r={16}
+              aria-hidden
+            />
+            {coverage === "blind" ? (
+              <line
+                className={styles.coverageSlash}
+                x1={-7}
+                y1={7}
+                x2={7}
+                y2={-7}
+                aria-hidden
+              />
+            ) : null}
+          </>
+        ) : null}
         {fresh ? (
           <>
             <circle className={styles.freshRing} r={14} aria-hidden />

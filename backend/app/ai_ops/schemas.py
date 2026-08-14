@@ -40,6 +40,11 @@ class AiOpsSummary(BaseModel):
     langsmith_project: str = "sop-opera"
     langsmith_url: str | None = None
 
+    # W3a sensor coverage — live channel health across all assets.
+    blind_channel_count: int = 0
+    degraded_channel_count: int = 0
+    asset_count: int = 0
+
     # Last retrieval quality-gate trace (from assessment_metadata) — the W5
     # demo beat: what vector search scored and why the mode won.
     last_retrieval_mode: str | None = None

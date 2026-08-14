@@ -53,6 +53,13 @@ class Settings(BaseSettings):
     tank_level_low_pct: float = 5.0
     weather_wind_hold_ms: float = 15.0
     cert_expiry_warning_days: int = 14
+    # "Blind, not safe" (W3a): sensor coverage is an orthogonal field beside
+    # risk_level, never a risk level. No reading newer than this → the channel
+    # is blind; ambient heartbeats every 120s, so 180 tolerates one missed beat.
+    sensor_stale_after_seconds: int = 180
+    # Self-reported degradation: a sensor entry below this confidence (or with a
+    # fault payload) marks coverage degraded. Detected by rule_sensor_unreliable.
+    sensor_confidence_floor: float = 0.5
     default_owner_user_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     simulator_default_step_delay_seconds: int = 5
     random_max_concurrent_issues: int = 8

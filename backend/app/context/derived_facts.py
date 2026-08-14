@@ -516,6 +516,52 @@ def rule_weather_hold(
     )
 
 
+def rule_sensor_unreliable(
+    entries: list[ContextEntryView],
+    *,
+    now: datetime | None = None,
+    confidence_floor: float | None = None,
+) -> DerivedFact | None:
+    """
+    Self-reported sensor degradation — low confidence or an explicit fault payload.
+
+    Pure over the entries it is given, like every rule here: it sees what a
+    sensor *said about itself*, never what failed to arrive. Staleness
+    (absence of data) is detected in the context read path
+    (`app/context/coverage.py`), not in a rule — rules cannot observe silence.
+
+    ## Deliberately NOT registered in DERIVED_FACT_RULES
+
+    Registration would put `sensor_unreliable` into `ALL_RULE_FACT_TYPES`
+    (risk/policy.py derives it from the registry), where any grounded rule fact
+    escalates a nominal verdict to elevated — so a flaky sensor alone would
+    change the shipped verdict and every eval metric. Coverage must never
+    change a verdict: it withholds the nominal claim instead ("blind is not
+    safe"), carried as the orthogonal `coverage` field computed in
+    `app/context/coverage.py`, which is this rule's only caller.
+    """
+    confidence_floor = (
+        confidence_floor
+        if confidence_floor is not None
+        else get_settings().sensor_confidence_floor
+    )
+    hits = [
+        e
+        for e in entries
+        if e.category == "sensor"
+        and (
+            e.confidence < confidence_floor
+            or e.payload.get("fault") is True
+            or e.payload.get("status") == "fault"
+        )
+    ]
+    if not hits:
+        return None
+    return _fact(
+        hits[0].asset_id, "sensor_unreliable", True, [h.id for h in hits], now
+    )
+
+
 def _parse_dt(value: Any) -> datetime | None:
     if isinstance(value, datetime):
         return value if value.tzinfo else value.replace(tzinfo=timezone.utc)

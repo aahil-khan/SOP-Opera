@@ -22,6 +22,8 @@ import floorPlanMap from "@/lib/floor_plan_map.json";
 import { buildFloorSpatialLinks } from "@/lib/riskHeatmap";
 import { useNewEntries } from "@/lib/useNewEntries";
 import { useNewReviewChime } from "@/lib/useNewReviewChime";
+import { fetchAssetsCoverage } from "@/lib/liveApi";
+import type { CoverageState } from "@/lib/sensorThresholds";
 import type { PlantFloor, RiskLevel } from "@/shared/enums";
 import { FloorPlan } from "./FloorPlan";
 import { FloorOverview } from "./FloorOverview";
@@ -185,6 +187,32 @@ export function DigitalTwin() {
 
   useEffect(() => {
     setEnabledLayers(readEnabledLayers());
+  }, []);
+
+  // W3a sensor coverage — polled, since staleness is a clock phenomenon the
+  // event stream cannot announce (a dead sensor sends nothing).
+  const [coverageByAsset, setCoverageByAsset] = useState<
+    Record<string, CoverageState>
+  >({});
+  useEffect(() => {
+    let alive = true;
+    const load = async () => {
+      try {
+        const rows = await fetchAssetsCoverage();
+        if (!alive) return;
+        setCoverageByAsset(
+          Object.fromEntries(rows.map((r) => [r.asset_id, r.coverage])),
+        );
+      } catch {
+        /* endpoint unreachable — keep last known coverage */
+      }
+    };
+    void load();
+    const timer = setInterval(load, 20_000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
   }, []);
 
   const opsLayerOn = enabledLayers.includes("ops");
@@ -600,6 +628,7 @@ export function DigitalTwin() {
                 <FloorPlan
                   floor={activeFloor}
                   riskByAsset={riskByAsset}
+                  coverageByAsset={coverageByAsset}
                   criticalByAsset={criticalByAsset}
                   resolvedByAsset={resolvedByAsset}
                   freshByAsset={freshByAsset}

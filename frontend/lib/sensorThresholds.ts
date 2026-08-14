@@ -17,9 +17,18 @@ export interface RuleThresholds {
   cert_expiry_warning_days: number;
 }
 
+/** W3a "blind, not safe" — coverage is orthogonal to risk, never a risk level. */
+export interface CoverageThresholds {
+  sensor_stale_after_seconds: number;
+  sensor_confidence_floor: number;
+}
+
+export type CoverageState = "assessed" | "degraded" | "blind";
+
 export interface ThresholdsConfig {
   sensors: Partial<Record<TelemetryMetricKey, SensorBandThresholds>>;
   rules: RuleThresholds;
+  coverage: CoverageThresholds;
 }
 
 /** Fallback when API has not loaded yet — mirrors backend Settings defaults. */
@@ -36,6 +45,10 @@ export const DEFAULT_THRESHOLDS: ThresholdsConfig = {
     tank_level_low_pct: 5.0,
     weather_wind_hold_ms: 15.0,
     cert_expiry_warning_days: 14,
+  },
+  coverage: {
+    sensor_stale_after_seconds: 180,
+    sensor_confidence_floor: 0.5,
   },
 };
 

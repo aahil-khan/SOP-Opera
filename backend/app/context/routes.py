@@ -5,8 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.context.coverage import coverage_for_assets
 from app.context.providers.manual import ManualInputProvider
-from app.context.schemas import ContextIn, ContextIngestResult
+from app.context.schemas import AssetCoverageOut, ContextIn, ContextIngestResult
 from app.context.service import (
     AssetNotFoundError,
     get_asset,
@@ -37,6 +38,26 @@ async def get_assets(
     session: AsyncSession = Depends(get_session),
 ) -> list[Asset]:
     return await list_assets(session)
+
+
+@router.get("/assets/coverage", response_model=list[AssetCoverageOut])
+async def get_assets_coverage(
+    session: AsyncSession = Depends(get_session),
+) -> list[AssetCoverageOut]:
+    """
+    Per-asset sensor coverage (assessed | degraded | blind). Staleness is
+    computed here in the read path; it never feeds the risk policy.
+    """
+    return [
+        AssetCoverageOut(
+            asset_id=c.asset_id,
+            coverage=c.coverage,
+            last_sensor_seen=c.last_sensor_seen,
+            seconds_since_sensor=c.seconds_since_sensor,
+            reason=c.reason,
+        )
+        for c in await coverage_for_assets(session)
+    ]
 
 
 @router.get("/assets/{asset_id}/owner", response_model=AreaOwner | None)

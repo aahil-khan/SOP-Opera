@@ -195,6 +195,9 @@ export interface AiOpsSummary {
   langsmith_enabled: boolean;
   langsmith_project: string;
   langsmith_url: string | null;
+  blind_channel_count: number;
+  degraded_channel_count: number;
+  asset_count: number;
   last_retrieval_mode: string | null;
   last_retrieval_quality: string | null;
   last_retrieval_score: number | null;
@@ -464,6 +467,18 @@ export function fetchAssetOwner(assetId: string): Promise<AreaOwner | null> {
 
 export function fetchThresholds(): Promise<ThresholdsConfig> {
   return request<ThresholdsConfig>("/api/config/thresholds");
+}
+
+export interface AssetCoverage {
+  asset_id: string;
+  coverage: "assessed" | "degraded" | "blind";
+  last_sensor_seen: string | null;
+  seconds_since_sensor: number | null;
+  reason: string;
+}
+
+export function fetchAssetsCoverage(): Promise<AssetCoverage[]> {
+  return request<AssetCoverage[]>("/assets/coverage");
 }
 
 export interface ThresholdsConfigPatch {

@@ -544,6 +544,45 @@ async def run_assessment_job(
             area_owner=area_owner,
         )
 
+        # W3a — coverage rides alongside the verdict and never changes it. A
+        # blind/degraded channel states the limitation in the Why panel: the
+        # assessment cannot claim "nominal" for data that never arrived.
+        from app.context.coverage import coverage_for_asset
+
+        asset_coverage = await coverage_for_asset(session, review.asset_id)
+        if asset_coverage.coverage != "assessed":
+            mins = (
+                int(asset_coverage.seconds_since_sensor // 60)
+                if asset_coverage.seconds_since_sensor is not None
+                else None
+            )
+            window = (
+                f"in the last {mins} min"
+                if mins is not None
+                else "at any point"
+            )
+            detail = (
+                f"No live sensor reading for {asset_name} {window} — this "
+                "assessment does not cover current sensor state. Blind is "
+                "not safe."
+                if asset_coverage.coverage == "blind"
+                else (
+                    f"A sensor on {asset_name} reported low confidence or a "
+                    "fault — sensor-derived conclusions are degraded."
+                )
+            )
+            reasoning_factors.append(
+                ReasoningFactor(
+                    fact_type="sensor_coverage",
+                    headline=(
+                        "Sensor coverage: blind"
+                        if asset_coverage.coverage == "blind"
+                        else "Sensor coverage: degraded"
+                    ),
+                    detail=detail,
+                )
+            )
+
         # Neighborhood context for Spatial Agent — skip when spatial cannot fire
         plant_context_entries: list[dict] = []
         if should_load_plant_neighborhood(fact_types, context_entries):
@@ -828,6 +867,7 @@ async def run_assessment_job(
                 "assessment_id": str(assessment_id),
                 "review_id": str(review_id),
                 "risk_level": result.risk_level,
+                "coverage": asset_coverage.coverage,
                 "retrieval_mode": hybrid.mode,
                 "provider": generation.provider,
                 "agent_step_count": len(agent_trace),

@@ -275,6 +275,22 @@ export function AIOpsDashboard() {
           hint="Estimated USD from token pricing tables — mock and Ollama always record $0"
           tone={summary && summary.total_cost_usd > 0 ? "warn" : "neutral"}
         />
+        <HeroStat
+          value={
+            summary
+              ? `${summary.blind_channel_count}/${summary.asset_count}`
+              : "—"
+          }
+          label="Blind channels"
+          hint={
+            summary && summary.degraded_channel_count > 0
+              ? `Assets with no live sensor reading — plus ${summary.degraded_channel_count} degraded (low confidence / fault). Blind is not safe.`
+              : "Assets with no live sensor reading inside the stale window. Blind is not safe."
+          }
+          tone={
+            summary && summary.blind_channel_count > 0 ? "warn" : "good"
+          }
+        />
       </div>
 
       <div className={styles.grid}>

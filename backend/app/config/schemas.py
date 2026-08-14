@@ -26,11 +26,19 @@ class RuleThresholds(BaseModel):
     cert_expiry_warning_days: int = Field(ge=0)
 
 
+class CoverageThresholds(BaseModel):
+    """W3a 'blind, not safe' knobs — coverage is orthogonal to risk_level."""
+
+    sensor_stale_after_seconds: int = Field(ge=1)
+    sensor_confidence_floor: float = Field(ge=0.0, le=1.0)
+
+
 class ThresholdsConfigOut(BaseModel):
     """Effective threshold config — sourced from environment / Settings."""
 
     sensors: dict[str, SensorBandThresholds]
     rules: RuleThresholds
+    coverage: CoverageThresholds
 
 
 class SensorBandThresholdsPatch(BaseModel):
@@ -48,8 +56,14 @@ class RuleThresholdsPatch(BaseModel):
     cert_expiry_warning_days: int | None = Field(default=None, ge=0)
 
 
+class CoverageThresholdsPatch(BaseModel):
+    sensor_stale_after_seconds: int | None = Field(default=None, ge=1)
+    sensor_confidence_floor: float | None = Field(default=None, ge=0.0, le=1.0)
+
+
 class ThresholdsConfigIn(BaseModel):
     """Partial update for demo threshold tuning (process-local env overrides)."""
 
     sensors: dict[str, SensorBandThresholdsPatch] | None = None
     rules: RuleThresholdsPatch | None = None
+    coverage: CoverageThresholdsPatch | None = None
