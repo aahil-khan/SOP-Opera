@@ -26,8 +26,17 @@ import {
   postDecision,
   postManualAssessment,
   postRetryAssessment,
+  abortResponseAction,
+  acknowledgeResponsePage,
+  fetchActiveResponseActions,
+  fetchResponseConfig,
+  fetchResponseDevices,
+  putResponseConfig,
+  revokeResponseAction,
   type AssessmentHistoryItem,
   type DecisionIn,
+  type ResponseAction,
+  type ResponseDevice,
   type ReviewDetail,
 } from "@/lib/liveApi";
 import type { ManualAssessmentIn } from "@/shared/schemas";
@@ -456,6 +465,18 @@ export interface LiveState {
   focusSupervisorReview: (reviewId: string) => void;
   clearSupervisorReviewFocusRequest: () => void;
   loadNotifications: () => Promise<void>;
+  // W1 · Emergency Response Orchestrator
+  responseActions: ResponseAction[];
+  responseDevices: ResponseDevice[];
+  responseAutoEnabled: boolean;
+  responseArmWindowSeconds: number;
+  loadResponse: () => Promise<void>;
+  loadResponseDevices: () => Promise<void>;
+  loadResponseConfig: () => Promise<void>;
+  setResponseAuto: (enabled: boolean) => Promise<void>;
+  abortResponse: (actionId: string) => Promise<void>;
+  revokeResponse: (actionId: string, reason?: string | null) => Promise<void>;
+  ackResponsePage: (pageId: string) => Promise<void>;
   dismissNotification: (id: string) => void;
   clearNotifications: () => void;
   markNotificationsRead: () => void;
@@ -843,6 +864,11 @@ export const useLiveStore = create<LiveState>((set, get) => {
         ),
         fetchThresholds().catch(() => DEFAULT_THRESHOLDS),
       ]);
+      // Response state hydrates alongside, but must never block the twin: a
+      // missing response layer degrades the rail, not the whole surface.
+      void get().loadResponse();
+      void get().loadResponseDevices();
+      void get().loadResponseConfig();
       const hydrated = applyTelemetrySamples(
         {
           telemetrySeries: {},
@@ -988,6 +1014,59 @@ export const useLiveStore = create<LiveState>((set, get) => {
       get().setThresholdsConfig(fallback);
       return fallback;
     }
+  },
+
+  responseActions: [],
+  responseDevices: [],
+  responseAutoEnabled: true,
+  responseArmWindowSeconds: 10,
+
+  loadResponse: async () => {
+    try {
+      set({ responseActions: await fetchActiveResponseActions() });
+    } catch {
+      /* rail stays as-is; a failed refetch must not blank a live incident */
+    }
+  },
+
+  loadResponseDevices: async () => {
+    try {
+      set({ responseDevices: await fetchResponseDevices() });
+    } catch {
+      /* ignore */
+    }
+  },
+
+  loadResponseConfig: async () => {
+    try {
+      const cfg = await fetchResponseConfig();
+      set({
+        responseAutoEnabled: cfg.auto_enabled,
+        responseArmWindowSeconds: cfg.arm_window_seconds,
+      });
+    } catch {
+      /* ignore */
+    }
+  },
+
+  setResponseAuto: async (enabled: boolean) => {
+    const cfg = await putResponseConfig(enabled);
+    set({ responseAutoEnabled: cfg.auto_enabled });
+  },
+
+  abortResponse: async (actionId: string) => {
+    await abortResponseAction(actionId);
+    await get().loadResponse();
+  },
+
+  revokeResponse: async (actionId: string, reason?: string | null) => {
+    await revokeResponseAction(actionId, reason ?? null);
+    await Promise.all([get().loadResponse(), get().loadResponseDevices()]);
+  },
+
+  ackResponsePage: async (pageId: string) => {
+    await acknowledgeResponsePage(pageId);
+    await get().loadResponse();
   },
 
   loadNotifications: async () => {
@@ -1195,6 +1274,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
       void get().loadHandover();
       if (type === "handover.issued") {
         void get().loadNotifications().catch(() => {});
+      }
+      return;
+    }
+
+    if (type.startsWith("response.")) {
+      // One refetch covers arm/execute/abort/revoke and page traffic; the rail
+      // is small and this keeps a single source of truth for its contents.
+      void get().loadResponse().catch(() => {});
+      if (type === "response.device_changed") {
+        void get().loadResponseDevices().catch(() => {});
       }
       return;
     }
