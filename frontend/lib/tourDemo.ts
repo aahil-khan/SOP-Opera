@@ -3,14 +3,15 @@
 /**
  * Tour ↔ backend bridge.
  *
- * The Grand Tour drives the *real* platform: Act II asks the backend to replay
- * the scripted `compound_risk` scenario so the Brain panel streams genuine
- * `agent.step` events and telemetry moves for real. This mirrors the exact
- * start sequence in components/demo/DemoControls.tsx (clear → POST → refresh),
- * kept in one place so the two never drift.
+ * The Grand Tour drives the *real* platform: Act II asks the backend to
+ * auto-play `compound_risk` (`POST /demo/scenarios/.../start`) so the Brain
+ * panel streams genuine `agent.step` events. Live video demos should use the
+ * top-bar manual path instead (`/arm` + `/step`) — this helper stays on timed
+ * auto-play so the tour can advance without click-through.
  *
- * We deliberately use the short compound demo — not `vsp_coke_oven` — so the
- * tour never fights a late re-assessment when gas later crosses critical.
+ * We deliberately use `compound_risk` — not `vsp_coke_oven` — so the tour
+ * never fights a late re-assessment when gas later crosses critical. The demo
+ * arc is paced for narration and ends without a critical-gas climb.
  *
  * If the backend is unreachable the tour must never stall: `startTourScenario`
  * resolves `{ ok: false }` and the caller flips the tour into scripted-fallback
@@ -47,9 +48,10 @@ async function post(path: string): Promise<void> {
 }
 
 /**
- * Launch the compound-risk replay. Same order DemoControls.onStart uses:
- * clear stale steps/telemetry, start the scenario, then re-hydrate the store.
- * Returns `{ ok: false }` (never throws) so the overlay can fall back cleanly.
+ * Launch the compound-risk replay for the Grand Tour (timed auto-play).
+ * Manual demos use /arm + /step from the top bar instead.
+ * Same order DemoControls used to use for auto start (clear → POST → refresh),
+ * kept in one place so the tour never drifts from a working start path.
  */
 export async function startTourScenario(): Promise<TourDemoResult> {
   const store = useLiveStore.getState();

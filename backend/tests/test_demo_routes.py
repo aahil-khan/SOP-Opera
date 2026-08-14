@@ -55,10 +55,17 @@ async def test_list_scenarios(client: AsyncClient):
     assert resp.status_code == 200, resp.text
     body = resp.json()
     names = {s["name"] for s in body}
-    assert names == {"gas_leak", "permit_conflict", "compound_risk"}
+    assert {
+        "gas_leak",
+        "permit_conflict",
+        "compound_risk",
+        "spatial_proximity",
+        "vsp_coke_oven",
+    }.issubset(names)
     for s in body:
         assert "label" in s
         assert s["step_count"] >= 1
+
 
 
 @pytest.mark.asyncio
@@ -100,6 +107,57 @@ async def test_start_and_status_and_reset(client: AsyncClient):
         await asyncio.sleep(0.15)
     else:
         pytest.fail("gas_leak scenario did not finish in time")
+
+
+@pytest.mark.asyncio
+async def test_arm_step_and_reset(client: AsyncClient):
+    armed = await client.post("/demo/scenarios/compound_risk/arm")
+    assert armed.status_code == 202, armed.text
+    body = armed.json()
+    assert body["playback"] == "manual"
+    assert body["running"] is True
+    assert body["step_index"] == 0
+    assert body["total_steps"] == 4
+    assert body["next_step_label"]
+
+    # Nothing emitted yet — stepping advances one beat at a time.
+    step1 = await client.post("/demo/step")
+    assert step1.status_code == 200, step1.text
+    assert step1.json()["step_index"] == 1
+    assert step1.json()["playback"] == "manual"
+
+    # Cannot arm another while manual session is open.
+    conflict = await client.post("/demo/scenarios/gas_leak/arm")
+    assert conflict.status_code == 409
+
+    # Drain remaining steps.
+    while True:
+        st = (await client.get("/demo/status")).json()
+        if st["step_index"] >= st["total_steps"]:
+            break
+        nxt = await client.post("/demo/step")
+        assert nxt.status_code == 200, nxt.text
+
+    done = (await client.get("/demo/status")).json()
+    assert done["step_index"] == done["total_steps"]
+    assert done["running"] is False
+    assert done["next_step_label"] is None
+
+    exhausted = await client.post("/demo/step")
+    assert exhausted.status_code == 409
+
+    reset = await client.post("/demo/reset")
+    assert reset.status_code == 200
+    idle = (await client.get("/demo/status")).json()
+    assert idle["mode"] == "idle"
+    assert idle["playback"] is None
+    assert idle["scenario"] is None
+
+
+@pytest.mark.asyncio
+async def test_step_without_arm_409(client: AsyncClient):
+    resp = await client.post("/demo/step")
+    assert resp.status_code == 409
 
 
 @pytest.mark.asyncio

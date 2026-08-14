@@ -51,6 +51,8 @@ export const REST_GROUPS = {
   aiOps: ["GET /ai-ops/summary"],
   demo: [
     "POST /demo/scenarios/{name}/start",
+    "POST /demo/scenarios/{name}/arm",
+    "POST /demo/step",
     "POST /demo/reset",
     "GET /demo/scenarios",
   ],

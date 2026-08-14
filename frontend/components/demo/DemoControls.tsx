@@ -35,7 +35,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
 
   const [mode, setMode] = useState<DemoModeKind>("scripted");
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
-  const [scenario, setScenario] = useState("vsp_coke_oven");
+  const [scenario, setScenario] = useState("compound_risk");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ambientBusy, setAmbientBusy] = useState(false);
@@ -79,8 +79,9 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
       clearAgentSteps();
       clearTelemetry();
       if (mode === "scripted") {
+        // Manual arm — steps emit only when you click Next (top bar or below).
         const st = await demoRequest<DemoStatus>(
-          `/demo/scenarios/${scenario}/start`,
+          `/demo/scenarios/${scenario}/arm`,
           { method: "POST" },
         );
         setStatus(st);
@@ -110,6 +111,22 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
     }
   }
 
+  async function onNextStep() {
+    setBusy(true);
+    setError(null);
+    try {
+      const st = await demoRequest<DemoStatus>("/demo/step", { method: "POST" });
+      setStatus(st);
+      void refreshOverview();
+      await bootstrap();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setBusy(false);
+      void refreshStatus();
+    }
+  }
+
   async function onReset() {
     setBusy(true);
     setError(null);
@@ -120,9 +137,11 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
       setStatus({
         running: false,
         mode: "idle",
+        playback: null,
         scenario: null,
         step_index: 0,
         total_steps: 0,
+        next_step_label: null,
         started_at: null,
         issues_spawned: 0,
         active_issue_count: 0,
@@ -153,13 +172,23 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   }
 
   const running = Boolean(status?.running);
+  const manualArmed =
+    status?.playback === "manual" && Boolean(status?.scenario);
+  const sessionOpen = running || manualArmed;
+  const nextLabel = status?.next_step_label ?? null;
+  const canStep =
+    manualArmed &&
+    nextLabel != null &&
+    (status?.step_index ?? 0) < (status?.total_steps ?? 0);
   const ambientOn = Boolean(status?.ambient_running);
-  const showStatusBadge = Boolean(error) || running;
+  const showStatusBadge = Boolean(error) || sessionOpen;
   const statusText = error
     ? error
     : status?.mode === "random"
       ? `Random · ${status?.issues_spawned ?? 0} spawned · ${status?.active_issue_count ?? "?"} open`
-      : `${status?.scenario ?? "…"} · step ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`;
+      : status?.playback === "manual"
+        ? `${status?.scenario ?? "…"} · manual ${status?.step_index ?? 0}/${status?.total_steps ?? "?"}`
+        : `${status?.scenario ?? "…"} · step ${(status?.step_index ?? 0) + 1}/${status?.total_steps ?? "?"}`;
 
   const statusTone = error ? "error" : "running";
 
@@ -174,7 +203,8 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
         <div className={styles.headerCopy}>
           <h2 className={styles.title}>Demo</h2>
           <p className={styles.subtitle}>
-            Scripted scenarios, random issues, and ambient plant feed.
+            Scripted scenarios load for manual Next-step playback. Random and
+            ambient still run on their own timers.
           </p>
         </div>
         {showStatusBadge ? (
@@ -208,7 +238,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
             type="button"
             className={styles.segment}
             data-active={mode === "scripted" ? "true" : undefined}
-            disabled={running || busy}
+            disabled={sessionOpen || busy}
             onClick={() => setMode("scripted")}
           >
             Scripted
@@ -217,7 +247,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
             type="button"
             className={styles.segment}
             data-active={mode === "random" ? "true" : undefined}
-            disabled={running || busy}
+            disabled={sessionOpen || busy}
             onClick={() => setMode("random")}
           >
             Random
@@ -233,7 +263,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
               className={styles.select}
               aria-label="Scenario"
               value={scenario}
-              disabled={running || busy || scenarios.length === 0}
+              disabled={sessionOpen || busy || scenarios.length === 0}
               onChange={(e) => setScenario(e.target.value)}
             >
               {scenarios.length === 0 ? (
@@ -264,7 +294,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
                 min={1}
                 max={40}
                 value={maxIssues}
-                disabled={running || busy}
+                disabled={sessionOpen || busy}
                 onChange={(e) => setMaxIssues(e.target.value)}
               />
             </label>
@@ -276,7 +306,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
                 inputMode="numeric"
                 placeholder="Random"
                 value={seed}
-                disabled={running || busy}
+                disabled={sessionOpen || busy}
                 onChange={(e) => setSeed(e.target.value)}
               />
             </label>
@@ -289,7 +319,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
                   min={0.5}
                   step={0.5}
                   value={paceMin}
-                  disabled={running || busy}
+                  disabled={sessionOpen || busy}
                   onChange={(e) => setPaceMin(e.target.value)}
                   aria-label="Min spawn interval"
                 />
@@ -300,7 +330,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
                   min={0.5}
                   step={0.5}
                   value={paceMax}
-                  disabled={running || busy}
+                  disabled={sessionOpen || busy}
                   onChange={(e) => setPaceMax(e.target.value)}
                   aria-label="Max spawn interval"
                 />
@@ -316,7 +346,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
                   type="button"
                   className={styles.floorChip}
                   data-on={floors.includes(f.id) ? "true" : undefined}
-                  disabled={running || busy}
+                  disabled={sessionOpen || busy}
                   onClick={() => toggleFloor(f.id)}
                   title={`Include ${f.id} floor`}
                 >
@@ -333,14 +363,29 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
           type="button"
           className={`btn btn-primary ${styles.actionBtn}`}
           disabled={
-            running ||
+            sessionOpen ||
             busy ||
             (mode === "scripted" && scenarios.length === 0)
           }
           onClick={() => void onStart()}
         >
-          {busy && !running ? "Starting…" : "Start demo"}
+          {busy && !sessionOpen
+            ? "Loading…"
+            : mode === "scripted"
+              ? "Load scenario"
+              : "Start demo"}
         </button>
+        {mode === "scripted" ? (
+          <button
+            type="button"
+            className={`btn btn-primary ${styles.actionBtn}`}
+            disabled={!canStep || busy}
+            onClick={() => void onNextStep()}
+            title={nextLabel ? `Next: ${nextLabel}` : undefined}
+          >
+            {canStep ? `Next · ${nextLabel}` : "Next step"}
+          </button>
+        ) : null}
         <button
           type="button"
           className={`btn ${styles.actionBtn}`}

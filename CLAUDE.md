@@ -20,7 +20,7 @@ Weighted: Business Impact 25% · Technical Excellence 25% · Scalability 20% · 
 | Regulatory coverage (OISD / Factories Act) | clause-level statutory corpus in `db/seed_embeddings.py` (`INDIAN_REGULATIONS`, each with a `clause` and primary-source `source_url`), surfaced by **deterministic SQL** and validated by `assessment/citations.py`; measured by `eval/coverage.py` |
 | Scalability | durable `SKIP LOCKED` assessment queue, gated agent fan-out, webhook ingest |
 
-The headline story is the VSP coke-oven scenario (`simulator/scenarios/vsp_coke_oven.yaml`): the compound engine blocks while gas is still **below** the single-sensor critical threshold.
+The headline story for the live demo is `compound_risk` (elevated gas → unisolated hot work → block → worker enters). `vsp_coke_oven` remains the eval lead-time hero: the compound engine blocks while gas is still **below** the single-sensor critical threshold.
 
 ### Docs
 

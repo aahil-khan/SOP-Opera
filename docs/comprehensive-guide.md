@@ -192,7 +192,7 @@ Five scripted YAML scenarios live in `backend/app/simulator/scenarios/`, replaye
 | Scenario | What happens |
 | --- | --- |
 | **`vsp_coke_oven`** (hero scenario) | VSP-pattern compound risk on Vessel A — see timeline below |
-| `compound_risk` | Signature build-up: gas rises → worker enters hazardous zone → conflicting permits activate → compound block |
+| **`compound_risk`** (live demo default) | Paced signature build-up: elevated sub-critical gas → hot work without verified isolation → compound block → worker enters already-stopped zone (no critical climb) |
 | `gas_leak` | Single-signal case: gas climbs past threshold → `elevated_gas` → review opens, elevated assessment |
 | `permit_conflict` | Single-signal case: two overlapping active permits on Compressor B → `permit_conflict` |
 | `spatial_proximity` | Cross-asset compound: elevated gas on Vessel A while hot work activates on Walkway 3 within KG radius — spatial agent flags a co-occurrence no single silo would see |
