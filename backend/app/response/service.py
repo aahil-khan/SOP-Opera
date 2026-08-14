@@ -152,6 +152,11 @@ async def evaluate_and_arm(
     zone_set = frozenset(zones)
     created: list[dict[str, Any]] = []
 
+    # Previous refusals reflect a previous verdict. Retire them so this pass can
+    # record its own; live armed/active rows are untouched and will simply not be
+    # duplicated (uq_response_actions_live_per_kind + ON CONFLICT DO NOTHING).
+    await repo.supersede_refusals(session, review_id)
+
     # Tier 3 is always evaluated alongside the triggered tiers so the refusal is
     # on the record for this incident, not just absent from it.
     candidates: list[ActionSpec] = []
@@ -320,10 +325,15 @@ async def revoke_action(
 
     device_payload = None
     if action.get("device_id"):
-        revert_to = action.get("fail_safe_state") or "off"
-        device_payload = await repo.set_device_state(
-            session, action["device_id"], revert_to
-        )
+        # Revert to the device's *default* (pre-action) state, not its fail-safe
+        # state. For a tool gate those differ: fail-safe is closed, but normal
+        # operation is open, and revoking "gate closed" must reopen it. The
+        # fail-safe state describes loss of control, which is a different event.
+        revert_to = action.get("default_state") or action.get("fail_safe_state")
+        if revert_to:
+            device_payload = await repo.set_device_state(
+                session, action["device_id"], revert_to
+            )
 
     if action["action_kind"] == "page_response_team":
         # A page cannot be un-sent; the reversal is a stand-down to everyone
