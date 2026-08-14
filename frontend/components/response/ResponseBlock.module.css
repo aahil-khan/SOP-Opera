@@ -1,3 +1,9 @@
+/*
+ * Compact read-out of what the system already did, shown above the decision
+ * controls. Same grammar as the Auto response sidebar: tier is a colour edge,
+ * state is one mono word, no badges.
+ */
+
 .block {
   display: flex;
   flex-direction: column;
@@ -15,20 +21,10 @@
 }
 
 .title {
-  font-size: var(--text-xs);
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
   letter-spacing: var(--tracking-label);
   text-transform: uppercase;
-  color: var(--text-secondary);
-}
-
-.sim {
-  font-size: var(--text-2xs);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  padding: 0 var(--space-1);
-  border: 1px dashed var(--border-default);
-  border-radius: var(--radius-sm);
   color: var(--text-muted);
 }
 
@@ -41,7 +37,6 @@
 .list {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
   margin: 0;
   padding: 0;
   list-style: none;
@@ -49,51 +44,22 @@
 
 .row {
   display: grid;
-  grid-template-columns: 5.5rem minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr) auto;
   align-items: center;
   gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-1) var(--space-2);
+  border-left: 2px solid transparent;
   font-size: var(--text-xs);
 }
 
-.row[data-phase="refused"] {
-  opacity: 0.7;
+.row[data-tier="0"] {
+  border-left-color: var(--domain-evidence);
 }
-
-.row[data-phase="refused"] .label {
-  text-decoration: line-through;
-  text-decoration-thickness: 1px;
+.row[data-tier="1"] {
+  border-left-color: var(--status-elevated);
 }
-
-.row[data-phase="revoked"],
-.row[data-phase="aborted"] {
-  opacity: 0.6;
-}
-
-.tier {
-  font-size: var(--text-2xs);
-  font-weight: var(--weight-semibold);
-  letter-spacing: var(--tracking-label);
-  text-transform: uppercase;
-  padding: 1px var(--space-1);
-  border-radius: var(--radius-sm);
-  text-align: center;
-  color: var(--text-on-accent);
-  background: var(--text-muted);
-}
-
-.tier[data-tier="0"] {
-  background: var(--domain-evidence);
-}
-.tier[data-tier="1"] {
-  background: var(--status-elevated);
-}
-.tier[data-tier="2"] {
-  background: var(--status-blocking);
-}
-.tier[data-tier="3"] {
-  background: transparent;
-  border: 1px solid var(--border-default);
-  color: var(--text-muted);
+.row[data-tier="2"] {
+  border-left-color: var(--status-blocking);
 }
 
 .label {
@@ -103,14 +69,21 @@
   white-space: nowrap;
 }
 
-.phase {
-  color: var(--text-muted);
+.state {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
   white-space: nowrap;
 }
 
-.why {
-  grid-column: 2 / -1;
+.declined {
+  margin: 0;
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
+  color: var(--text-muted);
+}
+
+.footnote {
+  margin: 0;
+  font-size: var(--text-2xs);
   color: var(--text-muted);
 }

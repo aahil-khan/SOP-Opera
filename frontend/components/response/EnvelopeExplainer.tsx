@@ -1,7 +1,7 @@
 "use client";
 
 import type { ResponseEnvelope } from "@/lib/liveApi";
-import { CLAUSE_LABELS } from "@/lib/responseRail";
+import { CLAUSE_LABELS } from "@/lib/autoResponse";
 import styles from "./EnvelopeExplainer.module.css";
 
 /**

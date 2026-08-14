@@ -25,8 +25,11 @@ import {
 import { relativeTime } from "@/lib/relativeTime";
 import { useNewEntries } from "@/lib/useNewEntries";
 import { OverviewPanel } from "./OverviewPanel";
+import { AutoResponsePanel } from "@/components/response/AutoResponsePanel";
 import { useHorizontalResize } from "./useHorizontalResize";
 import styles from "./ReviewSidebar.module.css";
+
+type SidebarMode = "work" | "auto";
 
 interface ReviewSidebarProps {
   open: boolean;
@@ -181,13 +184,20 @@ export function ReviewSidebar({
   const allViews = useLiveAssetViews();
   const selectedAssetId = useLiveStore((s) => s.selectedAssetId);
   const selectAsset = useLiveStore((s) => s.selectAsset);
-  // Count only, not the array — this rail must not re-render on every rail tick.
+  // Count only, never the array: the collapsed pill must not re-render each
+  // time an arming bar ticks.
   const autoResponseCount = useLiveStore((s) =>
     s.responseActions.reduce(
       (n, a) => (a.status === "armed" || a.status === "active" ? n + 1 : n),
       0,
     ),
   );
+  /**
+   * The sidebar has two jobs and shows one at a time. Open work is the backlog
+   * a person owns; Auto response is what the system did without being asked.
+   * Stacking them made both illegible, so they are modes rather than sections.
+   */
+  const [mode, setMode] = useState<SidebarMode>("work");
 
   const [activeColumn, setActiveColumn] = useState<OpenWorkColumnId>("awaiting_decision");
   const [searchQuery, setSearchQuery] = useState("");
@@ -297,34 +307,45 @@ export function ReviewSidebar({
 
   return (
     <>
-      <button
-        type="button"
-        className={styles.rail}
-        data-open={open}
-        onClick={() => onOpenChange(true)}
-        aria-expanded={open}
-        aria-controls="open-work-panel"
-        title="Open work"
-      >
-        <span className={styles.railLabel}>Open work</span>
-        {affectedCount > 0 && (
-          <span className={styles.railCount}>{affectedCount}</span>
-        )}
-        {/* Collapsed summary of the automatic response. Without it, shutting the
-            panel would hide the fact that the system is holding equipment in a
-            protective state — which is the one thing that must stay visible. */}
+      {/* Collapsed: one segment per mode, each opening straight into it. Auto
+          response stays visible while shut, because a supervisor must never be
+          unaware that the system is holding equipment in a protective state. */}
+      <div className={styles.rail} data-open={open}>
+        <button
+          type="button"
+          className={styles.railSegment}
+          onClick={() => {
+            setMode("work");
+            onOpenChange(true);
+          }}
+          aria-expanded={open}
+          aria-controls="open-work-panel"
+          title="Open work"
+        >
+          <span className={styles.railLabel}>Open work</span>
+          {affectedCount > 0 && (
+            <span className={styles.railCount}>{affectedCount}</span>
+          )}
+        </button>
         {autoResponseCount > 0 && (
-          <span
-            className={styles.railAuto}
-            title={`${autoResponseCount} automatic response ${
+          <button
+            type="button"
+            className={styles.railSegment}
+            onClick={() => {
+              setMode("auto");
+              onOpenChange(true);
+            }}
+            aria-expanded={open}
+            aria-controls="open-work-panel"
+            title={`${autoResponseCount} automatic ${
               autoResponseCount === 1 ? "action" : "actions"
             } in effect`}
           >
-            <span aria-hidden="true">⚡</span>
-            {autoResponseCount}
-          </span>
+            <span className={styles.railLabel}>Auto</span>
+            <span className={styles.railCountAuto}>{autoResponseCount}</span>
+          </button>
         )}
-      </button>
+      </div>
 
       <aside
         id="open-work-panel"
@@ -347,11 +368,17 @@ export function ReviewSidebar({
         />
         <header className={styles.header}>
           <div className={styles.headerText}>
-            <h2 className={styles.title}>Open work</h2>
-            <p className={styles.subtitle}>Calls for help · select to locate</p>
+            <h2 className={styles.title}>
+              {mode === "work" ? "Open work" : "Auto response"}
+            </h2>
+            <p className={styles.subtitle}>
+              {mode === "work"
+                ? "Calls for help · select to locate"
+                : "What the system did on its own"}
+            </p>
           </div>
           <div className={styles.headerControls}>
-            {views.length > 0 ? (
+            {mode === "work" && views.length > 0 ? (
               <button
                 type="button"
                 className={styles.filterToggle}
@@ -398,6 +425,57 @@ export function ReviewSidebar({
           </div>
         </header>
 
+        {/* Mode switcher. Same segmented-control idiom as the work columns
+            below and the floor tabs on the map, so the sidebar reads as one
+            system rather than three inventions. */}
+        <div className={styles.modeTabs}>
+          <div
+            className={styles.modeTrack}
+            role="tablist"
+            aria-label="Sidebar view"
+          >
+            <span
+              className={styles.modeSlider}
+              aria-hidden
+              data-mode={mode}
+            />
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "work"}
+              tabIndex={mode === "work" ? 0 : -1}
+              className={styles.modeTab}
+              data-active={mode === "work" ? "true" : undefined}
+              onClick={() => setMode("work")}
+            >
+              <span className={styles.modeLabel}>Open work</span>
+              {affectedCount > 0 ? (
+                <span className={styles.modeCount}>{affectedCount}</span>
+              ) : null}
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === "auto"}
+              tabIndex={mode === "auto" ? 0 : -1}
+              className={styles.modeTab}
+              data-active={mode === "auto" ? "true" : undefined}
+              onClick={() => setMode("auto")}
+            >
+              <span className={styles.modeLabel}>Auto response</span>
+              {autoResponseCount > 0 ? (
+                <span className={styles.modeCountAuto}>
+                  {autoResponseCount}
+                </span>
+              ) : null}
+            </button>
+          </div>
+        </div>
+
+        {mode === "auto" ? (
+          <AutoResponsePanel />
+        ) : (
+        <>
         <div className={styles.columnTabs} aria-label="Work columns">
           <div
             ref={tablistRef}
@@ -597,6 +675,8 @@ export function ReviewSidebar({
         )}
 
         {open ? <OverviewPanel /> : null}
+        </>
+        )}
       </aside>
     </>
   );
