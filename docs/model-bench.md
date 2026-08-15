@@ -1,6 +1,6 @@
 # Model bench — what changes when you swap the model
 
-Generated 2026-08-14T19:36:51+00:00 · 6 case(s) × 2 repeat(s) per provider.
+Generated 2026-08-15T16:49:40+00:00 · 6 case(s) × 2 repeat(s) per provider.
 
 This bench deliberately does **not** measure accuracy against model.
 `app/risk/policy.py::classify()` owns `risk_level`; the model writes
@@ -9,10 +9,16 @@ citations, latency and cost — those are what is measured.
 
 ## Measured
 
-| Provider | Model | Runs | Citation-strip rate | Latency p50 | Latency p95 | Cost / assessment | Failure rate | Retry rate |
+| Provider | Model | Runs | Citation-strip rate | Agent latency p50 | Agent latency p95 | Cost / assessment | Failure rate | Retry rate |
 | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| mock | `langgraph-mock-v1` | 12 | 0.0% (0/0 tokens) | 3 ms | 21 ms | $0.000000 | 0.0% | 0.0% |
-| ollama | `llama3.2` | 12 | 0.0% (0/4 tokens) | 6,721 ms | 9,172 ms | $0.000000 | 0.0% | 0.0% |
+| mock | `langgraph-mock-v1` | 12 | 0.0% (0/0 tokens) | 4 ms | 19 ms | $0.000000 | 0.0% | 0.0% |
+| ollama | `llama3.2` | 12 | 0.0% (0/7 tokens) | 6,514 ms | 9,244 ms | $0.000000 | 0.0% | 0.0% |
+
+**Read the columns for exactly what they measure.**
+
+- *Citation-strip rate* is stripped ÷ cited tokens, and the denominator is printed because it is small: a 0% over few or no cited tokens means the models rarely cited at all on this case set, not that hallucination was ruled out.
+- *Agent latency* is wall-clock around the LangGraph run only. It **excludes** retrieval, DB persistence and time queued — so it is not end-to-end assessment latency and should not be quoted as "time to a verdict on screen".
+- *Cost* is $0 for every provider here **by construction**: `estimate_cost_usd()` prices OpenAI-compatible models only (`agents/llm.py:149-154`). It is not evidence that inference is free.
 
 `mock` makes no network call at all — its narration is a
 deterministic template (`agents/llm.py` returns `None`), so its
@@ -61,7 +67,7 @@ measured number, labelled as an estimate.
 
 The prompt size is the same whichever model answers it, so a
 hosted bill can be projected from token counts we did measure
-(**723 in / 297 out** per assessment, measured on
+(**717 in / 292 out** per assessment, measured on
 `ollama:llama3.2`) times published list
 prices. **This is arithmetic, not a benchmark result: no OpenAI
 request was made.** The measured hosted row stays empty until a
@@ -69,8 +75,8 @@ key exists.
 
 | Hosted model | $/1M in · out | $/assessment | $/day | $/year |
 | --- | --- | ---: | ---: | ---: |
-| gpt-4o-mini | $0.15 · $0.60 | $0.000287 | $0.11 | $41.85 |
-| gpt-4o | $2.50 · $10.00 | $0.004777 | $1.91 | $697.51 |
+| gpt-4o-mini | $0.15 · $0.60 | $0.000283 | $0.11 | $41.28 |
+| gpt-4o | $2.50 · $10.00 | $0.004712 | $1.89 | $688.02 |
 
 Against a single lost-time process incident, conventionally costed
 in the millions, the annual model spend above is the rounding error
@@ -82,7 +88,7 @@ measures, not this table.
 
 ```json
 {
-  "generated_at": "2026-08-14T19:36:51+00:00",
+  "generated_at": "2026-08-15T16:49:40+00:00",
   "cases": [
     "nominal_safe",
     "elevated_gas_only",
@@ -130,9 +136,9 @@ measures, not this table.
       "retry_rate": 0.0,
       "latency_ms": {
         "count": 12,
-        "mean_ms": 6.16,
-        "p50_ms": 3.27,
-        "p95_ms": 20.59
+        "mean_ms": 6.09,
+        "p50_ms": 3.51,
+        "p95_ms": 19.31
       },
       "citation_strip_rate": 0.0,
       "citation_token_strip_rate": 0.0,
@@ -154,16 +160,16 @@ measures, not this table.
       "retry_rate": 0.0,
       "latency_ms": {
         "count": 12,
-        "mean_ms": 6458.54,
-        "p50_ms": 6721.02,
-        "p95_ms": 9171.95
+        "mean_ms": 6596.65,
+        "p50_ms": 6513.55,
+        "p95_ms": 9243.77
       },
       "citation_strip_rate": 0.0,
       "citation_token_strip_rate": 0.0,
-      "citations_cited": 4,
+      "citations_cited": 7,
       "citations_stripped": 0,
-      "mean_tokens_in": 722.8,
-      "mean_tokens_out": 296.8,
+      "mean_tokens_in": 717.0,
+      "mean_tokens_out": 291.8,
       "mean_cost_usd_per_assessment": 0.0,
       "projected_cost_usd_per_day": 0.0,
       "projected_cost_usd_per_year": 0.0
@@ -177,8 +183,8 @@ measures, not this table.
   "hosted_cost_projection": {
     "basis": "PROJECTED \u2014 no OpenAI request was made",
     "token_counts_measured_on": "ollama:llama3.2",
-    "mean_tokens_in": 722.8,
-    "mean_tokens_out": 296.8,
+    "mean_tokens_in": 717.0,
+    "mean_tokens_out": 291.8,
     "assessments_per_day_assumption": 400,
     "rows": [
       {
@@ -187,9 +193,9 @@ measures, not this table.
           0.15,
           0.6
         ],
-        "usd_per_assessment": 0.00028665,
-        "usd_per_day": 0.1147,
-        "usd_per_year": 41.85
+        "usd_per_assessment": 0.00028275,
+        "usd_per_day": 0.1131,
+        "usd_per_year": 41.28
       },
       {
         "model": "gpt-4o",
@@ -197,9 +203,9 @@ measures, not this table.
           2.5,
           10.0
         ],
-        "usd_per_assessment": 0.0047775,
-        "usd_per_day": 1.911,
-        "usd_per_year": 697.51
+        "usd_per_assessment": 0.0047125,
+        "usd_per_day": 1.885,
+        "usd_per_year": 688.02
       }
     ]
   }

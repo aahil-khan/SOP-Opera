@@ -237,6 +237,52 @@ def disagreement_rate(runs: list[LlmDetectorRun]) -> float | None:
     return changed / len(per_case)
 
 
+def _alarm_rate(m: DetectorMetrics) -> float:
+    """Share of cases the detector alarmed on, regardless of whether it was right."""
+    total = m.tp + m.fp + m.tn + m.fn
+    return (m.tp + m.fp) / total if total else 0.0
+
+
+def _base_rate_note(runs: list[LlmDetectorRun], *, first_n: int) -> list[str]:
+    """
+    State the alarm rate against the base rate, in words.
+
+    Without this the table reads as "the LLM is roughly as good at recall and a
+    bit worse at precision". The actual finding is that it alarms on almost
+    everything, which makes its recall nearly free and its precision converge on
+    the share of cases that are dangerous anyway. Anyone can derive this from
+    TP+FP; leaving it for them to find would look like concealment.
+    """
+    if not runs:
+        return []
+    rates = [_alarm_rate(r.metrics("")) for r in runs]
+    positives = sum(1 for r in runs[0].results if r.dangerous)
+    base_rate = positives / first_n if first_n else 0.0
+    span = (
+        f"{min(rates):.0%}"
+        if abs(max(rates) - min(rates)) < 0.005
+        else f"{min(rates):.0%}–{max(rates):.0%}"
+    )
+    precisions = [r.metrics("").precision for r in runs]
+    return [
+        "### What the recall number is actually worth",
+        "",
+        f"The model answered STOP on **{span} of cases**. In this subsample "
+        f"**{base_rate:.0%}** of cases genuinely require stopping work "
+        f"({positives} of {first_n}), so a detector that alarms on nearly "
+        "everything collects high recall automatically — and its precision "
+        f"lands at {min(precisions):.0%}–{max(precisions):.0%}, which is "
+        "approximately the base rate itself.",
+        "",
+        "That is the real finding, and it is worse for the LLM than a simple",
+        "\"it missed some\" reading: asked to judge safety directly, it does not",
+        "discriminate. The compound engine reaches 100% recall while alarming on",
+        "only the cases that warrant it — that gap, not the recall column, is the",
+        "answer to \"why not just use GPT-4?\".",
+        "",
+    ]
+
+
 def build_markdown(
     runs: list[LlmDetectorRun],
     *,
@@ -264,26 +310,33 @@ def build_markdown(
         "",
         "## Results",
         "",
-        "| Detector | n | Recall | Precision | FN | Accuracy |",
-        "| --- | ---: | ---: | ---: | ---: | ---: |",
+        "**Read the alarm-rate column before the recall column.** A detector that "
+        "shouts STOP at everything scores high recall for free; the alarm rate is "
+        "what tells you whether the recall meant anything.",
+        "",
+        "| Detector | n | Alarm rate | Recall | Precision | FN | Accuracy |",
+        "| --- | ---: | ---: | ---: | ---: | ---: | ---: |",
     ]
     for i, run in enumerate(runs, start=1):
         m = run.metrics(f"LLM ({run.provider}:{run.model}) run {i}")
         lines.append(
-            f"| {m.name} | {len(run.results)} | {m.recall:.1%} | "
-            f"{m.precision:.1%} | {m.fn} | {m.accuracy:.1%} |"
+            f"| {m.name} | {len(run.results)} | {_alarm_rate(m):.1%} | "
+            f"{m.recall:.1%} | {m.precision:.1%} | {m.fn} | {m.accuracy:.1%} |"
         )
     lines.extend(
         [
             f"| Single-sensor baseline (full set) | {full_case_count} | "
+            f"{_alarm_rate(single):.1%} | "
             f"{single.recall:.1%} | {single.precision:.1%} | {single.fn} | "
             f"{single.accuracy:.1%} |",
             f"| **Compound engine (full set)** | {full_case_count} | "
+            f"{_alarm_rate(compound):.1%} | "
             f"**{compound.recall:.1%}** | {compound.precision:.1%} | "
             f"**{compound.fn}** | {compound.accuracy:.1%} |",
             "",
         ]
     )
+    lines.extend(_base_rate_note(runs, first_n=n))
     if disagreement is not None:
         lines.extend(
             [
@@ -367,8 +420,10 @@ async def _main() -> None:
                 "model": runs[0].model,
                 "openai": "NOT RUN — no API key",
                 "disagreement_rate": disagreement_rate(runs),
+                "subsample_positive_rate": (positives / len(cases) if cases else 0.0),
                 "runs": [
                     {
+                        "alarm_rate": _alarm_rate(run.metrics("llm")),
                         "recall": run.metrics("llm").recall,
                         "precision": run.metrics("llm").precision,
                         "fn": run.metrics("llm").fn,

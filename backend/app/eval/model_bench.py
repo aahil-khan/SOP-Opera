@@ -471,8 +471,8 @@ class BenchReport:
             "",
             "## Measured",
             "",
-            "| Provider | Model | Runs | Citation-strip rate | Latency p50 | "
-            "Latency p95 | Cost / assessment | Failure rate | Retry rate |",
+            "| Provider | Model | Runs | Citation-strip rate | Agent latency p50 | "
+            "Agent latency p95 | Cost / assessment | Failure rate | Retry rate |",
             "| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |",
         ]
         for p in measured:
@@ -493,6 +493,21 @@ class BenchReport:
             lines.append("| _none_ | | | | | | | | |")
         lines.extend(
             [
+                "",
+                "**Read the columns for exactly what they measure.**",
+                "",
+                "- *Citation-strip rate* is stripped ÷ cited tokens, and the "
+                "denominator is printed because it is small: a 0% over few or no "
+                "cited tokens means the models rarely cited at all on this case "
+                "set, not that hallucination was ruled out.",
+                "- *Agent latency* is wall-clock around the LangGraph run only. It "
+                "**excludes** retrieval, DB persistence and time queued — so it is "
+                "not end-to-end assessment latency and should not be quoted as "
+                "\"time to a verdict on screen\".",
+                "- *Cost* is $0 for every provider here **by construction**: "
+                "`estimate_cost_usd()` prices OpenAI-compatible models only "
+                "(`agents/llm.py:149-154`). It is not evidence that inference is "
+                "free.",
                 "",
                 "`mock` makes no network call at all — its narration is a",
                 "deterministic template (`agents/llm.py` returns `None`), so its",
