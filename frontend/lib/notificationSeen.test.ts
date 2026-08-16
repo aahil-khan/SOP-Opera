@@ -4,7 +4,7 @@ import {
   getNotificationSeenAt,
   setNotificationSeenAt,
   unreadIdsSinceSeen,
-} from "./notificationSeen.ts";
+} from "./notificationSeen";
 
 const store = new Map<string, string>();
 
