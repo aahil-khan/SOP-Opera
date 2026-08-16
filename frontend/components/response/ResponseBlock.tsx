@@ -3,7 +3,12 @@
 import { useEffect, useState } from "react";
 import { fetchReviewResponseActions, type ResponseAction } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
-import { equipmentLabel, equipmentState, groupActions } from "@/lib/autoResponse";
+import {
+  equipmentLabel,
+  equipmentState,
+  groupActions,
+  plainState,
+} from "@/lib/autoResponse";
 import styles from "./ResponseBlock.module.css";
 
 /**
@@ -53,7 +58,8 @@ export function ResponseBlock({ reviewId }: { reviewId: string }) {
               <li key={a.id} className={styles.row} data-tier={a.tier}>
                 <span className={styles.label}>{equipmentLabel(a)}</span>
                 <span className={styles.state}>
-                  {state ?? (a.status === "armed" ? "starting" : "done")}
+                  {plainState(state) ??
+                    (a.status === "armed" ? "starting" : "done")}
                 </span>
               </li>
             );
@@ -72,8 +78,6 @@ export function ResponseBlock({ reviewId }: { reviewId: string }) {
           taken automatically.
         </p>
       ) : null}
-
-      <p className={styles.footnote}>Simulated equipment</p>
     </section>
   );
 }

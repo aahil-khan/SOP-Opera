@@ -5,9 +5,9 @@ import type { ResponseAction } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
 import {
   armProgress,
-  assurance,
   canAbort,
   canRevoke,
+  equipmentBlurb,
   equipmentLabel,
   equipmentState,
   formatClock,
@@ -67,8 +67,10 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
 
   const assetName =
     actions.find((a) => a.asset_name)?.asset_name ?? null;
-  const { count, where } = headline(actions, assetName);
-  const assured = useMemo(() => assurance(actions), [actions]);
+  // Only the count is shown. The flyout header already names the domain, and
+  // the asset is on the panel title above it — repeating either here cost three
+  // lines at the top of a panel whose whole job is the list underneath.
+  const { count } = headline(actions, assetName);
 
   const run = async (id: string, fn: () => Promise<void>) => {
     setBusyId(id);
@@ -88,7 +90,6 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
             When a hazard appears, what the system does about it shows up here.
           </span>
         </p>
-        <p className={styles.footnote}>Simulated equipment</p>
       </div>
     );
   }
@@ -99,16 +100,6 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
         <p className={styles.count}>
           <strong>{count}</strong> automatic {count === 1 ? "action" : "actions"}
         </p>
-        {/* The safety argument, on screen by default. See assurance(). */}
-        {assured.allReversible ? (
-          <p className={styles.assurance}>
-            Every one can be undone
-            {assured.refused > 0
-              ? ` · ${assured.refused} refused as too far-reaching`
-              : ""}
-          </p>
-        ) : null}
-        {where ? <p className={styles.where}>{where}</p> : null}
         <button
           type="button"
           className={styles.pause}
@@ -142,6 +133,7 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
                   ⌄
                 </span>
               </button>
+              <p className={styles.groupHint}>{group.hint}</p>
               {/* Named even while collapsed: the boundary is the point, and it
                   should land without needing a click. */}
               <p className={styles.neverList}>
@@ -152,7 +144,14 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
                   {group.actions.map((a) => (
                     <li key={a.id} className={styles.neverRow}>
                       <span className={styles.neverName}>{a.label}</span>
-                      <span className={styles.neverWhy}>{a.refusal_reason}</span>
+                      {/* What it physically is comes before why we refused it —
+                          "venting cannot be undone" only means something once
+                          you know what venting is. */}
+                      {equipmentBlurb(a) ? (
+                        <span className={styles.neverWhat}>
+                          {equipmentBlurb(a)}
+                        </span>
+                      ) : null}
                     </li>
                   ))}
                 </ul>
@@ -164,6 +163,9 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
                 <h3 className={styles.groupTitle}>{group.title}</h3>
                 <span className={styles.groupCount}>{group.actions.length}</span>
               </div>
+              {/* These lines were written for a first-time reader and then never
+                  rendered — the panel showed only the heading and a count. */}
+              <p className={styles.groupHint}>{group.hint}</p>
               <ul className={styles.list}>
                 {group.actions.map((a) => (
                   <ActionRow
@@ -191,8 +193,6 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
           ),
         )}
       </div>
-
-      <p className={styles.footnote}>Simulated equipment</p>
     </div>
   );
 }
@@ -307,7 +307,11 @@ function ActionRow({
 
       {open ? (
         <div className={styles.detail}>
-          <EnvelopeExplainer envelope={action.envelope} />
+          <EnvelopeExplainer
+            action={action}
+            envelope={action.envelope}
+            refusalReason={action.refusal_reason}
+          />
         </div>
       ) : null}
     </li>

@@ -114,6 +114,40 @@ export function DomainRadar({ view }: DomainRadarProps) {
   );
   const [fetchedOwner, setFetchedOwner] = useState<AreaOwner | null>(null);
 
+  /**
+   * Response face input. Scoped to this review — a plant-wide count would climb
+   * on its own as ambient telemetry opens unrelated reviews, and the face would
+   * report activity that has nothing to do with the asset being looked at.
+   */
+  const responseActions = useLiveStore((s) => s.responseActions);
+  const reviewId = view.review?.id ?? null;
+  const responseCounts = useMemo(() => {
+    if (!reviewId) {
+      return {
+        responseLiveCount: 0,
+        responseRefusedCount: 0,
+        responseProtectCount: 0,
+      };
+    }
+    let live = 0;
+    let refused = 0;
+    let protect = 0;
+    for (const a of responseActions) {
+      if (a.review_id !== reviewId) continue;
+      if (a.status === "armed" || a.status === "active") {
+        live += 1;
+        if (a.tier === 2) protect += 1;
+      } else if (a.status === "refused" && a.tier === 3) {
+        refused += 1;
+      }
+    }
+    return {
+      responseLiveCount: live,
+      responseRefusedCount: refused,
+      responseProtectCount: protect,
+    };
+  }, [responseActions, reviewId]);
+
   useEffect(() => {
     let cancelled = false;
     const cached = peekGraphNeighborCount(assetId);
@@ -182,6 +216,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
       neighborCount: neighborCount ?? 0,
       spatialPending: neighborCount === null,
       areaOwner,
+      ...responseCounts,
     };
   }, [
     gasSeries,
@@ -193,6 +228,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
     latest,
     neighborCount,
     areaOwner,
+    responseCounts,
   ]);
 
   const scores = useMemo(
@@ -218,7 +254,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
   const domainFocusRequest = useLiveStore((s) => s.domainFocusRequest);
   const clearDomainFocusRequest = useLiveStore((s) => s.clearDomainFocusRequest);
 
-  // Map spatial-link pills → pin domain on the pentagon and scroll into view.
+  // Map spatial-link pills → pin domain on the radar and scroll into view.
   useEffect(() => {
     if (!domainFocusRequest || domainFocusRequest.assetId !== assetId) return;
     const { domain } = domainFocusRequest;
@@ -331,7 +367,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
           className={styles.svg}
           viewBox={`0 0 ${SIZE} ${SIZE}`}
           role="img"
-          aria-label="Pentagon domain radar"
+          aria-label="Domain radar"
         >
           {/* Corner-based grid (flat sides face domains) */}
           {gridRings.map((t) => {

@@ -11,7 +11,6 @@ import { AssetHistory } from "./AssetHistory";
 import { IncidentEcho } from "./IncidentEcho";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
-import { AutoResponsePanel } from "@/components/response/AutoResponsePanel";
 import type { AreaOwner } from "@/shared/schemas";
 import type { AssessmentHistoryItem, TaskSummary } from "@/lib/liveApi";
 import {
@@ -560,24 +559,6 @@ export function AssetPanel({
                 reviewId={review?.id}
               />
             )}
-
-            {/* What the system already did, before what the supervisor should do
-                next. Reads as the narrative: here is why it is blocking, here is
-                what was done about it automatically, here is your move. */}
-            {review && !isHappy && !showBrain ? (
-              <section
-                className={actionStyles.actionSection}
-                aria-labelledby="auto-response-heading"
-              >
-                <h3
-                  id="auto-response-heading"
-                  className={actionStyles.actionSectionTitle}
-                >
-                  Auto response
-                </h3>
-                <AutoResponsePanel reviewId={review.id} />
-              </section>
-            ) : null}
 
             {!isHappy && !showBrain && !reviewClosed && (
               <section

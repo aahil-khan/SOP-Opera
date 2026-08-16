@@ -6,12 +6,16 @@ import {
   armProgress,
   canAbort,
   canRevoke,
+  CLAUSES_FOR_ALLOWED,
+  CLAUSES_FOR_REFUSED,
+  equipmentBlurb,
   equipmentLabel,
   equipmentState,
   formatClock,
   groupActions,
   groupByIntent,
   headline,
+  KNOWN_ACTION_KINDS,
   liveCount,
   pageStatus,
   pendingPage,
@@ -93,7 +97,7 @@ describe("header summary", () => {
   });
 
   it("names a single zone, so the bounded radius is visible at a glance", () => {
-    assert.equal(zoneSummary([action({ status: "active" })]), "coke-oven-battery");
+    assert.equal(zoneSummary([action({ status: "active" })]), "Coke Oven Battery");
   });
 
   it("collapses multiple zones to a count", () => {
@@ -282,10 +286,10 @@ describe("groupByIntent", () => {
     ]);
     // Read together these headings are the whole explanation of the panel.
     assert.deepEqual(groups.map((g) => g.title), [
-      "Made the area safe",
-      "Warned people",
+      "Made the area safer",
+      "Told people",
       "Kept a record",
-      "Will never do on its own",
+      "Needs a person",
     ]);
   });
 
@@ -304,7 +308,7 @@ describe("groupByIntent", () => {
 
   it("keeps armed actions in their intent section so the why stays visible", () => {
     const groups = groupByIntent([action({ status: "armed", tier: 2 })]);
-    assert.equal(groups[0].title, "Made the area safe");
+    assert.equal(groups[0].title, "Made the area safer");
     assert.equal(groups[0].actions[0].status, "armed");
   });
 
@@ -330,11 +334,11 @@ describe("headline", () => {
   it("says how many and where, with no prose to read", () => {
     const h = headline([action({ status: "active" })], "Vessel A");
     assert.equal(h.count, 1);
-    assert.equal(h.where, "Vessel A · coke-oven-battery");
+    assert.equal(h.where, "Vessel A · Coke Oven Battery");
   });
 
   it("falls back to the zone when the asset is unknown", () => {
-    assert.equal(headline([action({ status: "active" })], null).where, "coke-oven-battery");
+    assert.equal(headline([action({ status: "active" })], null).where, "Coke Oven Battery");
   });
 });
 
@@ -343,5 +347,82 @@ describe("formatClock", () => {
     assert.equal(formatClock(7), "0:07");
     assert.equal(formatClock(72), "1:12");
     assert.equal(formatClock(600), "10:00");
+  });
+});
+
+describe("equipmentBlurb", () => {
+  /**
+   * Every action kind the backend envelope registry can produce. Mirrors
+   * ACTION_SPECS in backend/app/response/envelope.py:89-199 — if a kind is added
+   * there without a blurb here, a judge meets a named piece of plant equipment
+   * with nothing saying what it is, which is the defect this map exists to fix.
+   */
+  const BACKEND_ACTION_KINDS = [
+    "preserve_evidence",
+    "pa_announcement",
+    "exclusion_signage",
+    "page_response_team",
+    "ventilation_on",
+    "tool_issuance_gate_closed",
+    "permit_freeze",
+    "muster_alarm",
+    "unit_shutdown",
+    "depressurize",
+    "evacuation_complete",
+  ];
+
+  it("explains every action kind the backend can produce", () => {
+    for (const kind of BACKEND_ACTION_KINDS) {
+      const blurb = equipmentBlurb(action({ action_kind: kind }));
+      assert.ok(blurb, `no blurb for ${kind}`);
+      assert.ok(
+        (blurb as string).length > 20,
+        `blurb for ${kind} is too short to explain anything`,
+      );
+    }
+  });
+
+  it("has no blurb for a kind the backend cannot produce", () => {
+    assert.deepEqual(
+      KNOWN_ACTION_KINDS.filter((k) => !BACKEND_ACTION_KINDS.includes(k)),
+      [],
+    );
+  });
+
+  it("returns null rather than throwing on an unknown kind", () => {
+    assert.equal(equipmentBlurb(action({ action_kind: "teleport" })), null);
+  });
+});
+
+describe("clause sets", () => {
+  it("hides the tier clause on an action that ran, because it is circular", () => {
+    assert.ok(
+      !CLAUSES_FOR_ALLOWED.some((c) => c.key === "tier_permits_automation"),
+    );
+    assert.equal(CLAUSES_FOR_ALLOWED.length, 3);
+  });
+
+  it("keeps the tier clause on a refusal, where it is the whole reason", () => {
+    assert.ok(
+      CLAUSES_FOR_REFUSED.some((c) => c.key === "tier_permits_automation"),
+    );
+  });
+});
+
+describe("groupByIntent · refusals", () => {
+  it("keeps tier 3 refusals, which are the point of that section", () => {
+    const groups = groupByIntent([action({ status: "refused", tier: 3 })]);
+    assert.equal(groups.length, 1);
+    assert.equal(groups[0].title, "Needs a person");
+  });
+
+  /**
+   * The master switch being off refuses tier 1/2 actions. Those were landing in
+   * "Made the area safer" carrying a state word, so a paused system read as
+   * though it had acted.
+   */
+  it("drops a lower-tier refusal so a paused system does not look active", () => {
+    assert.equal(groupByIntent([action({ status: "refused", tier: 2 })]).length, 0);
+    assert.equal(groupByIntent([action({ status: "refused", tier: 1 })]).length, 0);
   });
 });

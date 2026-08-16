@@ -15,6 +15,7 @@ import {
   useLiveAssetViews,
   useLiveStore,
 } from "@/lib/liveStore";
+import { deviceShortLabel, plainState } from "@/lib/autoResponse";
 import { heroAssetId } from "@/lib/tourScript";
 import { useTourStepId } from "@/lib/tourStore";
 import { columnForView } from "@/lib/openWork";
@@ -37,16 +38,6 @@ const MAP_LAYERS_STORAGE_KEY = "sop-opera-map-layers";
 // "response" is on by default: when the orchestrator drives a fan or shuts a
 // gate, seeing it change on the map is the whole point of having a twin.
 const DEFAULT_ENABLED_LAYERS: MapLayerId[] = ["ops", "response"];
-
-/** Compact device names for the map badge, where space is tight. */
-const RESPONSE_DEVICE_SHORT: Record<string, string> = {
-  ventilation: "Vent",
-  pa_zone: "PA",
-  exclusion_signage: "Signage",
-  tool_issuance_gate: "Tool gate",
-  muster_alarm: "Muster",
-  permit_gate: "Permit",
-};
 
 function readEnabledLayers(): MapLayerId[] {
   if (typeof window === "undefined") return DEFAULT_ENABLED_LAYERS;
@@ -211,7 +202,7 @@ export function DigitalTwin() {
     for (const d of responseDevices) {
       if (d.state === d.default_state) continue;
       (engagedByZone[d.zone] ??= []).push(
-        `${RESPONSE_DEVICE_SHORT[d.kind] ?? d.kind} ${d.state}`,
+        `${deviceShortLabel(d.kind)} ${plainState(d.state) ?? d.state}`,
       );
     }
     const byAsset: Record<string, string[]> = {};

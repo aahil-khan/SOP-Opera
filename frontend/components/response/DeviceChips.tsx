@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import type { ResponseDevice } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
+import { deviceShortLabel, plainState } from "@/lib/autoResponse";
 import styles from "./DeviceChips.module.css";
 
 /**
@@ -20,15 +21,6 @@ const GLYPH: Record<string, string> = {
   tool_issuance_gate: "⛔",
   muster_alarm: "◬",
   permit_gate: "⧉",
-};
-
-const SHORT: Record<string, string> = {
-  ventilation: "Ventilation",
-  pa_zone: "PA",
-  exclusion_signage: "Signage",
-  tool_issuance_gate: "Tool gate",
-  muster_alarm: "Muster",
-  permit_gate: "Permit",
 };
 
 export function DeviceChips({ zone }: { zone: string | null | undefined }) {
@@ -50,11 +42,14 @@ export function DeviceChips({ zone }: { zone: string | null | undefined }) {
         <span
           key={d.id}
           className={styles.chip}
-          title={`${d.label} — ${d.state}${d.simulated ? " (simulated)" : ""}`}
+          title={`${d.label} — ${plainState(d.state) ?? d.state}`}
         >
           <span aria-hidden="true">{GLYPH[d.kind] ?? "●"}</span>
+          {/* Same names and same state words as the panel — these used to
+              disagree, so one device read "Tool gate closed" here and "Tool gate
+              locked" three inches away. */}
           <span className={styles.text}>
-            {SHORT[d.kind] ?? d.kind} {d.state}
+            {deviceShortLabel(d.kind)} {plainState(d.state) ?? d.state}
           </span>
         </span>
       ))}
