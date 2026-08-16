@@ -7,6 +7,7 @@ import logging
 from datetime import datetime, timezone
 from uuid import UUID
 
+from shared.python.schemas import Assessment, ManualAssessmentIn, Recommendation
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -15,7 +16,6 @@ from app.assessment.retrieval.enrich import enrich_references, serialize_ref
 from app.realtime.connection_manager import manager
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
-from shared.python.schemas import Assessment, ManualAssessmentIn, Recommendation
 
 logger = logging.getLogger(__name__)
 

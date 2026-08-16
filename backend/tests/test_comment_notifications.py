@@ -131,8 +131,9 @@ async def test_comment_mention_and_reply_notifications(client: AsyncClient):
     assert str(WORKER_IMRAN) not in reply["recipient_ids"]
 
     # Set raised_by so operator reply notifies the supervisor who raised it.
-    from app.db.session import SessionLocal
     from sqlalchemy import text
+
+    from app.db.session import SessionLocal
 
     async with SessionLocal() as session:
         await session.execute(

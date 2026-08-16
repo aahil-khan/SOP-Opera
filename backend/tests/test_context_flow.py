@@ -12,10 +12,11 @@ VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 @pytest_asyncio.fixture
 async def client():
-    from app.db.session import apply_schema, _asyncpg_dsn, engine
-    from app.db.vector import close_vector_pool
-    from app.core.config import get_settings
     import asyncpg
+
+    from app.core.config import get_settings
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
+    from app.db.vector import close_vector_pool
 
     settings = get_settings()
     try:
@@ -95,8 +96,8 @@ async def client():
     finally:
         await conn.close()
 
-    from app.main import app
     from app.assessment.orchestrator import orchestrator
+    from app.main import app
 
     orchestrator.start()
 

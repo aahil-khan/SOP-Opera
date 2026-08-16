@@ -14,7 +14,6 @@ from app.simulator.dsl import (
     resolve_asset_id,
 )
 
-
 KNOWN_SCENARIOS = frozenset(
     {
         "gas_leak",
@@ -111,11 +110,12 @@ def test_path_traversal_rejected():
 
 @pytest_asyncio.fixture
 async def session():
-    from app.core.config import get_settings
-    from app.db.session import SessionLocal, apply_schema, engine, _asyncpg_dsn
-    from app.db.vector import close_vector_pool
-    from app.db.seed import seed_minimal
     import asyncpg
+
+    from app.core.config import get_settings
+    from app.db.seed import seed_minimal
+    from app.db.session import SessionLocal, _asyncpg_dsn, apply_schema, engine
+    from app.db.vector import close_vector_pool
 
     settings = get_settings()
     try:

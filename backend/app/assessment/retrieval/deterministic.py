@@ -5,10 +5,9 @@ from __future__ import annotations
 from typing import Literal
 from uuid import UUID
 
+from shared.python.schemas import RetrievedReference
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.python.schemas import RetrievedReference
 
 SourceType = Literal["regulations", "historical_incidents", "sops"]
 

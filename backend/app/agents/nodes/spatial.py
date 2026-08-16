@@ -7,7 +7,11 @@ from typing import Any
 from app.agents.events import make_step
 from app.agents.state import AgentObservation, AgentState
 from app.core.config import get_settings
-from app.graph.kg import find_spatial_cooccurrences, get_plant_graph, neighbors_within_radius
+from app.graph.kg import (
+    find_spatial_cooccurrences,
+    get_plant_graph,
+    neighbors_within_radius,
+)
 
 
 def _gas_assets(state: AgentState) -> set[str]:

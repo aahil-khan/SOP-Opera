@@ -8,7 +8,10 @@ from pathlib import Path
 from app.eval.coverage import CoverageReport, compute_coverage
 from app.eval.dataset import EvalCase, build_dataset, hero_checkpoint
 from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
-from app.eval.lead_time import ScenarioLeadTime, compute_scenario_lead_time, hero_lead_time
+from app.eval.lead_time import (
+    ScenarioLeadTime,
+    hero_lead_time,
+)
 
 
 @dataclass(frozen=True)

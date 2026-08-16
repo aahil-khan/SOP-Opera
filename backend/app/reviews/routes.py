@@ -4,23 +4,38 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Query
+from shared.python.schemas import Assessment, ManualAssessmentIn, Review
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment.manual import create_manual_assessment, list_assessments
 from app.assessment.orchestrator import enqueue_for_review
 from app.assessment.schemas import AssessmentOut, RetryIn
+from app.auth.routes import get_current_actor
+from app.auth.schemas import ActorMeOut
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.reports.schemas import ReportSummaryOut
+from app.reviews.comments_service import (
+    ReviewCommentIn,
+    ReviewCommentOut,
+    create_review_comment,
+    list_review_comments,
+)
+from app.reviews.concerns import normalize_concern_type
 from app.reviews.repository import (
     create_review,
     get_review,
     transition_review,
     update_review_supervisor_report,
 )
-from app.reviews.schemas import CreateReviewIn, ReopenIn, ReviewDetailOut, SharedReviewOut
+from app.reviews.schemas import (
+    CreateReviewIn,
+    ReopenIn,
+    ReviewDetailOut,
+    SharedReviewOut,
+)
 from app.reviews.service import (
     find_active_review_for_asset,
     find_latest_review_for_asset,
@@ -31,16 +46,6 @@ from app.reviews.service import (
     list_zone_reviews_for_worker,
 )
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
-from app.reviews.comments_service import (
-    ReviewCommentIn,
-    ReviewCommentOut,
-    create_review_comment,
-    list_review_comments,
-)
-from app.auth.routes import get_current_actor
-from app.auth.schemas import ActorMeOut
-from app.reviews.concerns import normalize_concern_type
-from shared.python.schemas import Assessment, ManualAssessmentIn, Review
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 

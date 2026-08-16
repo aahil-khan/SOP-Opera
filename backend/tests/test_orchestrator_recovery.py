@@ -19,9 +19,10 @@ VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 @pytest_asyncio.fixture
 async def session():
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:

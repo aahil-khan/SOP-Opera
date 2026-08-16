@@ -33,7 +33,6 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
-from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.chain import canonical_payload

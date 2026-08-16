@@ -18,7 +18,7 @@ import argparse
 import asyncio
 import json
 import sys
-from uuid import UUID, uuid4
+from uuid import uuid4
 
 from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.context.derived_facts import ContextEntryView, evaluate_rules

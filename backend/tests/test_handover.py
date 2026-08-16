@@ -39,13 +39,15 @@ COOKIE_B = _cookie(OP_B, "Arun (Panel Operator · B)")
 
 @pytest_asyncio.fixture
 async def app_ready():
+    import os
+
+    import asyncpg
+
     from app.core.config import get_settings
-    from app.db.session import apply_schema, engine, _asyncpg_dsn
     from app.db.seed import seed_minimal
     from app.db.seed_embeddings import seed_embeddings
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
     from app.db.vector import close_vector_pool
-    import asyncpg
-    import os
 
     settings = get_settings()
     try:

@@ -7,7 +7,9 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.schemas import ActorMeOut
+from app.notifications.service import create_notification
 from app.realtime.connection_manager import manager
+from app.reviews.comments_service import create_review_comment
 from app.tasks.schemas import (
     ReviewTaskOut,
     TaskAcknowledgeOut,
@@ -16,8 +18,6 @@ from app.tasks.schemas import (
     TaskListOut,
     TaskSummaryOut,
 )
-from app.notifications.service import create_notification
-from app.reviews.comments_service import create_review_comment
 
 logger = logging.getLogger(__name__)
 

@@ -41,9 +41,10 @@ async def client():
 @pytest.mark.asyncio
 async def test_webhook_ingest_by_asset_name_requires_db(client: AsyncClient):
     """When DB is up this creates context; when down, expect 5xx/connection skip."""
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:
@@ -71,9 +72,10 @@ async def test_webhook_ingest_by_asset_name_requires_db(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_webhook_rejects_unknown_asset(client: AsyncClient):
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:
@@ -95,9 +97,10 @@ async def test_webhook_rejects_unknown_asset(client: AsyncClient):
 
 @pytest.mark.asyncio
 async def test_assessment_queue_endpoint(client: AsyncClient):
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:

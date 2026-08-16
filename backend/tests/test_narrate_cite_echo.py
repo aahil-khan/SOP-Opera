@@ -7,12 +7,12 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+from shared.python.schemas import DerivedFact, RetrievedReference
 
 from app.agents.graph import _serialize_ref, reset_compiled_graph, run_agent_assessment
 from app.agents.nodes.orchestrator import _build_summary_prompt, _mock_summary
 from app.agents.nodes.source import scada_agent
 from app.agents.state import AgentState
-from shared.python.schemas import DerivedFact, RetrievedReference
 
 
 @pytest.fixture(autouse=True)

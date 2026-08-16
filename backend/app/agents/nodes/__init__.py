@@ -12,12 +12,12 @@ from app.agents.nodes.source import (
 from app.agents.nodes.spatial import spatial_agent
 
 __all__ = [
-    "scada_agent",
-    "permit_agent",
-    "maintenance_agent",
-    "workforce_agent",
-    "spatial_agent",
     "incident_pattern_agent",
-    "shift_handover_agent",
+    "maintenance_agent",
     "orchestrator_agent",
+    "permit_agent",
+    "scada_agent",
+    "shift_handover_agent",
+    "spatial_agent",
+    "workforce_agent",
 ]

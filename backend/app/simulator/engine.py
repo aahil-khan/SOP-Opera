@@ -10,12 +10,13 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
+from sqlalchemy import text
+
 from app.assessment.orchestrator import orchestrator
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.simulator.dsl import (
     ScenarioFile,
-    ScenarioNotFoundError,
     ScenarioStep,
     load_scenario,
     resolve_asset_id,
@@ -31,7 +32,6 @@ from app.simulator.random_engine import (
     pick_signals,
 )
 from app.simulator.sources import OrchestratorSim, list_sources
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -381,7 +381,7 @@ class DemoController:
         except asyncio.CancelledError:
             logger.info("demo scenario %s cancelled", scenario.name)
             raise
-        except Exception:  # noqa: BLE001 — stop the run rather than crash silently
+        except Exception:
             logger.exception(
                 "demo scenario %s failed at step %d",
                 scenario.name,
@@ -474,7 +474,7 @@ class DemoController:
         except asyncio.CancelledError:
             logger.info("random mode cancelled")
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("random mode failed after %d issues", self._issues_spawned)
         finally:
             self._running = False

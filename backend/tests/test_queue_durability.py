@@ -2,24 +2,23 @@
 
 from __future__ import annotations
 
-from uuid import uuid4
-
 import pytest
 import pytest_asyncio
+from shared.python.schemas import Review
 from sqlalchemy import text
 
 from app.assessment.orchestrator import enqueue_for_review, orchestrator
 from app.db.seed import seed_minimal
 from app.db.session import SessionLocal, apply_schema, engine
 from app.db.vector import close_vector_pool
-from shared.python.schemas import Review
 
 
 @pytest_asyncio.fixture
 async def session():
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:

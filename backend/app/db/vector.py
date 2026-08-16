@@ -8,8 +8,8 @@ from typing import Any
 import asyncpg
 from pgvector.asyncpg import register_vector
 
-from app.db.session import _asyncpg_dsn
 from app.core.config import get_settings
+from app.db.session import _asyncpg_dsn
 
 logger = logging.getLogger(__name__)
 

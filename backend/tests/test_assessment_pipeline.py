@@ -12,9 +12,10 @@ VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 
 async def _cleanup_vessel() -> None:
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     conn = await asyncpg.connect(_asyncpg_dsn(get_settings().database_url))
     try:
@@ -68,9 +69,10 @@ async def _cleanup_vessel() -> None:
 
 @pytest_asyncio.fixture
 async def client():
-    from app.core.config import get_settings
-    from app.db.session import apply_schema, _asyncpg_dsn
     import asyncpg
+
+    from app.core.config import get_settings
+    from app.db.session import _asyncpg_dsn, apply_schema
 
     settings = get_settings()
     try:
@@ -87,7 +89,7 @@ async def client():
     os.environ["EMBEDDING_PROVIDER"] = "mock"
     get_settings.cache_clear()
 
-    from app.db.session import apply_schema, engine
+    from app.db.session import engine
     from app.db.vector import close_vector_pool
 
     await close_vector_pool()
@@ -100,8 +102,8 @@ async def client():
     await seed_embeddings()
     await _cleanup_vessel()
 
-    from app.main import app
     from app.assessment.orchestrator import orchestrator
+    from app.main import app
 
     # Ensure worker is running even if lifespan quirks
     orchestrator.start()
