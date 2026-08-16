@@ -106,10 +106,15 @@ CREATE TABLE IF NOT EXISTS reviews (
 DROP TABLE IF EXISTS review_participants;
 
 -- HITL backlog items created by decisions (and optionally supervisor actions).
+-- decision_id has no inline REFERENCES: `decisions` isn't created until later
+-- in this file (it in turn references `assessments`, which references
+-- `reviews`), and a forward reference here fails CREATE TABLE on a fresh
+-- database — see the FK added in the soft-migrations block at the bottom,
+-- which runs once `decisions` exists.
 CREATE TABLE IF NOT EXISTS review_tasks (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
     review_id UUID NOT NULL REFERENCES reviews(id),
-    decision_id UUID REFERENCES decisions(id),
+    decision_id UUID,
     assigned_worker_id UUID NOT NULL REFERENCES workers(id),
     task_type TEXT NOT NULL DEFAULT 'follow_up', -- follow_up | unblock
     title TEXT NOT NULL,
@@ -324,6 +329,25 @@ ALTER TABLE reviews ADD COLUMN IF NOT EXISTS raised_by_worker_id UUID REFERENCES
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS tagged_worker_ids UUID[] NOT NULL DEFAULT '{}';
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_description TEXT;
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
+
+-- Fresh-DB bootstrap fix: review_tasks (created above) is the only table that
+-- forward-referenced decisions (created further below), which fails CREATE
+-- TABLE on a clean database. Rather than reordering the tables between them,
+-- decision_id was left as a plain column up there and the FK is added here,
+-- once decisions is guaranteed to exist. Named to match the default Postgres
+-- inline-FK naming convention (<table>_<column>_fkey), so on an existing DB —
+-- where the column already has the old inline REFERENCES from before this
+-- fix — the constraint already exists under this name and this is a no-op.
+DO $$
+BEGIN
+    IF NOT EXISTS (
+        SELECT 1 FROM pg_constraint WHERE conname = 'review_tasks_decision_id_fkey'
+    ) THEN
+        ALTER TABLE review_tasks
+            ADD CONSTRAINT review_tasks_decision_id_fkey
+            FOREIGN KEY (decision_id) REFERENCES decisions(id);
+    END IF;
+END $$;
 
 -- Escalation state removed; map leftover rows to pending_decision.
 UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';
