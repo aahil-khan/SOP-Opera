@@ -5,10 +5,10 @@ from uuid import UUID
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.auth.schemas import ActorMeOut
 from app.auth.routes import get_current_actor
+from app.auth.schemas import ActorMeOut
 from app.db.session import get_session
-from app.tasks.schemas import TaskDoneIn, TaskDoneOut, TaskListOut, TaskAcknowledgeOut
+from app.tasks.schemas import TaskAcknowledgeOut, TaskDoneIn, TaskDoneOut, TaskListOut
 from app.tasks.service import acknowledge_task, complete_task, list_tasks
 
 router = APIRouter(prefix="/tasks", tags=["tasks"])

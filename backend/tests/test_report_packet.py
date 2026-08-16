@@ -20,7 +20,6 @@ from app.reports.packet import (
     report_ref,
     version_label,
 )
-
 from tests.report_fixtures import make_packet
 
 

@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import uuid4
 
+from shared.python.schemas import DerivedFact, Review
+
 from app.reviews.service import (
-    should_reopen_after_decision,
     should_reassess,
+    should_reopen_after_decision,
 )
 from app.reviews.state_machine import ReviewEvent, next_state
-from shared.python.schemas import DerivedFact, Review
 
 
 def _fact(fact_type: str) -> DerivedFact:

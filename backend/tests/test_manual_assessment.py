@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import asyncio
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
@@ -15,10 +14,12 @@ VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 @pytest_asyncio.fixture
 async def client(monkeypatch):
-    from app.core.config import get_settings
-    from app.db.session import apply_schema, _asyncpg_dsn
-    import asyncpg
     import os
+
+    import asyncpg
+
+    from app.core.config import get_settings
+    from app.db.session import _asyncpg_dsn, apply_schema
 
     settings = get_settings()
     try:
@@ -31,7 +32,7 @@ async def client(monkeypatch):
     os.environ["EMBEDDING_PROVIDER"] = "mock"
     get_settings.cache_clear()
 
-    from app.db.session import apply_schema, engine
+    from app.db.session import engine
     from app.db.vector import close_vector_pool
 
     await close_vector_pool()
@@ -50,8 +51,8 @@ async def client(monkeypatch):
 
     monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", boom)
 
-    from app.main import app
     from app.assessment.orchestrator import orchestrator
+    from app.main import app
 
     orchestrator.start()
 

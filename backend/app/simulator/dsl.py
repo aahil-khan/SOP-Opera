@@ -79,7 +79,7 @@ def load_scenario(name: str) -> ScenarioFile:
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8"))
         scenario = ScenarioFile.model_validate(data)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise ScenarioNotFoundError(
             f"Scenario {name!r} failed validation: {exc}"
         ) from exc

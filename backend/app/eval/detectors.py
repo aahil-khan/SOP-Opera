@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from app.context.lead_time import forecast_asset_trends
 from app.context.derived_facts import ContextEntryView, evaluate_rules
+from app.context.lead_time import forecast_asset_trends
 from app.core.config import get_settings
 from app.risk.policy import CRITICAL_SENSOR_FACTS, classify
 

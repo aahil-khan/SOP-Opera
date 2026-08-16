@@ -5,12 +5,13 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
-from app.assessment.reasoning import build_reasoning_factors
 from shared.python.schemas import (
     AreaOwner,
     DerivedFact,
     RetrievedReference,
 )
+
+from app.assessment.reasoning import build_reasoning_factors
 
 ASSET = UUID("11111111-1111-1111-1111-111111111111")
 REG_ID = UUID("a1111111-1111-1111-1111-111111111101")

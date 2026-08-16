@@ -18,13 +18,15 @@ VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 @pytest_asyncio.fixture
 async def client():
+    import os
+
+    import asyncpg
+
     from app.core.config import get_settings
-    from app.db.session import _asyncpg_dsn, apply_schema, engine
     from app.db.seed import seed_minimal
     from app.db.seed_embeddings import seed_embeddings
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
     from app.db.vector import close_vector_pool
-    import asyncpg
-    import os
 
     settings = get_settings()
     try:
@@ -44,8 +46,8 @@ async def client():
     await seed_embeddings()
     await _cleanup_vessel()
 
-    from app.main import app
     from app.assessment.orchestrator import orchestrator
+    from app.main import app
 
     orchestrator.start()
     transport = ASGITransport(app=app)

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from shared.python.schemas import RetrievedReference
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.python.schemas import RetrievedReference
 
 
 def _incident_title(description: str | None, existing: str | None) -> str:

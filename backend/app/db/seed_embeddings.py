@@ -5,10 +5,11 @@ from __future__ import annotations
 import logging
 from datetime import datetime, timedelta, timezone
 
+from sqlalchemy import text
+
 from app.assessment.embeddings import embed_texts
 from app.db import vector as vector_db
 from app.db.session import SessionLocal
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 

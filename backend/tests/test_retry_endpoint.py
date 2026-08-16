@@ -18,10 +18,12 @@ VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 @pytest_asyncio.fixture
 async def client(monkeypatch):
+    import os
+
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
-    import os
 
     settings = get_settings()
     try:
@@ -67,8 +69,8 @@ async def client(monkeypatch):
 
     monkeypatch.setattr("app.assessment.pipeline.run_agent_assessment", flaky_run)
 
-    from app.main import app
     from app.assessment.orchestrator import orchestrator
+    from app.main import app
 
     orchestrator.start()
 
@@ -138,8 +140,9 @@ async def test_retry_rejected_when_not_assessing(client: AsyncClient):
 async def test_retry_rejected_while_already_in_flight(client: AsyncClient):
     # Deterministic setup via direct DB writes (rather than racing the real worker)
     # so the "already pending/generating" guard is exercised reliably.
-    from app.db.session import SessionLocal
     from sqlalchemy import text
+
+    from app.db.session import SessionLocal
 
     async with SessionLocal() as session:
         review_id = (

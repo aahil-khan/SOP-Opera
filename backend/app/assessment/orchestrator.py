@@ -6,12 +6,12 @@ import asyncio
 import logging
 from uuid import UUID
 
+from shared.python.schemas import Review
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from shared.python.schemas import Review
 
 logger = logging.getLogger(__name__)
 
@@ -290,7 +290,7 @@ class AssessmentOrchestrator:
                     provider_name=override,
                     preclaimed=preclaimed,
                 )
-            except Exception:  # noqa: BLE001 — never kill the worker
+            except Exception:
                 logger.exception(
                     "worker-%d assessment job %s crashed; leaving row for retry/manual",
                     worker_id,

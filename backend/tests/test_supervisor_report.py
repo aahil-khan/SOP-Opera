@@ -128,8 +128,9 @@ async def test_raised_by_me_includes_decided_reviews(client: AsyncClient):
     # use reopen path is not needed; close isn't allowed from assessing.
     # Bring through assessment + decision via context helper if needed is heavy;
     # instead transition via SQL for this visibility check.
-    from app.db.session import SessionLocal
     from sqlalchemy import text
+
+    from app.db.session import SessionLocal
 
     async with SessionLocal() as session:
         await session.execute(
