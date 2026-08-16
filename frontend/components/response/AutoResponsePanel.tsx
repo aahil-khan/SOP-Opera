@@ -5,6 +5,7 @@ import type { ResponseAction } from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
 import {
   armProgress,
+  assurance,
   canAbort,
   canRevoke,
   equipmentLabel,
@@ -27,9 +28,21 @@ import styles from "./AutoResponsePanel.module.css";
  * story: made the area safe · warned people · kept a record · never without a
  * person. A reader who never opens a row still learns what happened and where
  * the automation stops.
+ *
+ * Scoped to one review. It lives beside the assessment it belongs to, so the
+ * count answers "what did the system do about *this*" rather than summing
+ * every zone in the plant — which made the number climb on its own as ambient
+ * telemetry opened unrelated reviews, and duplicated every row per zone.
  */
-export function AutoResponsePanel() {
-  const actions = useLiveStore((s) => s.responseActions);
+export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
+  const allActions = useLiveStore((s) => s.responseActions);
+  const actions = useMemo(
+    () =>
+      reviewId
+        ? allActions.filter((a) => a.review_id === reviewId)
+        : allActions,
+    [allActions, reviewId],
+  );
   const armWindow = useLiveStore((s) => s.responseArmWindowSeconds);
   const autoEnabled = useLiveStore((s) => s.responseAutoEnabled);
   const setResponseAuto = useLiveStore((s) => s.setResponseAuto);
@@ -55,6 +68,7 @@ export function AutoResponsePanel() {
   const assetName =
     actions.find((a) => a.asset_name)?.asset_name ?? null;
   const { count, where } = headline(actions, assetName);
+  const assured = useMemo(() => assurance(actions), [actions]);
 
   const run = async (id: string, fn: () => Promise<void>) => {
     setBusyId(id);
@@ -85,6 +99,15 @@ export function AutoResponsePanel() {
         <p className={styles.count}>
           <strong>{count}</strong> automatic {count === 1 ? "action" : "actions"}
         </p>
+        {/* The safety argument, on screen by default. See assurance(). */}
+        {assured.allReversible ? (
+          <p className={styles.assurance}>
+            Every one can be undone
+            {assured.refused > 0
+              ? ` · ${assured.refused} refused as too far-reaching`
+              : ""}
+          </p>
+        ) : null}
         {where ? <p className={styles.where}>{where}</p> : null}
         <button
           type="button"
