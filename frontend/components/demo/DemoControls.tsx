@@ -151,22 +151,15 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
       await demoRequest("/demo/reset", { method: "POST" });
       clearAgentSteps();
       clearTelemetry();
-      setStatus({
-        running: false,
-        mode: "idle",
-        playback: null,
-        scenario: null,
-        step_index: 0,
-        total_steps: 0,
-        next_step_label: null,
-        started_at: null,
-        issues_spawned: 0,
-        active_issue_count: 0,
-      });
-      await bootstrap();
+      // Reset also turns seeded mode off server-side (the mock corpus is
+      // hidden, not deleted — see simulator/engine.py::_wipe_runtime). Reload
+      // for the same reason the seeded-mode toggle does: this component's
+      // local `seededMode` would otherwise still read "on", and pages that
+      // fetch independently of the shared store (ReportsView, AssetHistory)
+      // would keep showing rows the backend no longer returns.
+      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setBusy(false);
       void refreshStatus();
     }

@@ -92,22 +92,14 @@ export function DemoStepBar() {
       await demoRequest("/demo/reset", { method: "POST" });
       clearAgentSteps();
       clearTelemetry();
-      setStatus({
-        running: false,
-        mode: "idle",
-        playback: null,
-        scenario: null,
-        step_index: 0,
-        total_steps: 0,
-        next_step_label: null,
-        started_at: null,
-        issues_spawned: 0,
-        active_issue_count: 0,
-      });
-      await bootstrap();
+      // Reset turns seeded mode off server-side and deletes live rows (the
+      // mock corpus is hidden, not deleted — simulator/engine.py::_wipe_runtime).
+      // Full reload for the same reason DemoControls does it: pages that fetch
+      // independently of the shared store (ReportsView, AssetHistory) would
+      // otherwise keep rendering rows the backend no longer returns.
+      window.location.reload();
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
-    } finally {
       setBusy(false);
       void refreshStatus();
     }

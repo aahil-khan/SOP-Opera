@@ -37,21 +37,40 @@ logger = logging.getLogger(__name__)
 
 # FK-safe wipe order for runtime (demo) tables. Master/seed data is left intact.
 # ai_ops_events is intentionally excluded — append-only pipeline analytics.
-_RESET_DELETE_ORDER = (
-    "evidence",
-    "review_tasks",
-    "review_comments",
-    "decisions",
-    "recommendations",
-    "assessment_metadata",
-    "assessments",
-    "reports",
-    "notifications",
-    "reviews",
-    "derived_facts",
-    "context_entries",
-    "telemetry_samples",
-    "audit_entries",
+# Demo reset clears live runtime rows but must NOT delete mock/demonstration
+# data (reviews.is_seeded — see schema.sql and scripts/quick_mock_seed.py).
+# Seeded rows are hidden/shown by the seeded-mode toggle instead; a reset
+# turns that toggle off rather than destroying the corpus, so a year of
+# seeded history survives any number of demo resets.
+#
+# Ordering is FK-driven (children before parents) and unchanged; only the
+# scoping is new. Tables with no link back to `reviews` are handled by their
+# own marker: context_entries/derived_facts by provider, and
+# telemetry_samples/audit_entries wholesale (the mock seeder writes neither).
+_REAL_REVIEWS = "(SELECT id FROM reviews WHERE NOT is_seeded)"
+_REAL_ASSESSMENTS = f"(SELECT id FROM assessments WHERE review_id IN {_REAL_REVIEWS})"
+_MOCK_PROVIDER = "quick_mock"
+
+_RESET_DELETE_STATEMENTS = (
+    f"DELETE FROM evidence WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM review_tasks WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM review_comments WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM decisions WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM recommendations WHERE assessment_id IN {_REAL_ASSESSMENTS}",
+    f"DELETE FROM assessment_metadata WHERE assessment_id IN {_REAL_ASSESSMENTS}",
+    f"DELETE FROM assessments WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM reports WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM notifications WHERE review_id IS NULL OR review_id IN {_REAL_REVIEWS}",
+    "DELETE FROM reviews WHERE NOT is_seeded",
+    # derived_facts has no review_id; its rows are matched through the context
+    # entries that produced them, so seeded facts survive with their context.
+    f"""DELETE FROM derived_facts WHERE NOT (source_context_ids && (
+            SELECT COALESCE(array_agg(id), '{{}}') FROM context_entries
+            WHERE provider = '{_MOCK_PROVIDER}'
+        ))""",
+    f"DELETE FROM context_entries WHERE provider <> '{_MOCK_PROVIDER}'",
+    "DELETE FROM telemetry_samples",
+    "DELETE FROM audit_entries",
 )
 
 DemoMode = Literal["idle", "scripted", "random"]
@@ -263,7 +282,13 @@ class DemoController:
             )
 
     async def _wipe_runtime(self) -> None:
-        """Delete demo runtime rows so scenarios can replay cleanly."""
+        """
+        Delete live demo runtime rows so scenarios can replay cleanly.
+
+        Mock/demonstration rows (reviews.is_seeded) are deliberately preserved —
+        a reset turns seeded mode *off* rather than destroying the corpus. See
+        _RESET_DELETE_STATEMENTS.
+        """
         orchestrator.drain()
         workers = list(orchestrator._worker_tasks)
         boot = getattr(orchestrator, "_boot_task", None)
@@ -279,13 +304,19 @@ class DemoController:
                 pass
 
         async with SessionLocal() as session:
-            for table in _RESET_DELETE_ORDER:
-                await session.execute(text(f"DELETE FROM {table}"))
+            for stmt in _RESET_DELETE_STATEMENTS:
+                await session.execute(text(stmt))
             # Seeded near-misses stay; live closures promoted during the last run go.
             from app.incidents.service import wipe_promoted_incidents
 
             await wipe_promoted_incidents(session)
             await session.commit()
+
+        # A reset returns the plant to a clean live state, so the mock corpus
+        # should not be showing afterwards — hide it rather than delete it.
+        from app.db.session import set_seeded_mode
+
+        set_seeded_mode(False)
 
         orchestrator.start()
 

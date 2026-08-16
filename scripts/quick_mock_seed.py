@@ -34,6 +34,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import math
 import os
 import random
 import sys
@@ -48,8 +49,14 @@ BACKEND = ROOT / "backend"
 def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--days", type=int, default=7, help="Simulated days to cover (default 7)")
-    p.add_argument("--reviews-per-day-min", type=int, default=2)
-    p.add_argument("--reviews-per-day-max", type=int, default=5)
+    p.add_argument(
+        "--reviews-per-week",
+        type=float,
+        default=7.5,
+        help="Target average reviews/week (default 7.5). Daily count is drawn from a "
+        "Poisson distribution around this rate, not a fixed range — real safety events "
+        "don't arrive on a schedule, so some days have none and some have three.",
+    )
     p.add_argument("--seed", type=int, default=1)
     p.add_argument(
         "--database-url",
@@ -75,7 +82,7 @@ _settings = get_settings()
 
 from sqlalchemy import text  # noqa: E402
 
-from app.db.seed import ASSETS, OWNER_ID  # noqa: E402
+from app.db.seed import ASSETS, OWNER_ID, WORKERS  # noqa: E402
 from app.db.session import SessionLocal  # noqa: E402
 from app.reports.packet import PACKET_VERSION, packet_hash  # noqa: E402
 
@@ -84,7 +91,22 @@ random.seed(ARGS.seed)
 ASSET_BY_ID = {a[0]: {"id": a[0], "name": a[1], "zone": a[2], "floor": a[3]} for a in ASSETS}
 ASSET_IDS = list(ASSET_BY_ID)
 
-OWNER = {"id": OWNER_ID, "name": "Rajesh (Shift Supervisor)", "role": "decision_maker"}
+# Multiple supervisor identities, not just the one seeded decision-maker — a
+# single name deciding 400 reviews across a year reads as obviously synthetic.
+# Rajesh (OWNER_ID) is the real seeded user; the other two are new rows this
+# script inserts (fixed UUIDs, idempotent via ON CONFLICT DO NOTHING).
+SUPERVISORS = [
+    {"id": OWNER_ID, "name": "Rajesh (Shift Supervisor)", "role": "decision_maker"},
+    {"id": "99999999-9999-9999-9999-999999999991", "name": "Kavita Reddy (Shift Supervisor)", "role": "decision_maker"},
+    {"id": "99999999-9999-9999-9999-999999999992", "name": "Sanjay Kulkarni (Shift Supervisor)", "role": "decision_maker"},
+]
+
+# Field workers who *raise* a fraction of reviews (origin='operator' rather
+# than system-triggered), so their names appear in the corpus alongside the
+# supervisors who decide. Deliberately the `workers` table, not the two panel
+# operators in `users`: reviews.raised_by_worker_id has an FK to workers(id),
+# so a users-table UUID here would fail the constraint outright.
+OPERATOR_ACTORS = [{"id": wid, "name": name, "role": "field_operator"} for wid, name, _certs in WORKERS]
 
 RISK_WEIGHTS = {"elevated": 85, "blocking": 15}  # matches the validated Track A corpus mix
 
@@ -167,9 +189,44 @@ def _weighted(pairs):
     return random.choices(items, weights=weights)[0]
 
 
+def _poisson(rate: float) -> int:
+    """Knuth's algorithm — reviews/day as a Poisson draw, not a fixed range.
+
+    Real safety events don't arrive on a schedule: most days are quiet, a few
+    have two or three. A uniform random.randint(min, max) every day produces
+    a flat, obviously-synthetic cadence; Poisson gives the right shape (mean
+    = rate, with quiet and busy days in realistic proportion) for a handful
+    of lines of code, no numpy dependency needed.
+    """
+    if rate <= 0:
+        return 0
+    limit = math.exp(-rate)
+    k, p = 0, 1.0
+    while True:
+        k += 1
+        p *= random.random()
+        if p <= limit:
+            return k - 1
+
+
 async def fetch_regulations(session) -> list[dict]:
     rows = (await session.execute(text("SELECT id, code, title, body_summary FROM regulations"))).mappings().all()
     return [dict(r) for r in rows]
+
+
+async def ensure_supervisors(session) -> None:
+    """Idempotently insert the extra supervisor users (Rajesh already exists)."""
+    for sup in SUPERVISORS[1:]:
+        await session.execute(
+            text(
+                """
+                INSERT INTO users (id, name, role) VALUES (CAST(:id AS uuid), :name, :role)
+                ON CONFLICT (id) DO NOTHING
+                """
+            ),
+            sup,
+        )
+    await session.commit()
 
 
 async def wipe_seeded_rows(session) -> None:
@@ -207,6 +264,12 @@ def _iso(dt: datetime) -> str:
 
 
 async def seed_one_review(session, asset: dict, sim_time: datetime, regulations: list[dict]) -> None:
+    supervisor = random.choice(SUPERVISORS)
+    # ~30% of reviews are operator-raised (origin='operator') rather than
+    # system-triggered — puts the panel operators' names in the corpus too,
+    # not just the deciding supervisor's.
+    operator = random.choice(OPERATOR_ACTORS) if random.random() < 0.3 else None
+
     risk_level = _weighted(list(RISK_WEIGHTS.items()))
     fact_types = list(_BLOCKING_PAIRS[random.randrange(len(_BLOCKING_PAIRS))]) if risk_level == "blocking" else [random.choice(_ELEVATED_TYPES)]
 
@@ -284,14 +347,24 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
     created_at = sim_time
     closed_at = sim_time + timedelta(minutes=random.randint(20, 90))
 
+    origin = "operator" if operator else "system"
     await session.execute(
         text(
             """
-            INSERT INTO reviews (id, asset_id, state, owner_id, triggered_by, origin, created_at, closed_at, is_seeded)
-            VALUES (:id, :asset_id, 'closed', :owner_id, :triggered_by, 'system', :created_at, :closed_at, TRUE)
+            INSERT INTO reviews (id, asset_id, state, owner_id, triggered_by, origin, raised_by_worker_id, created_at, closed_at, is_seeded)
+            VALUES (:id, :asset_id, 'closed', :owner_id, :triggered_by, :origin, :raised_by, :created_at, :closed_at, TRUE)
             """
         ),
-        {"id": review_id, "asset_id": asset["id"], "owner_id": OWNER_ID, "triggered_by": fact_types[0], "created_at": created_at, "closed_at": closed_at},
+        {
+            "id": review_id,
+            "asset_id": asset["id"],
+            "owner_id": supervisor["id"],
+            "triggered_by": fact_types[0],
+            "origin": origin,
+            "raised_by": operator["id"] if operator else None,
+            "created_at": created_at,
+            "closed_at": closed_at,
+        },
     )
 
     assessment_id = uuid.uuid4()
@@ -344,7 +417,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             VALUES (:id, :review_id, :aid, :decided_by, :outcome, :conditions, :submitted_at)
             """
         ),
-        {"id": decision_id, "review_id": review_id, "aid": assessment_id, "decided_by": OWNER_ID, "outcome": outcome, "conditions": conditions, "submitted_at": submitted_at},
+        {"id": decision_id, "review_id": review_id, "aid": assessment_id, "decided_by": supervisor["id"], "outcome": outcome, "conditions": conditions, "submitted_at": submitted_at},
     )
 
     outcome_labels = {"approved": "Approved", "approved_with_conditions": "Approved with conditions", "blocked": "Blocked"}
@@ -356,19 +429,20 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "version_label": "v1",
             "report_ref": f"RPT-{str(review_id)[:8].upper()}",
             "frozen_at": _iso(closed_at),
-            "closed_by": OWNER["name"],
+            "closed_by": supervisor["name"],
             "built_from": "quick_mock",
         },
         "header": {
             "title": f"{asset['name']} — {headline_story['headline']}",
             "asset": {"id": asset["id"], "name": asset["name"], "zone": asset["zone"], "plant_id": "plant-1", "floor": asset["floor"]},
             "review_state": "closed",
-            "origin": "system",
+            "origin": origin,
             "triggered_by": fact_types[0],
             "opened_at": _iso(created_at),
             "closed_at": _iso(closed_at),
             "duration_seconds": (closed_at - created_at).total_seconds(),
-            "owner": {"id": OWNER["id"], "name": OWNER["name"], "role": OWNER["role"]},
+            "owner": {"id": supervisor["id"], "name": supervisor["name"], "role": supervisor["role"]},
+            "raised_by": {"id": operator["id"], "name": operator["name"], "role": operator["role"]} if operator else None,
             "outcome_headline": outcome_labels[outcome],
             "risk_headline": risk_level.capitalize(),
         },
@@ -377,7 +451,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "outcome": outcome,
             "outcome_label": outcome_labels[outcome],
             "conditions": conditions,
-            "decided_by": {"id": OWNER["id"], "name": OWNER["name"]},
+            "decided_by": {"id": supervisor["id"], "name": supervisor["name"]},
             "submitted_at": _iso(submitted_at),
             "assessment_id": str(assessment_id),
             "time_to_decision_seconds": (submitted_at - created_at).total_seconds(),
@@ -444,7 +518,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "content": __import__("json").dumps(packet, default=str),
             "content_hash": content_hash,
             "packet_version": PACKET_VERSION,
-            "closed_by": OWNER["name"],
+            "closed_by": supervisor["name"],
             "frozen_at": closed_at,
         },
     )
@@ -463,36 +537,50 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
                 "decision_id": decision_id,
                 "title": f"Unblock {asset['name']}",
                 "detail": rec_text,
-                "created_by": OWNER["name"],
+                "created_by": supervisor["name"],
                 "created_at": submitted_at,
             },
         )
 
 
 async def main() -> None:
+    import time as _time
+
+    daily_rate = ARGS.reviews_per_week / 7.0
     print(f"Seeding quick mock data against: {_settings.database_url}")
-    print(f"days={ARGS.days} reviews_per_day=[{ARGS.reviews_per_day_min},{ARGS.reviews_per_day_max}] seed={ARGS.seed}")
+    print(f"days={ARGS.days} target={ARGS.reviews_per_week}/week (~{daily_rate:.2f}/day, Poisson) seed={ARGS.seed}")
+    print(f"Supervisors: {', '.join(s['name'] for s in SUPERVISORS)}")
+    print(f"Operators (raise ~30% of reviews): {', '.join(o['name'] for o in OPERATOR_ACTORS)}")
 
     async with SessionLocal() as session:
         print("Clearing previously mock-seeded rows only (real data untouched)...")
         await wipe_seeded_rows(session)
+        await ensure_supervisors(session)
         regulations = await fetch_regulations(session)
         print(f"Loaded {len(regulations)} regulations for citations.")
 
     window_end = datetime.now(timezone.utc)
     total_reviews = 0
+    t0 = _time.monotonic()
     async with SessionLocal() as session:
         for day in range(ARGS.days):
             day_start = window_end - timedelta(days=ARGS.days - day)
-            n = random.randint(ARGS.reviews_per_day_min, ARGS.reviews_per_day_max)
+            n = _poisson(daily_rate)
             for _ in range(n):
                 asset = ASSET_BY_ID[random.choice(ASSET_IDS)]
                 sim_time = day_start + timedelta(hours=random.uniform(0, 23), minutes=random.uniform(0, 59))
                 await seed_one_review(session, asset, sim_time, regulations)
                 total_reviews += 1
+            if (day + 1) % 30 == 0 or day == ARGS.days - 1:
+                elapsed = _time.monotonic() - t0
+                print(f"  day {day + 1}/{ARGS.days} | {elapsed:6.1f}s elapsed | {total_reviews} reviews so far")
         await session.commit()
 
-    print(f"\nDone. {total_reviews} reviews created, closed, decided, and reported.")
+    elapsed = _time.monotonic() - t0
+    weeks = ARGS.days / 7.0
+    print(f"\nDone in {elapsed:.1f}s. {total_reviews} reviews created, closed, decided, and reported.")
+    print(f"Measured rate: {total_reviews / weeks:.2f}/week over {weeks:.1f} weeks (target was {ARGS.reviews_per_week}/week).")
+
     async with SessionLocal() as session:
         counts = (
             await session.execute(
@@ -512,8 +600,36 @@ async def main() -> None:
                 )
             )
         ).all()
+        by_supervisor = (
+            await session.execute(
+                text(
+                    """
+                    SELECT u.name, count(*) FROM decisions d
+                    JOIN reviews r ON r.id = d.review_id JOIN users u ON u.id = d.decided_by
+                    WHERE r.is_seeded GROUP BY u.name ORDER BY count(*) DESC
+                    """
+                )
+            )
+        ).all()
+        by_operator = (
+            await session.execute(
+                text(
+                    """
+                    SELECT w.name, count(*) FROM reviews r
+                    JOIN workers w ON w.id = r.raised_by_worker_id
+                    WHERE r.is_seeded AND r.origin = 'operator' GROUP BY w.name ORDER BY count(*) DESC
+                    """
+                )
+            )
+        ).all()
     for row in counts:
         print(f"  {row[0]:24s} {row[1]}")
+    print("\nDecisions by supervisor:")
+    for name, cnt in by_supervisor:
+        print(f"  {name:32s} {cnt}")
+    print("Reviews raised by operator (rest are system-triggered):")
+    for name, cnt in by_operator:
+        print(f"  {name:32s} {cnt}")
 
     print("\nTo view: open http://localhost:3000/operator, toggle \"Seeded mode\" on in the Demo panel")
     print("(top nav), and the mock reviews/reports above appear alongside whatever real data exists —")
