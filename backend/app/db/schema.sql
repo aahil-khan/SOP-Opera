@@ -328,6 +328,12 @@ ALTER TABLE reviews ADD COLUMN IF NOT EXISTS raised_by_worker_id UUID REFERENCES
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS tagged_worker_ids UUID[] NOT NULL DEFAULT '{}';
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_description TEXT;
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
+-- Mock/demonstration data (scripts/quick_mock_seed.py), tagged so it can live
+-- alongside real reviews in the same database and be shown/hidden by the
+-- "seeded mode" toggle (GET/POST /demo/seeded-mode) rather than requiring a
+-- second database connection. Everything else (decisions, assessments,
+-- reports, tasks) inherits visibility by joining back to reviews.id.
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_seeded BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Escalation state removed; map leftover rows to pending_decision.
 UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';

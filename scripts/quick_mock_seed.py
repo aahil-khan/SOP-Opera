@@ -1,0 +1,524 @@
+#!/usr/bin/env python3
+"""
+Quick mock-data seeder — throwaway, for fast visual QA of report quality.
+
+Deliberately separate from scripts/seed_history.py. That script routes every
+write through the real service layer (ingest_context -> transition_review ->
+submit_decision), which is what makes it audit-chain-valid and safe for the
+finals corpus. This script skips all of that: raw SQL INSERTs straight into
+the tables, no orchestrator, no assessment pipeline, no audit_entries. It
+exists purely to let you eyeball report quality fast, before committing to a
+real run.
+
+Because there's no live fact-derivation to fight, every timestamp is written
+explicitly at insert time — no post-hoc backdating pass needed, and none of
+seed_history.py's real-time-vs-simulated-time problems apply here.
+
+Usage:
+    .venv/Scripts/python.exe scripts/quick_mock_seed.py --days 7 --seed 1
+
+Target: the PRIMARY database (sop_opera) — same DB the live app reads,
+alongside whatever real data already exists there. Every row this script
+writes is tagged reviews.is_seeded = TRUE, so it can live next to real data
+without being confused for it. The "seeded mode" toggle in the UI (GET/POST
+/demo/seeded-mode) is a query filter on that flag: off shows only real rows,
+on shows real + mock together. This is NOT the old dual-database design —
+there is no second connection at request time, just a tagged row in one place.
+
+The wipe step is scoped to is_seeded = TRUE only (a targeted, dependency-ordered
+DELETE, not a blanket TRUNCATE) — real data is never touched by this script,
+by construction, regardless of how many times you re-run it.
+"""
+
+from __future__ import annotations
+
+import argparse
+import asyncio
+import os
+import random
+import sys
+import uuid
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+BACKEND = ROOT / "backend"
+
+
+def _parse_args() -> argparse.Namespace:
+    p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--days", type=int, default=7, help="Simulated days to cover (default 7)")
+    p.add_argument("--reviews-per-day-min", type=int, default=2)
+    p.add_argument("--reviews-per-day-max", type=int, default=5)
+    p.add_argument("--seed", type=int, default=1)
+    p.add_argument(
+        "--database-url",
+        default=os.environ.get(
+            "DATABASE_URL",
+            "postgresql+asyncpg://sop:sop@localhost:5433/sop_opera",
+        ),
+        help="Defaults to the primary DB — same one the running app reads.",
+    )
+    return p.parse_args()
+
+
+ARGS = _parse_args()
+
+os.environ["DATABASE_URL"] = ARGS.database_url
+sys.path.insert(0, str(ROOT))
+sys.path.insert(0, str(BACKEND))
+
+from app.core.config import get_settings  # noqa: E402
+
+get_settings.cache_clear()
+_settings = get_settings()
+
+from sqlalchemy import text  # noqa: E402
+
+from app.db.seed import ASSETS, OWNER_ID  # noqa: E402
+from app.db.session import SessionLocal  # noqa: E402
+from app.reports.packet import PACKET_VERSION, packet_hash  # noqa: E402
+
+random.seed(ARGS.seed)
+
+ASSET_BY_ID = {a[0]: {"id": a[0], "name": a[1], "zone": a[2], "floor": a[3]} for a in ASSETS}
+ASSET_IDS = list(ASSET_BY_ID)
+
+OWNER = {"id": OWNER_ID, "name": "Rajesh (Shift Supervisor)", "role": "decision_maker"}
+
+RISK_WEIGHTS = {"elevated": 85, "blocking": 15}  # matches the validated Track A corpus mix
+
+# --- Story templates ---------------------------------------------------------
+# Each entry: fact_type -> (headline, detail_fn(asset_name) -> str, context category/payload_fn)
+_STORIES = {
+    "elevated_gas": {
+        "headline": "Elevated gas",
+        "detail": lambda a: f"Gas reading {random.randint(22, 44)} ppm exceeds the 20 ppm action threshold on {a}.",
+        "category": "sensor",
+        "payload": lambda: {"gas_reading": round(random.uniform(22, 44), 1), "unit": "ppm"},
+        "reg_hint": "gas",
+    },
+    "over_temperature": {
+        "headline": "Over temperature",
+        "detail": lambda a: f"Temperature reading {random.randint(85, 108)}°C exceeds the normal operating band on {a}.",
+        "category": "sensor",
+        "payload": lambda: {"temp_reading": round(random.uniform(85, 108), 1), "unit": "C"},
+        "reg_hint": "temperature",
+    },
+    "incomplete_isolation": {
+        "headline": "Incomplete isolation",
+        "detail": lambda a: f"Active permit on {a} shows isolation steps not yet fully verified.",
+        "category": "permit",
+        "payload": lambda: {"permit_id": f"PTW-{random.randint(1000,9999)}", "status": "active", "work_type": "confined_space"},
+        "reg_hint": "isolation",
+    },
+    "permit_conflict": {
+        "headline": "Permit conflict",
+        "detail": lambda a: f"Concurrent hot-work and cold-work permits registered against {a} without a documented deconfliction.",
+        "category": "permit",
+        "payload": lambda: {"permit_id": f"PTW-{random.randint(1000,9999)}", "status": "active", "work_type": "hot_work"},
+        "reg_hint": "permit",
+    },
+    "zone_occupied": {
+        "headline": "Zone occupied",
+        "detail": lambda a: f"Worker location reporting shows personnel inside the hazard boundary at {a}.",
+        "category": "worker_location",
+        "payload": lambda: {"zone": "hazardous"},
+        "reg_hint": "confined",
+    },
+    "ppe_noncompliance": {
+        "headline": "PPE non-compliance",
+        "detail": lambda a: f"PPE check on {a} flags missing required protective equipment for the active work type.",
+        "category": "ppe_status",
+        "payload": lambda: {"compliant": False, "missing": random.choice(["gas_mask", "helmet", "gloves"])},
+        "reg_hint": "protective",
+    },
+    "equipment_vibration_anomaly": {
+        "headline": "Vibration anomaly",
+        "detail": lambda a: f"Vibration reading on {a} is trending outside the normal ISO band, consistent with early bearing wear.",
+        "category": "sensor",
+        "payload": lambda: {"vibration_mm_s": round(random.uniform(7.5, 12.0), 2)},
+        "reg_hint": "mechanical",
+    },
+    "tank_level_critical": {
+        "headline": "Tank level critical",
+        "detail": lambda a: f"Level reading on {a} is outside the safe operating band.",
+        "category": "sensor",
+        "payload": lambda: {"level_pct": round(random.choice([random.uniform(0, 5), random.uniform(95, 100)]), 1)},
+        "reg_hint": "storage",
+    },
+}
+_ELEVATED_TYPES = list(_STORIES.keys())
+_BLOCKING_PAIRS = [
+    ("elevated_gas", "incomplete_isolation"),
+    ("permit_conflict", "zone_occupied"),
+    ("over_temperature", "incomplete_isolation"),
+    ("ppe_noncompliance", "zone_occupied"),
+]
+
+OUTCOME_BY_RISK = {
+    "blocking": [("blocked", 100)],
+    "elevated": [("approved_with_conditions", 60), ("approved", 30), ("blocked", 10)],
+}
+
+
+def _weighted(pairs):
+    items, weights = zip(*pairs)
+    return random.choices(items, weights=weights)[0]
+
+
+async def fetch_regulations(session) -> list[dict]:
+    rows = (await session.execute(text("SELECT id, code, title, body_summary FROM regulations"))).mappings().all()
+    return [dict(r) for r in rows]
+
+
+async def wipe_seeded_rows(session) -> None:
+    """
+    Remove only previously mock-seeded rows (reviews.is_seeded = TRUE, plus
+    everything hanging off them) so re-running this script is idempotent
+    without ever touching real data — no TRUNCATE, real rows are never in
+    scope by construction. context_entries/derived_facts are matched by
+    provider='quick_mock' (the only marker they carry; is_seeded lives on
+    reviews only, see schema.sql).
+    """
+    seeded_reviews = "(SELECT id FROM reviews WHERE is_seeded)"
+    seeded_assessments = f"(SELECT id FROM assessments WHERE review_id IN {seeded_reviews})"
+    for stmt in (
+        f"DELETE FROM evidence WHERE review_id IN {seeded_reviews}",
+        f"DELETE FROM review_tasks WHERE review_id IN {seeded_reviews}",
+        f"DELETE FROM review_comments WHERE review_id IN {seeded_reviews}",
+        f"DELETE FROM recommendations WHERE assessment_id IN {seeded_assessments}",
+        f"DELETE FROM assessment_metadata WHERE assessment_id IN {seeded_assessments}",
+        f"DELETE FROM decisions WHERE review_id IN {seeded_reviews}",
+        f"DELETE FROM reports WHERE review_id IN {seeded_reviews}",
+        f"DELETE FROM assessments WHERE review_id IN {seeded_reviews}",
+        """DELETE FROM derived_facts WHERE source_context_ids && (
+               SELECT COALESCE(array_agg(id), '{}') FROM context_entries WHERE provider = 'quick_mock'
+           )""",
+        "DELETE FROM context_entries WHERE provider = 'quick_mock'",
+        "DELETE FROM reviews WHERE is_seeded",
+    ):
+        await session.execute(text(stmt))
+    await session.commit()
+
+
+def _iso(dt: datetime) -> str:
+    return dt.isoformat()
+
+
+async def seed_one_review(session, asset: dict, sim_time: datetime, regulations: list[dict]) -> None:
+    risk_level = _weighted(list(RISK_WEIGHTS.items()))
+    fact_types = list(_BLOCKING_PAIRS[random.randrange(len(_BLOCKING_PAIRS))]) if risk_level == "blocking" else [random.choice(_ELEVATED_TYPES)]
+
+    review_id = uuid.uuid4()
+    context_ids = []
+    fact_rows = []
+    reasoning_factors = []
+    cited_reg_ids = set()
+
+    for i, ft in enumerate(fact_types):
+        story = _STORIES[ft]
+        ctx_id = uuid.uuid4()
+        context_ids.append(ctx_id)
+        valid_from = sim_time - timedelta(minutes=random.randint(5, 40))
+        await session.execute(
+            text(
+                """
+                INSERT INTO context_entries (id, asset_id, category, payload, provider, valid_from, valid_until, confidence)
+                VALUES (:id, :asset_id, :category, CAST(:payload AS jsonb), 'quick_mock', :valid_from, :valid_until, :confidence)
+                """
+            ),
+            {
+                "id": ctx_id,
+                "asset_id": asset["id"],
+                "category": story["category"],
+                "payload": __import__("json").dumps(story["payload"]()),
+                "valid_from": valid_from,
+                "valid_until": valid_from + timedelta(hours=4),
+                "confidence": round(random.uniform(0.85, 1.0), 2),
+            },
+        )
+
+        fact_id = uuid.uuid4()
+        await session.execute(
+            text(
+                """
+                INSERT INTO derived_facts (id, asset_id, fact_type, value, computed_at, source_context_ids)
+                VALUES (:id, :asset_id, :fact_type, 'true'::jsonb, :computed_at, ARRAY[:ctx_id]::uuid[])
+                """
+            ),
+            {"id": fact_id, "asset_id": asset["id"], "fact_type": ft, "computed_at": sim_time, "ctx_id": ctx_id},
+        )
+        fact_rows.append({"id": str(fact_id), "fact_type": ft, "label": story["headline"], "value": True, "computed_at": _iso(sim_time), "source_context_ids": [str(ctx_id)]})
+
+        matches = [r for r in regulations if story["reg_hint"] in r["title"].lower() or story["reg_hint"] in r["body_summary"].lower()]
+        evidence_regs = (matches or regulations)[:2]
+        for r in evidence_regs:
+            cited_reg_ids.add(r["id"])
+        reasoning_factors.append(
+            {
+                "fact_type": ft,
+                "headline": story["headline"],
+                "detail": story["detail"](asset["name"]),
+                "evidence": [
+                    {
+                        "source": "regulations",
+                        "id": str(r["id"]),
+                        "code": r["code"],
+                        "title": r["title"],
+                        "snippet": r["body_summary"][:180],
+                        "triggered_by_fact": ft,
+                    }
+                    for r in evidence_regs
+                ],
+                "context_ids": [str(ctx_id)],
+            }
+        )
+
+    outcome = _weighted(OUTCOME_BY_RISK[risk_level])
+    headline_story = _STORIES[fact_types[0]]
+    summary = f"{asset['name']} is {risk_level} due to {headline_story['headline'].lower()}."
+    if len(fact_types) > 1:
+        summary += f" Compounded by {_STORIES[fact_types[1]]['headline'].lower()}."
+
+    created_at = sim_time
+    closed_at = sim_time + timedelta(minutes=random.randint(20, 90))
+
+    await session.execute(
+        text(
+            """
+            INSERT INTO reviews (id, asset_id, state, owner_id, triggered_by, origin, created_at, closed_at, is_seeded)
+            VALUES (:id, :asset_id, 'closed', :owner_id, :triggered_by, 'system', :created_at, :closed_at, TRUE)
+            """
+        ),
+        {"id": review_id, "asset_id": asset["id"], "owner_id": OWNER_ID, "triggered_by": fact_types[0], "created_at": created_at, "closed_at": closed_at},
+    )
+
+    assessment_id = uuid.uuid4()
+    assessment_created = created_at + timedelta(minutes=2)
+    await session.execute(
+        text(
+            """
+            INSERT INTO assessments (id, review_id, assessment_type, status, risk_level, summary, derived_fact_ids, version, created_at)
+            VALUES (:id, :review_id, 'ai', 'complete', :risk_level, :summary, CAST(:fact_ids AS uuid[]), 1, :created_at)
+            """
+        ),
+        {"id": assessment_id, "review_id": review_id, "risk_level": risk_level, "summary": summary, "fact_ids": [str(f["id"]) for f in fact_rows], "created_at": assessment_created},
+    )
+
+    citations = [
+        {"source": "regulations", "id": str(r["id"]), "code": r["code"], "title": r["title"], "snippet": r["body_summary"][:180], "cited_in_summary": True}
+        for r in regulations if r["id"] in cited_reg_ids
+    ]
+    await session.execute(
+        text(
+            """
+            INSERT INTO assessment_metadata (assessment_id, provider, model, prompt_version, confidence,
+                retrieved_references, retrieval_mode, retrieval_quality, reasoning_factors)
+            VALUES (:aid, 'mock', 'deterministic', 'quick-mock-v1', :confidence,
+                CAST(:refs AS jsonb), 'deterministic', 'strong', CAST(:factors AS jsonb))
+            """
+        ),
+        {
+            "aid": assessment_id,
+            "confidence": round(random.uniform(0.7, 0.95), 2),
+            "refs": __import__("json").dumps(citations),
+            "factors": __import__("json").dumps(reasoning_factors),
+        },
+    )
+
+    rec_id = uuid.uuid4()
+    rec_text = "Halt work and re-verify isolation before resuming." if risk_level == "blocking" else "Continue with heightened monitoring and log a follow-up check."
+    await session.execute(
+        text("INSERT INTO recommendations (id, assessment_id, text, rationale, disposition) VALUES (:id, :aid, :text, :rationale, 'accepted')"),
+        {"id": rec_id, "aid": assessment_id, "text": rec_text, "rationale": reasoning_factors[0]["detail"]},
+    )
+
+    decision_id = uuid.uuid4()
+    submitted_at = created_at + timedelta(minutes=random.randint(10, 25))
+    conditions = "Conditions logged for shift handover." if outcome != "approved" else None
+    await session.execute(
+        text(
+            """
+            INSERT INTO decisions (id, review_id, assessment_id, decided_by, outcome, conditions, submitted_at)
+            VALUES (:id, :review_id, :aid, :decided_by, :outcome, :conditions, :submitted_at)
+            """
+        ),
+        {"id": decision_id, "review_id": review_id, "aid": assessment_id, "decided_by": OWNER_ID, "outcome": outcome, "conditions": conditions, "submitted_at": submitted_at},
+    )
+
+    outcome_labels = {"approved": "Approved", "approved_with_conditions": "Approved with conditions", "blocked": "Blocked"}
+    packet = {
+        "meta": {
+            "packet_version": PACKET_VERSION,
+            "review_id": str(review_id),
+            "closure_event_seq": 1,
+            "version_label": "v1",
+            "report_ref": f"RPT-{str(review_id)[:8].upper()}",
+            "frozen_at": _iso(closed_at),
+            "closed_by": OWNER["name"],
+            "built_from": "quick_mock",
+        },
+        "header": {
+            "title": f"{asset['name']} — {headline_story['headline']}",
+            "asset": {"id": asset["id"], "name": asset["name"], "zone": asset["zone"], "plant_id": "plant-1", "floor": asset["floor"]},
+            "review_state": "closed",
+            "origin": "system",
+            "triggered_by": fact_types[0],
+            "opened_at": _iso(created_at),
+            "closed_at": _iso(closed_at),
+            "duration_seconds": (closed_at - created_at).total_seconds(),
+            "owner": {"id": OWNER["id"], "name": OWNER["name"], "role": OWNER["role"]},
+            "outcome_headline": outcome_labels[outcome],
+            "risk_headline": risk_level.capitalize(),
+        },
+        "decision": {
+            "id": str(decision_id),
+            "outcome": outcome,
+            "outcome_label": outcome_labels[outcome],
+            "conditions": conditions,
+            "decided_by": {"id": OWNER["id"], "name": OWNER["name"]},
+            "submitted_at": _iso(submitted_at),
+            "assessment_id": str(assessment_id),
+            "time_to_decision_seconds": (submitted_at - created_at).total_seconds(),
+            "dispositions": [{"recommendation_id": str(rec_id), "text": rec_text, "rationale": reasoning_factors[0]["detail"], "disposition": "accepted"}],
+        },
+        "assessment": {
+            "source": "frozen",
+            "id": str(assessment_id),
+            "version": 1,
+            "assessment_type": "ai",
+            "status": "complete",
+            "risk_level": risk_level,
+            "summary": summary,
+            "created_at": _iso(assessment_created),
+            "provider": "mock",
+            "model": "deterministic",
+            "retrieval_mode": "deterministic",
+            "retrieval_quality": "strong",
+        },
+        "reasoning_factors": reasoning_factors,
+        "recommendations": [{"recommendation_id": str(rec_id), "text": rec_text, "rationale": reasoning_factors[0]["detail"], "disposition": "accepted"}],
+        "facts": fact_rows,
+        "evidence": {
+            "source": "frozen",
+            "captured_at": _iso(closed_at),
+            "entries": [
+                {
+                    "id": str(cid),
+                    "category": _STORIES[ft]["category"],
+                    "category_label": _STORIES[ft]["category"].replace("_", " ").title(),
+                    "summary_line": _STORIES[ft]["detail"](asset["name"]),
+                    "provider": "quick_mock",
+                    "valid_from": _iso(created_at),
+                    "confidence": 0.95,
+                    "payload": _STORIES[ft]["payload"](),
+                }
+                for cid, ft in zip(context_ids, fact_types)
+            ],
+        },
+        "citations": {"source": "frozen", "references": citations, "cited": [c["id"] for c in citations], "unsupported": [], "ok": True},
+        "tasks": {"source": "live", "total": 0, "open": 0, "acknowledged": 0, "done": 0, "cancelled": 0, "items": []},
+        "discussion": [],
+        "audit_trail": [],
+        "timeline": [
+            {"ts": _iso(created_at), "label": "Review opened", "detail": fact_types[0]},
+            {"ts": _iso(assessment_created), "label": "Assessment completed", "detail": risk_level},
+            {"ts": _iso(submitted_at), "label": "Decision submitted", "detail": outcome},
+            {"ts": _iso(closed_at), "label": "Review closed"},
+        ],
+    }
+
+    content_hash = packet_hash(packet)
+    await session.execute(
+        text(
+            """
+            INSERT INTO reports (review_id, closure_event_seq, content, content_hash, packet_version,
+                supersedes_report_id, closed_by, frozen_at, evidence_id, snapshot_hash)
+            VALUES (:review_id, 1, CAST(:content AS jsonb), :content_hash, :packet_version,
+                NULL, :closed_by, :frozen_at, NULL, NULL)
+            """
+        ),
+        {
+            "review_id": review_id,
+            "content": __import__("json").dumps(packet, default=str),
+            "content_hash": content_hash,
+            "packet_version": PACKET_VERSION,
+            "closed_by": OWNER["name"],
+            "frozen_at": closed_at,
+        },
+    )
+
+    if outcome == "blocked":
+        await session.execute(
+            text(
+                """
+                INSERT INTO review_tasks (id, review_id, decision_id, assigned_worker_id, task_type, title, detail, status, created_by, created_at)
+                VALUES (:id, :review_id, :decision_id, '55555555-5555-5555-5555-555555555555', 'unblock', :title, :detail, 'open', :created_by, :created_at)
+                """
+            ),
+            {
+                "id": uuid.uuid4(),
+                "review_id": review_id,
+                "decision_id": decision_id,
+                "title": f"Unblock {asset['name']}",
+                "detail": rec_text,
+                "created_by": OWNER["name"],
+                "created_at": submitted_at,
+            },
+        )
+
+
+async def main() -> None:
+    print(f"Seeding quick mock data against: {_settings.database_url}")
+    print(f"days={ARGS.days} reviews_per_day=[{ARGS.reviews_per_day_min},{ARGS.reviews_per_day_max}] seed={ARGS.seed}")
+
+    async with SessionLocal() as session:
+        print("Clearing previously mock-seeded rows only (real data untouched)...")
+        await wipe_seeded_rows(session)
+        regulations = await fetch_regulations(session)
+        print(f"Loaded {len(regulations)} regulations for citations.")
+
+    window_end = datetime.now(timezone.utc)
+    total_reviews = 0
+    async with SessionLocal() as session:
+        for day in range(ARGS.days):
+            day_start = window_end - timedelta(days=ARGS.days - day)
+            n = random.randint(ARGS.reviews_per_day_min, ARGS.reviews_per_day_max)
+            for _ in range(n):
+                asset = ASSET_BY_ID[random.choice(ASSET_IDS)]
+                sim_time = day_start + timedelta(hours=random.uniform(0, 23), minutes=random.uniform(0, 59))
+                await seed_one_review(session, asset, sim_time, regulations)
+                total_reviews += 1
+        await session.commit()
+
+    print(f"\nDone. {total_reviews} reviews created, closed, decided, and reported.")
+    async with SessionLocal() as session:
+        counts = (
+            await session.execute(
+                text(
+                    """
+                    SELECT 'reviews (seeded)', count(*) FROM reviews WHERE is_seeded
+                    UNION ALL SELECT 'reviews (real, untouched)', count(*) FROM reviews WHERE NOT is_seeded
+                    UNION ALL SELECT 'decisions (seeded)', count(*) FROM decisions d
+                        JOIN reviews r2 ON r2.id = d.review_id WHERE r2.is_seeded
+                    UNION ALL SELECT 'assessments (seeded)', count(*) FROM assessments a
+                        JOIN reviews r2 ON r2.id = a.review_id WHERE r2.is_seeded
+                    UNION ALL SELECT 'reports (seeded)', count(*) FROM reports rp
+                        JOIN reviews r2 ON r2.id = rp.review_id WHERE r2.is_seeded
+                    UNION ALL SELECT 'review_tasks (seeded)', count(*) FROM review_tasks t
+                        JOIN reviews r2 ON r2.id = t.review_id WHERE r2.is_seeded
+                    """
+                )
+            )
+        ).all()
+    for row in counts:
+        print(f"  {row[0]:24s} {row[1]}")
+
+    print("\nTo view: open http://localhost:3000/operator, toggle \"Seeded mode\" on in the Demo panel")
+    print("(top nav), and the mock reviews/reports above appear alongside whatever real data exists —")
+    print("toggle off and they're hidden again. No .env or restart needed; it's a live in-app switch.")
+
+
+if __name__ == "__main__":
+    asyncio.run(main())

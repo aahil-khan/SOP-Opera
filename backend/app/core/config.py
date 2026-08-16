@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://sop:sop@localhost:5433/sop_opera"
+    # Standalone corpus DB used by scripts/seed_history.py (the full audit-chain-
+    # valid year-long build) — not read by the running app. Mock data shown via
+    # the in-app "seeded mode" toggle lives tagged (reviews.is_seeded) in the
+    # primary database instead; see db/session.py and scripts/quick_mock_seed.py.
+    history_database_url: str = "postgresql+asyncpg://sop:sop@localhost:5433/sop_opera_history"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     # Allow Next.js dev fallback ports (and 127.0.0.1) without editing CORS_ORIGINS each time.
     cors_localhost_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"

@@ -39,6 +39,11 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ambientBusy, setAmbientBusy] = useState(false);
+  // Backend-backed: GET/POST /demo/seeded-mode switches which database
+  // get_session() hands out for the rest of the request lifecycle (see
+  // db/session.py). On means every read comes from the mock/history DB.
+  const [seededMode, setSeededMode] = useState(false);
+  const [seededBusy, setSeededBusy] = useState(false);
 
   const [maxIssues, setMaxIssues] = useState("8");
   const [paceMin, setPaceMin] = useState("4");
@@ -55,6 +60,18 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
         setScenario((prev) =>
           list.some((s) => s.name === prev) ? prev : list[0].name,
         );
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void demoRequest<{ enabled: boolean }>("/demo/seeded-mode")
+      .then((res) => {
+        if (!cancelled) setSeededMode(res.enabled);
       })
       .catch(() => {});
     return () => {
@@ -171,6 +188,26 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
     }
   }
 
+  async function onToggleSeededMode() {
+    setSeededBusy(true);
+    setError(null);
+    try {
+      await demoRequest<{ enabled: boolean }>("/demo/seeded-mode/toggle", {
+        method: "POST",
+      });
+      // The backend now points every request at a different database. The
+      // shared store (bootstrap/refreshOverview) isn't the only place that
+      // fetches — ReportsView, AssetHistory, and others each do their own
+      // useEffect-driven fetch on mount and won't notice a global toggle.
+      // A full reload is the only fix that's guaranteed to catch all of
+      // them: every component's initial fetch re-runs against the new DB.
+      window.location.reload();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+      setSeededBusy(false);
+    }
+  }
+
   const running = Boolean(status?.running);
   const manualArmed =
     status?.playback === "manual" && Boolean(status?.scenario);
@@ -228,6 +265,20 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
           onClick={() => void onToggleAmbient()}
         >
           {ambientBusy ? "Updating…" : ambientOn ? "Live feed on" : "Live feed off"}
+        </button>
+      </section>
+
+      <section className={styles.section}>
+        <h3 className={styles.sectionTitle}>Seeded mode</h3>
+        <button
+          type="button"
+          className={styles.liveToggle}
+          data-on={seededMode ? "true" : undefined}
+          aria-pressed={seededMode}
+          disabled={seededBusy || busy}
+          onClick={() => void onToggleSeededMode()}
+        >
+          {seededBusy ? "Updating…" : seededMode ? "Seeded mode on" : "Seeded mode off"}
         </button>
       </section>
 

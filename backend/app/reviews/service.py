@@ -437,6 +437,8 @@ async def list_reviews(
     on every domain event — and it previously returned every review ever created.
     The worker-scoped variants below already had a LIMIT; this one was missed.
     """
+    from app.db.session import get_seeded_mode
+
     clauses = ["1=1"]
     params: dict = {}
     if state:
@@ -445,6 +447,10 @@ async def list_reviews(
     if asset_id:
         clauses.append("asset_id = CAST(:asset_id AS uuid)")
         params["asset_id"] = str(asset_id)
+    if not get_seeded_mode():
+        # Seeded mode off: real data only. On: real + mock together (both
+        # visible at once — see db/session.py's docstring on the flag).
+        clauses.append("is_seeded = FALSE")
     where = " AND ".join(clauses)
     result = await session.execute(
         text(
