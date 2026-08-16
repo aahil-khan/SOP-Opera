@@ -89,7 +89,12 @@ const VIEW_ZOOM_MS = 420;
 /** Docked panel widths — current defaults are mins; user can widen only. */
 export const SIDEBAR_WIDTH_MIN = 280;
 export const SIDEBAR_WIDTH_MAX = 480;
-export const DRAWER_WIDTH_MIN = 380;
+/**
+ * Double the open-work sidebar. The review drawer now carries the auto-response
+ * action list alongside the assessment, and at 380 the action rows truncated
+ * ("Response te…") and the group sections fell below the fold.
+ */
+export const DRAWER_WIDTH_MIN = 560;
 export const DRAWER_WIDTH_EXPANDED_MIN = 720;
 export const DRAWER_WIDTH_MAX = 960;
 

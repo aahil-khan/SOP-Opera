@@ -131,7 +131,15 @@ export function groupByIntent(actions: ResponseAction[]): IntentGroup[] {
       title: meta.title,
       hint: meta.hint,
       tier,
-      actions: live.filter((a) => a.tier === tier),
+      // Stable order within a group. Without an explicit sort the rows inherit
+      // whatever order the server returned, so a refetch or a live update
+      // reshuffles the list under the reader's cursor mid-demo.
+      actions: live
+        .filter((a) => a.tier === tier)
+        .sort(
+          (x, y) =>
+            x.created_at.localeCompare(y.created_at) || x.id.localeCompare(y.id),
+        ),
     };
   }).filter((g) => g.actions.length > 0);
 }
@@ -157,6 +165,36 @@ export function headline(
       : assetName
     : zone;
   return { count, where };
+}
+
+/**
+ * The reversibility claim, in the header rather than behind a row click.
+ *
+ * This is the whole safety argument for acting without asking — at 97%
+ * precision the system will act on a false alarm, and that is survivable only
+ * because everything it does on its own can be taken back, and the
+ * irreversible actions are refused outright. It was previously reachable only
+ * by expanding an individual action, so a reader scanning the panel never met
+ * the one idea that justifies it.
+ *
+ * Computed from the envelopes, never asserted: if a non-reversible action ever
+ * executes, this line stops claiming otherwise.
+ */
+export function assurance(actions: ResponseAction[]): {
+  allReversible: boolean;
+  executed: number;
+  refused: number;
+} {
+  const executed = actions.filter(
+    (a) => a.status === "armed" || a.status === "active",
+  );
+  const refused = actions.filter((a) => a.status === "refused");
+  return {
+    allReversible:
+      executed.length > 0 && executed.every((a) => a.envelope.reversible),
+    executed: executed.length,
+    refused: refused.length,
+  };
 }
 
 // --- Equipment naming --------------------------------------------------------
