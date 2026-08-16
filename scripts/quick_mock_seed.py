@@ -338,6 +338,7 @@ async def wipe_seeded_rows(session) -> None:
     seeded_reviews = "(SELECT id FROM reviews WHERE is_seeded)"
     seeded_assessments = f"(SELECT id FROM assessments WHERE review_id IN {seeded_reviews})"
     for stmt in (
+        f"DELETE FROM notifications WHERE review_id IN {seeded_reviews}",
         f"DELETE FROM evidence WHERE review_id IN {seeded_reviews}",
         f"DELETE FROM review_tasks WHERE review_id IN {seeded_reviews}",
         f"DELETE FROM review_comments WHERE review_id IN {seeded_reviews}",
@@ -631,21 +632,57 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
     )
 
     if outcome == "blocked":
+        # Status is age-weighted, not always 'open'. A task from a year ago
+        # that's still open reads as a plant that never follows up on its own
+        # stop-work orders — and it permanently clogs every future shift
+        # handover, since compose_carry_forward treats 'open'/'acknowledged'
+        # as still-outstanding regardless of how old they are. Older tasks
+        # are increasingly likely to have actually been closed out.
+        age_days = (datetime.now(timezone.utc) - submitted_at).total_seconds() / 86400
+        if age_days > 60:
+            status = _weighted([("done", 90), ("acknowledged", 8), ("open", 2)])
+        elif age_days > 14:
+            status = _weighted([("done", 70), ("acknowledged", 20), ("open", 10)])
+        else:
+            status = _weighted([("done", 30), ("acknowledged", 30), ("open", 40)])
+
+        acknowledged_at = None
+        done_at = None
+        done_note = None
+        if status in ("acknowledged", "done"):
+            acknowledged_at = submitted_at + timedelta(hours=random.uniform(0.5, 18))
+        if status == "done":
+            done_at = acknowledged_at + timedelta(hours=random.uniform(0.5, 36))
+            done_note = random.choice([
+                "Isolation re-verified; gas test clear. Permit reinstated.",
+                "Corrective work completed and signed off by area authority.",
+                "Fault cleared; equipment returned to service.",
+                None,
+            ])
+
+        assignee = random.choice(WORKERS)[0]  # (id, name, certs) — any of the 5 field workers
         await session.execute(
             text(
                 """
-                INSERT INTO review_tasks (id, review_id, decision_id, assigned_worker_id, task_type, title, detail, status, created_by, created_at)
-                VALUES (:id, :review_id, :decision_id, '55555555-5555-5555-5555-555555555555', 'unblock', :title, :detail, 'open', :created_by, :created_at)
+                INSERT INTO review_tasks (id, review_id, decision_id, assigned_worker_id, task_type,
+                    title, detail, status, created_by, created_at, acknowledged_at, done_at, done_note)
+                VALUES (:id, :review_id, :decision_id, :assigned_worker_id, 'unblock',
+                    :title, :detail, :status, :created_by, :created_at, :acknowledged_at, :done_at, :done_note)
                 """
             ),
             {
                 "id": uuid.uuid4(),
                 "review_id": review_id,
                 "decision_id": decision_id,
+                "assigned_worker_id": assignee,
                 "title": f"Unblock {asset['name']}",
                 "detail": rec_text,
+                "status": status,
                 "created_by": supervisor["name"],
                 "created_at": submitted_at,
+                "acknowledged_at": acknowledged_at,
+                "done_at": done_at,
+                "done_note": done_note,
             },
         )
 

@@ -48,13 +48,21 @@ async def compose_carry_forward(
     Returns plain dicts rather than rows so the caller can insert them, and so
     the rules stay testable without a handover row existing.
     """
+    from app.db.session import get_seeded_mode
+
+    # Same flag Reviews/Reports respect (GET/POST /demo/seeded-mode): off shows
+    # only real rows, on shows real + mock together. Handover previously had no
+    # filter at all here, so it kept showing mock carry-forward items even with
+    # seeded mode off — inconsistent with every other page reading this flag.
+    seeded_mode = get_seeded_mode()
+
     since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
     items: list[dict[str, Any]] = []
 
-    items.extend(await _open_reviews(session))
-    items.extend(await _active_facts(session, since=since))
-    items.extend(await _open_tasks(session))
-    items.extend(await _decision_conditions(session, since=since))
+    items.extend(await _open_reviews(session, seeded_mode=seeded_mode))
+    items.extend(await _active_facts(session, since=since, seeded_mode=seeded_mode))
+    items.extend(await _open_tasks(session, seeded_mode=seeded_mode))
+    items.extend(await _decision_conditions(session, since=since, seeded_mode=seeded_mode))
 
     items.sort(key=_rank)
     for position, item in enumerate(items):
@@ -62,7 +70,9 @@ async def compose_carry_forward(
     return items
 
 
-async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
+async def _open_reviews(
+    session: AsyncSession, *, seeded_mode: bool
+) -> list[dict[str, Any]]:
     """
     Every review still in flight, with the risk of its latest complete assessment.
 
@@ -84,9 +94,11 @@ async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
                 LIMIT 1
             ) am ON true
             WHERE r.state <> 'closed'
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY r.created_at DESC
             """
-        )
+        ),
+        {"seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
@@ -115,7 +127,7 @@ async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
 
 
 async def _active_facts(
-    session: AsyncSession, *, since: datetime
+    session: AsyncSession, *, since: datetime, seeded_mode: bool
 ) -> list[dict[str, Any]]:
     """
     Derived facts still true at the end of the shift.
@@ -124,6 +136,10 @@ async def _active_facts(
     that fired and then cleared during the shift does not carry. Acknowledgement
     is required when the fact supplies a hazard dimension — that is `risk/policy`
     deciding what is dangerous, not this module.
+
+    `derived_facts` has no review_id and no is_seeded column of its own, so mock
+    rows are identified the same way scripts/quick_mock_seed.py's own cleanup
+    does: by provider='quick_mock' on the context_entries that produced them.
     """
     result = await session.execute(
         text(
@@ -133,10 +149,14 @@ async def _active_facts(
             FROM derived_facts d
             JOIN assets a ON a.id = d.asset_id
             WHERE d.computed_at >= :since
+              AND (:seeded_mode OR NOT (d.source_context_ids && (
+                  SELECT COALESCE(array_agg(id), '{}') FROM context_entries
+                  WHERE provider = 'quick_mock'
+              )))
             ORDER BY d.asset_id, d.fact_type, d.computed_at DESC
             """
         ),
-        {"since": since},
+        {"since": since, "seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
@@ -170,7 +190,9 @@ async def _active_facts(
     return items
 
 
-async def _open_tasks(session: AsyncSession) -> list[dict[str, Any]]:
+async def _open_tasks(
+    session: AsyncSession, *, seeded_mode: bool
+) -> list[dict[str, Any]]:
     """
     Follow-through work a decision spawned that nobody has completed.
 
@@ -187,9 +209,11 @@ async def _open_tasks(session: AsyncSession) -> list[dict[str, Any]]:
             JOIN assets a ON a.id = r.asset_id
             LEFT JOIN workers w ON w.id = t.assigned_worker_id
             WHERE t.status IN ('open', 'acknowledged')
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY t.created_at DESC
             """
-        )
+        ),
+        {"seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
@@ -218,7 +242,7 @@ async def _open_tasks(session: AsyncSession) -> list[dict[str, Any]]:
 
 
 async def _decision_conditions(
-    session: AsyncSession, *, since: datetime
+    session: AsyncSession, *, since: datetime, seeded_mode: bool
 ) -> list[dict[str, Any]]:
     """
     Conditions attached to work approved during the shift.
@@ -240,10 +264,11 @@ async def _decision_conditions(
               AND d.submitted_at >= :since
               AND d.conditions IS NOT NULL
               AND btrim(d.conditions) <> ''
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY d.submitted_at DESC
             """
         ),
-        {"since": since},
+        {"since": since, "seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
