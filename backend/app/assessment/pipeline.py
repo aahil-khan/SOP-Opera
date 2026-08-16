@@ -9,11 +9,11 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
+from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReference
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.graph import run_agent_assessment
-from app.handover.repository import fetch_unacknowledged_for_asset
 from app.agents.routing import should_load_plant_neighborhood
 from app.ai_ops.events import record_ai_ops_event
 from app.assessment.orchestrator import PROMPT_VERSION
@@ -27,12 +27,12 @@ from app.assessment.retrieval.enrich import enrich_references, serialize_ref
 from app.context.derived_facts import load_valid_context, load_valid_context_for_assets
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from app.graph.kg import neighbors_within_radius, get_plant_graph
+from app.graph.kg import get_plant_graph, neighbors_within_radius
+from app.handover.repository import fetch_unacknowledged_for_asset
 from app.realtime.connection_manager import manager
 from app.reviews.ownership import get_zone_owner, resolve_worker_names
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
-from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReference
 
 logger = logging.getLogger(__name__)
 
@@ -178,7 +178,7 @@ def _augment_reasoning_with_predictive_trend(
             )
         )
         return reasoning_factors
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("augment predictive trend reasoning failed", exc_info=True)
         return reasoning_factors
 

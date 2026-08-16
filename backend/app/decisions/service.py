@@ -7,6 +7,7 @@ import logging
 from typing import Literal
 from uuid import UUID
 
+from shared.python.schemas import Decision
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -20,7 +21,6 @@ from app.realtime.connection_manager import manager
 from app.reviews.ownership import get_zone_owner
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
-from shared.python.schemas import Decision
 
 logger = logging.getLogger(__name__)
 

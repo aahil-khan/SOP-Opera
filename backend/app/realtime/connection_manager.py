@@ -21,7 +21,7 @@ without letting a permanently wedged client consume unbounded memory.
 class _Client:
     """One connected socket plus its own outbound queue and writer task."""
 
-    __slots__ = ("websocket", "queue", "task", "dropped")
+    __slots__ = ("dropped", "queue", "task", "websocket")
 
     def __init__(self, websocket: WebSocket, maxsize: int) -> None:
         self.websocket = websocket

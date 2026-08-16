@@ -6,6 +6,7 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
+from shared.python.schemas import DerivedFact
 
 from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.graph.kg import (
@@ -15,7 +16,6 @@ from app.graph.kg import (
     reset_plant_graph_cache,
     serialize_graph,
 )
-from shared.python.schemas import DerivedFact
 
 VESSEL_A = "11111111-1111-1111-1111-111111111111"
 WALKWAY_3 = "22222222-2222-2222-2222-222222222222"

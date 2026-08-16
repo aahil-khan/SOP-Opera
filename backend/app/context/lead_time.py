@@ -7,9 +7,9 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
-from app.risk.policy import CRITICAL_SENSOR_FACTS
 from app.context.derived_facts import ContextEntryView
 from app.core.config import get_settings
+from app.risk.policy import CRITICAL_SENSOR_FACTS
 
 
 def _parse_dt(value: Any) -> datetime:

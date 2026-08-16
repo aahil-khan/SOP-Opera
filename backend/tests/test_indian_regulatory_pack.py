@@ -56,9 +56,10 @@ def test_every_statutory_row_is_checkable():
 
 @pytest_asyncio.fixture
 async def session():
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:

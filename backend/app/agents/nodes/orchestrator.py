@@ -12,12 +12,12 @@ from app.agents.llm_outcomes import make_outcome, short_error
 from app.agents.state import AgentState
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
 from app.assessment.citations import check_citations, strip_unsupported
-from app.risk.recommendations import FACT_RECOMMENDATIONS
+from app.assessment.schemas import AssessmentResult
+from app.context.lead_time import compute_lead_time_for_verdict
+from app.core.config import get_settings
 from app.reviews.concerns import SUPERVISOR_FACT_TYPES
 from app.risk import policy as risk_policy
-from app.assessment.schemas import AssessmentResult
-from app.core.config import get_settings
-from app.context.lead_time import compute_lead_time_for_verdict
+from app.risk.recommendations import FACT_RECOMMENDATIONS
 
 
 def _fuse_verdict(

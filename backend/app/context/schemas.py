@@ -5,9 +5,16 @@ from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import BaseModel, Field
+from shared.python.schemas import (
+    AreaOwner,
+    Asset,
+    Context,
+    Decision,
+    DerivedFact,
+    Review,
+)
 
 from app.tasks.schemas import ReviewTaskOut, TaskSummaryOut
-from shared.python.schemas import AreaOwner, Asset, Context, Decision, DerivedFact, Review
 
 SupervisorConcernType = Literal[
     "safety_hazard",

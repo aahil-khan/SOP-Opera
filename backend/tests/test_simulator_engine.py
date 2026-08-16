@@ -9,19 +9,21 @@ import pytest_asyncio
 from sqlalchemy import text
 
 from app.simulator.engine import (
-    ScenarioAlreadyRunningError,
     DemoController,
+    ScenarioAlreadyRunningError,
     demo_controller,
 )
 
 
 async def _bootstrap():
-    from app.core.config import get_settings
-    from app.db.session import apply_schema, engine, _asyncpg_dsn
-    from app.db.vector import close_vector_pool
-    from app.db.seed import seed_minimal
-    import asyncpg
     import os
+
+    import asyncpg
+
+    from app.core.config import get_settings
+    from app.db.seed import seed_minimal
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
+    from app.db.vector import close_vector_pool
 
     settings = get_settings()
     try:
@@ -49,8 +51,8 @@ async def _bootstrap():
 
 @pytest_asyncio.fixture
 async def ready():
-    from app.db.vector import close_vector_pool
     from app.db.session import engine
+    from app.db.vector import close_vector_pool
 
     await _bootstrap()
     yield
