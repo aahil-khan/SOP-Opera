@@ -10,11 +10,25 @@
   max-width: 22rem;
 }
 
-.heading {
+/*
+ * What the equipment physically is. Set at body weight and full contrast — it
+ * is the first thing read, and for a non-expert it is the only line that makes
+ * the rest of the card mean anything.
+ */
+.blurb {
   margin: 0;
   font-size: var(--text-xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-primary);
+}
+
+.heading {
+  margin: 0;
+  font-size: var(--text-2xs);
   font-weight: var(--weight-semibold);
-  color: var(--text-secondary);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
 }
 
 .clauses {

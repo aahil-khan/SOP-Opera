@@ -53,7 +53,7 @@
 }
 
 .row[data-tier="0"] {
-  border-left-color: var(--domain-evidence);
+  border-left-color: var(--domain-response);
 }
 .row[data-tier="1"] {
   border-left-color: var(--status-elevated);
@@ -82,8 +82,4 @@
   color: var(--text-muted);
 }
 
-.footnote {
-  margin: 0;
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
+/* Synthetic-data disclosure moved to the app-shell badge. */

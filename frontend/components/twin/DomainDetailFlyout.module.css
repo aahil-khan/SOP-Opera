@@ -24,6 +24,9 @@
 .flyout[data-domain="evidence"] {
   border-color: color-mix(in srgb, var(--domain-evidence) 40%, var(--border-default));
 }
+.flyout[data-domain="response"] {
+  border-color: color-mix(in srgb, var(--domain-response) 40%, var(--border-default));
+}
 .flyout[data-domain="spatial"] {
   border-color: color-mix(in srgb, var(--domain-spatial) 40%, var(--border-default));
 }
@@ -103,9 +106,15 @@
   background: var(--interactive-hover);
 }
 
+/*
+ * Tall enough to hold a real list. At 320px the response domain showed three of
+ * eight actions and put the rest behind an inner scrollbar, so the section
+ * headings that carry the explanation never appeared together. 68vh keeps the
+ * flyout clear of the drawer's action bar on a laptop screen.
+ */
 .body {
   padding: var(--space-3);
-  max-height: min(40vh, 320px);
+  max-height: min(68vh, 620px);
   overflow: auto;
   display: flex;
   flex-direction: column;

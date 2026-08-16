@@ -11,6 +11,7 @@
  */
 
 import type { ResponseAction } from "@/lib/liveApi";
+import { zoneLabel } from "@/lib/zoneLabel";
 
 export interface ActionGroups {
   /** Counting down — the only rows with a deadline. */
@@ -67,7 +68,8 @@ export function zoneSummary(actions: ResponseAction[]): string | null {
     }
   }
   if (zones.size === 0) return null;
-  if (zones.size === 1) return [...zones][0];
+  // Slugs are a storage detail — `coke-oven-battery` is not a place name.
+  if (zones.size === 1) return zoneLabel([...zones][0]);
   return `${zones.size} zones`;
 }
 
@@ -95,23 +97,29 @@ export interface IntentGroup {
 const INTENT_BY_TIER: Record<number, { id: string; title: string; hint: string }> = {
   2: {
     id: "protect",
-    title: "Made the area safe",
-    hint: "Equipment the system changed to reduce the hazard.",
+    title: "Made the area safer",
+    hint: "Equipment the system changed to cut the hazard.",
   },
   1: {
     id: "warn",
-    title: "Warned people",
+    title: "Told people",
     hint: "Alerts raised so anyone nearby knows.",
   },
   0: {
     id: "record",
     title: "Kept a record",
-    hint: "Evidence captured so the decision can be reviewed later.",
+    hint: "Evidence frozen so the decision can be audited later.",
   },
   3: {
     id: "never",
-    title: "Will never do on its own",
-    hint: "These always need a person to start them.",
+    /**
+     * Named for who has to act, not for what the system lacks. "Will never do
+     * on its own" describes our restraint in our own terms; a reader meeting
+     * the panel for the first time needs to know a supervisor is the one who
+     * starts these.
+     */
+    title: "Needs a person",
+    hint: "These can't be undone, so the system stops here and waits for a supervisor.",
   },
 };
 
@@ -119,10 +127,18 @@ const INTENT_BY_TIER: Record<number, { id: string; title: string; hint: string }
 const INTENT_ORDER = [2, 1, 0, 3];
 
 export function groupByIntent(actions: ResponseAction[]): IntentGroup[] {
-  const live = actions.filter(
-    (a) =>
-      a.status === "armed" || a.status === "active" || a.status === "refused",
-  );
+  const live = actions.filter((a) => {
+    if (a.status === "armed" || a.status === "active") return true;
+    /**
+     * Refusals belong in "Needs a person", not in the sections describing what
+     * the system actually did. A Tier 1/2 action can also be refused — the
+     * master switch being off is the common case — and those were landing under
+     * "Made the area safer" carrying a state word, so a paused system read as
+     * though it had acted. Tier 3 refusals are the point of that section and
+     * stay.
+     */
+    return a.status === "refused" && a.tier === 3;
+  });
 
   return INTENT_ORDER.map((tier) => {
     const meta = INTENT_BY_TIER[tier];
@@ -167,41 +183,25 @@ export function headline(
   return { count, where };
 }
 
-/**
- * The reversibility claim, in the header rather than behind a row click.
- *
- * This is the whole safety argument for acting without asking — at 97%
- * precision the system will act on a false alarm, and that is survivable only
- * because everything it does on its own can be taken back, and the
- * irreversible actions are refused outright. It was previously reachable only
- * by expanding an individual action, so a reader scanning the panel never met
- * the one idea that justifies it.
- *
- * Computed from the envelopes, never asserted: if a non-reversible action ever
- * executes, this line stops claiming otherwise.
+/*
+ * A header line asserting "every one can be undone · N refused" used to live
+ * here. It was cut: the reversibility claim now sits where it is actually
+ * useful — per action, in the expanded row ("Can be switched back") — and the
+ * refusal count is the "Needs a person" section's own heading. Stating both
+ * again at the top pushed the list itself below the fold.
  */
-export function assurance(actions: ResponseAction[]): {
-  allReversible: boolean;
-  executed: number;
-  refused: number;
-} {
-  const executed = actions.filter(
-    (a) => a.status === "armed" || a.status === "active",
-  );
-  const refused = actions.filter((a) => a.status === "refused");
-  return {
-    allReversible:
-      executed.length > 0 && executed.every((a) => a.envelope.reversible),
-    executed: executed.length,
-    refused: refused.length,
-  };
-}
 
 // --- Equipment naming --------------------------------------------------------
 
 /**
  * Operators read equipment, not action names: "Ventilation · on" lands faster
  * than "Ventilation started". W12 asks for operator language over ours.
+ *
+ * The one source of device names. There were three — this map, `SHORT` in
+ * DeviceChips and `RESPONSE_DEVICE_SHORT` in DigitalTwin — so the same device
+ * was "Public address" in the panel and "PA" on the map. Both now import from
+ * here; `deviceShortLabel` is the abbreviated form for the map badges and chips
+ * where horizontal space is genuinely tight.
  */
 const EQUIPMENT_NOUN: Record<string, string> = {
   ventilation: "Ventilation",
@@ -211,6 +211,34 @@ const EQUIPMENT_NOUN: Record<string, string> = {
   muster_alarm: "Muster alarm",
   permit_gate: "Permit",
 };
+
+/**
+ * The same equipment, abbreviated for map badges and device chips where a full
+ * name will not fit.
+ *
+ * There were three of these maps — this one, `SHORT` in DeviceChips and
+ * `RESPONSE_DEVICE_SHORT` in DigitalTwin — and they disagreed: `pa_zone` read
+ * "Public address" in the panel and "PA" on the map, ventilation was
+ * "Ventilation" twice and "Vent" once. One vocabulary, one place.
+ */
+const EQUIPMENT_SHORT: Record<string, string> = {
+  ventilation: "Ventilation",
+  pa_zone: "PA",
+  exclusion_signage: "Signage",
+  tool_issuance_gate: "Tool gate",
+  muster_alarm: "Muster",
+  permit_gate: "Permit",
+};
+
+/** Full device name, e.g. "Public address". */
+export function deviceLabel(kind: string): string {
+  return EQUIPMENT_NOUN[kind] ?? kind;
+}
+
+/** Abbreviated device name for chips and map badges, e.g. "PA". */
+export function deviceShortLabel(kind: string): string {
+  return EQUIPMENT_SHORT[kind] ?? EQUIPMENT_NOUN[kind] ?? kind;
+}
 
 /**
  * Device states in words someone reads rather than decodes. "on" is a value in
@@ -250,6 +278,52 @@ export function equipmentLabel(action: ResponseAction): string {
   }
   return ACTION_NOUN[action.action_kind] ?? action.label;
 }
+
+/**
+ * What each piece of equipment physically is, in one sentence.
+ *
+ * The panel named things ("Muster alarm", "Tool gate") without ever saying what
+ * they are. That is fine for a plant operator and useless to anyone else —
+ * including a judge being shown the product for the first time, which is the
+ * audience this surface exists for.
+ *
+ * Keyed by action kind rather than device kind so the three device-less actions
+ * are covered too. The Tier 3 entries carry the refusal argument on their own:
+ * "venting cannot be undone" explains the refusal better than any clause list.
+ */
+const EQUIPMENT_BLURB: Record<string, string> = {
+  // Tier 2 · protect
+  ventilation_on:
+    "Extraction fans in this zone. They pull hazardous gas out of the area.",
+  tool_issuance_gate_closed:
+    "The counter where crews collect tools. Closing it stops anyone picking up gear and walking in.",
+  permit_freeze:
+    "The work permit for this asset. Freezing it means no new work can start under it.",
+  muster_alarm:
+    "The siren that tells everyone to leave and gather at the muster point.",
+  // Tier 1 · warn
+  pa_announcement:
+    "Loudspeakers in the zone, used to tell people what is happening.",
+  exclusion_signage: "Lit keep-out signs at the entrances to the zone.",
+  page_response_team:
+    "A call-out to the on-call responder for this zone. It escalates if nobody answers.",
+  // Tier 0 · preserve
+  preserve_evidence:
+    "A frozen copy of every reading and permit at this moment, so the decision can be audited later.",
+  // Tier 3 · never automatic
+  unit_shutdown: "Tripping the production unit offline. Restart takes hours.",
+  depressurize: "Venting the system to atmosphere. Cannot be undone.",
+  evacuation_complete:
+    "The all-clear that sends people back in. A false one is fatal.",
+};
+
+/** One plain sentence describing what this action physically does. */
+export function equipmentBlurb(action: ResponseAction): string | null {
+  return EQUIPMENT_BLURB[action.action_kind] ?? null;
+}
+
+/** Every action kind the envelope can produce — the blurb map must cover all. */
+export const KNOWN_ACTION_KINDS = Object.keys(EQUIPMENT_BLURB);
 
 /** The state word shown beside the equipment, or null when there is no device. */
 export function equipmentState(action: ResponseAction): string | null {
@@ -370,13 +444,29 @@ export function secondsSinceDispatch(
  * The envelope's four clauses in operator language, in the order the backend
  * gate evaluates them (`response/envelope.py`) — so the first failing clause in
  * this list is the one that decided a refusal.
+ *
+ * `tier_permits_automation` is marked `refusedOnly`: on an action that ran,
+ * "tier allows automation" is circular — it did it because it was allowed, and
+ * it was allowed because it was allowed. On a refusal it is the entire reason,
+ * so it stays. See CLAUSES_FOR_ALLOWED / CLAUSES_FOR_REFUSED below.
  */
-export const CLAUSE_LABELS: ReadonlyArray<{ key: string; label: string }> = [
-  { key: "tier_permits_automation", label: "Tier allows automation" },
-  { key: "reversible", label: "Can be undone" },
-  { key: "fail_safe_direction", label: "Moves toward safety" },
-  { key: "bounded_blast_radius", label: "Limited to this area" },
+export const CLAUSE_LABELS: ReadonlyArray<{
+  key: string;
+  label: string;
+  refusedOnly?: boolean;
+}> = [
+  {
+    key: "tier_permits_automation",
+    label: "Needs a person, not a rule",
+    refusedOnly: true,
+  },
+  { key: "reversible", label: "Can be switched back" },
+  { key: "fail_safe_direction", label: "Only makes the area safer" },
+  { key: "bounded_blast_radius", label: "Stops at this zone" },
 ];
+
+export const CLAUSES_FOR_ALLOWED = CLAUSE_LABELS.filter((c) => !c.refusedOnly);
+export const CLAUSES_FOR_REFUSED = CLAUSE_LABELS;
 
 export function formatClock(totalSeconds: number): string {
   const m = Math.floor(totalSeconds / 60);

@@ -78,12 +78,18 @@ export type { OpsSummary };
 export type { SpatialLinkView };
 export { spatialLinksFromAssessment };
 
-/** Matches DomainId in lib/domains — kept here to avoid a circular import. */
+/**
+ * Matches DomainId in lib/domains — kept here to avoid a circular import.
+ *
+ * Hand-kept, so nothing tells you when it drifts: add a domain there, add it
+ * here too or deep-linking that face silently stops working.
+ */
 export type AssetDomainFocus =
   | "sensors"
   | "permits"
   | "people"
   | "evidence"
+  | "response"
   | "spatial";
 
 export type DomainFocusRequest = {

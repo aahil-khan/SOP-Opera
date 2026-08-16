@@ -1,40 +1,55 @@
 "use client";
 
-import type { ResponseEnvelope } from "@/lib/liveApi";
-import { CLAUSE_LABELS } from "@/lib/autoResponse";
+import type { ResponseAction, ResponseEnvelope } from "@/lib/liveApi";
+import {
+  CLAUSES_FOR_ALLOWED,
+  CLAUSES_FOR_REFUSED,
+  equipmentBlurb,
+} from "@/lib/autoResponse";
 import styles from "./EnvelopeExplainer.module.css";
 
 /**
- * Why this action was allowed to happen by itself — or why it was not.
+ * What this action is, and why the system was — or was not — allowed to do it.
  *
- * Shows all four clauses of the reversibility envelope with the one that
- * decided the outcome marked. The point is that a judge (or a safety officer)
- * can see the boundary of the automation in about ten seconds, rather than
- * being asked to trust it.
+ * Order matters. It opens with a plain sentence saying what the equipment
+ * physically is, because the panel names things ("Muster alarm", "Tool gate")
+ * that mean nothing to anyone who has not worked a plant. The safety argument
+ * only lands once you know what was switched on.
+ *
+ * The clause list is deliberately shorter for an action that ran: "tier allows
+ * automation" is circular once something has happened, and reads as filler next
+ * to three claims that say something. On a refusal it is the entire reason, so
+ * it stays.
  */
 export function EnvelopeExplainer({
+  action,
   envelope,
   refusalReason,
 }: {
+  action: ResponseAction;
   envelope: ResponseEnvelope;
   refusalReason?: string | null;
 }) {
   const clauses = envelope.clauses ?? {};
+  const allowed = envelope.allowed;
+  const shown = allowed ? CLAUSES_FOR_ALLOWED : CLAUSES_FOR_REFUSED;
   // The gate evaluates in order and stops at the first failure, so the first
   // false clause is the one that decided a refusal.
-  const decidingKey = CLAUSE_LABELS.find(
+  const decidingKey = CLAUSES_FOR_REFUSED.find(
     ({ key }) => clauses[key] === false,
   )?.key;
+  const blurb = equipmentBlurb(action);
 
   return (
     <div className={styles.card} role="note">
+      {blurb ? <p className={styles.blurb}>{blurb}</p> : null}
+
       <p className={styles.heading}>
-        {envelope.allowed
-          ? "Allowed to act automatically because:"
-          : "Not allowed to act automatically:"}
+        {allowed ? "Safe to do automatically" : "Not done automatically"}
       </p>
+
       <ul className={styles.clauses}>
-        {CLAUSE_LABELS.map(({ key, label }) => {
+        {shown.map(({ key, label }) => {
           const held = clauses[key];
           return (
             <li
@@ -56,14 +71,9 @@ export function EnvelopeExplainer({
         <p className={styles.reason}>{refusalReason}</p>
       ) : envelope.reversal ? (
         <p className={styles.reason}>
-          <span className={styles.reasonLabel}>Undone by</span>{" "}
-          {envelope.reversal}
+          <span className={styles.reasonLabel}>Undo</span> {envelope.reversal}
         </p>
       ) : null}
-
-      <p className={styles.meta}>
-        Affects: {envelope.blast_radius === "none" ? "no plant equipment" : envelope.blast_radius}
-      </p>
     </div>
   );
 }

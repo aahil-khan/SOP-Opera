@@ -16,12 +16,18 @@
 
 /* --- Headline -------------------------------------------------------------- */
 
+/*
+ * One line: the count and the master switch. Everything else that lived up here
+ * — the reversibility claim, the asset and zone — was either repeated from the
+ * panel header directly above or better said per action, and together they took
+ * three lines before the reader reached a single piece of equipment.
+ */
 .headline {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: baseline;
-  column-gap: var(--space-2);
-  padding: var(--space-3) var(--space-4) var(--space-3);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border-muted);
   flex-shrink: 0;
 }
@@ -34,40 +40,14 @@
 
 .count strong {
   font-family: var(--font-mono);
-  font-size: var(--text-xl);
+  font-size: var(--text-lg);
   font-weight: var(--weight-semibold);
   color: var(--text-primary);
   margin-right: 0.15em;
 }
 
-/*
- * The reversibility claim. Ranked above .where because it is the reason the
- * system is allowed to act at all, and it used to be reachable only by
- * expanding a row.
- */
-.assurance {
-  grid-column: 1 / 2;
-  margin: 4px 0 0;
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: var(--risk-nominal, var(--text-secondary));
-}
-
-/* Where it is acting — the bounded blast radius, visible without reading. */
-.where {
-  grid-column: 1 / 2;
-  margin: 2px 0 0;
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 .pause {
-  grid-row: 1 / 4;
-  grid-column: 2 / 3;
-  align-self: center;
+  flex-shrink: 0;
   font-size: var(--text-xs);
   padding: var(--space-1) var(--space-3);
   border: 1px solid var(--border-default);
@@ -103,10 +83,14 @@
 
 /* --- Sections -------------------------------------------------------------- */
 
+/*
+ * The panel does not scroll itself. Its only mount is the domain flyout, whose
+ * body is already a scroll container — a second one nested inside gave two
+ * scrollbars a few pixels apart and made the list feel much shorter than it is.
+ */
 .scroll {
   flex: 1 1 auto;
   min-height: 0;
-  overflow-y: auto;
 }
 
 .group {
@@ -153,6 +137,19 @@
   color: var(--text-muted);
 }
 
+/*
+ * The one line telling a first-time reader what the section is for. These
+ * strings existed from the beginning and were never rendered — the panel showed
+ * a heading and a count and expected you to already know the tier model.
+ */
+.groupHint {
+  margin: 0;
+  padding: 0 var(--space-4) var(--space-2);
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-muted);
+}
+
 .chevron {
   margin-left: auto;
   font-size: var(--text-xs);
@@ -189,7 +186,13 @@
   text-decoration-thickness: 1px;
 }
 
-.neverWhy {
+/*
+ * What the refused action physically is. Shown instead of the backend's refusal
+ * sentence, which repeated the section heading back at the reader ("Unit
+ * shutdown is Tier 3 — never executed automatically"). "Restart takes hours"
+ * argues the refusal by itself.
+ */
+.neverWhat {
   display: block;
   font-size: var(--text-2xs);
   line-height: var(--leading-relaxed);
@@ -217,7 +220,7 @@
 }
 
 .row[data-tier="0"] {
-  border-left-color: var(--domain-evidence);
+  border-left-color: var(--domain-response);
 }
 .row[data-tier="1"] {
   border-left-color: var(--status-elevated);
@@ -375,14 +378,7 @@
 }
 
 /*
- * Synthetic-data disclosure: one quiet line at the foot, not a pill on every
- * surface. Findable if you look for it, invisible while scanning equipment.
+ * The synthetic-data disclosure used to live here as a footnote, repeated in
+ * three components. It is now one badge in the app shell, which covers the
+ * report and the handover too — neither of which ever carried a label.
  */
-.footnote {
-  flex-shrink: 0;
-  margin: 0;
-  padding: var(--space-2) var(--space-4);
-  border-top: 1px solid var(--border-muted);
-  font-size: var(--text-2xs);
-  color: var(--text-muted);
-}
