@@ -1,0 +1,24 @@
+.chips {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  pointer-events: none;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 3px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--status-elevated);
+  background: color-mix(in srgb, var(--status-elevated-muted) 88%, transparent);
+  color: var(--text-primary);
+  font-size: var(--text-2xs);
+  line-height: 1.4;
+  white-space: nowrap;
+}
+
+.text {
+  font-variant-numeric: tabular-nums;
+}

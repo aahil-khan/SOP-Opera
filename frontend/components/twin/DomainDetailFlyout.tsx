@@ -9,6 +9,7 @@ import type { ReferenceSource } from "@/shared/enums";
 import type { AreaOwner, RetrievedReference } from "@/shared/schemas";
 import { AssetTelemetry } from "./AssetTelemetry";
 import { SpatialGraphPanel } from "./SpatialGraphPanel";
+import { AutoResponsePanel } from "@/components/response/AutoResponsePanel";
 import styles from "./DomainDetailFlyout.module.css";
 
 const REF_SECTIONS: {
@@ -208,14 +209,27 @@ function DomainBody({
     );
   }
 
-  return (
-    <SpatialGraphPanel
-      assetId={view.asset.id}
-      assetName={view.asset.name}
-      spatialLinks={spatialLinks}
-      embedded
-    />
-  );
+  if (domain === "response") {
+    return <AutoResponsePanel reviewId={view.review?.id ?? undefined} />;
+  }
+
+  if (domain === "spatial") {
+    return (
+      <SpatialGraphPanel
+        assetId={view.asset.id}
+        assetName={view.asset.name}
+        spatialLinks={spatialLinks}
+        embedded
+      />
+    );
+  }
+
+  /**
+   * Explicit, not a fallthrough. This used to end with an unguarded return of
+   * the spatial panel, so adding a domain rendered the wrong body with no type
+   * error to catch it. A blank body is a bug you can see.
+   */
+  return null;
 }
 
 export function DomainDetailFlyout({

@@ -15,6 +15,7 @@ import {
   useLiveAssetViews,
   useLiveStore,
 } from "@/lib/liveStore";
+import { deviceShortLabel, plainState } from "@/lib/autoResponse";
 import { heroAssetId } from "@/lib/tourScript";
 import { useTourStepId } from "@/lib/tourStore";
 import { columnForView } from "@/lib/openWork";
@@ -34,7 +35,9 @@ import { FLOOR_LABELS, FLOOR_ORDER } from "./floorPlanShared";
 import styles from "./DigitalTwin.module.css";
 
 const MAP_LAYERS_STORAGE_KEY = "sop-opera-map-layers";
-const DEFAULT_ENABLED_LAYERS: MapLayerId[] = ["ops"];
+// "response" is on by default: when the orchestrator drives a fan or shuts a
+// gate, seeing it change on the map is the whole point of having a twin.
+const DEFAULT_ENABLED_LAYERS: MapLayerId[] = ["ops", "response"];
 
 function readEnabledLayers(): MapLayerId[] {
   if (typeof window === "undefined") return DEFAULT_ENABLED_LAYERS;
@@ -102,6 +105,7 @@ export function DigitalTwin() {
   const assetPanelMode = useLiveStore((s) => s.assetPanelMode);
   const selectAsset = useLiveStore((s) => s.selectAsset);
   const opsChipsByAsset = useLiveStore((s) => s.opsChipsByAsset);
+  const responseDevices = useLiveStore((s) => s.responseDevices);
   const tourStepId = useTourStepId();
   /** Cast-select spotlights only this marker — everything else stays blocked. */
   const tourTargetAssetId =
@@ -188,6 +192,26 @@ export function DigitalTwin() {
   }, []);
 
   const opsLayerOn = enabledLayers.includes("ops");
+  const responseLayerOn = enabledLayers.includes("response");
+
+  // Devices are zone-scoped; the map is asset-scoped. Fan out engaged equipment
+  // to every asset in that zone so the change is visible wherever you are
+  // looking. Only non-default states are included — see DeviceChips.
+  const responseByAsset = useMemo(() => {
+    const engagedByZone: Record<string, string[]> = {};
+    for (const d of responseDevices) {
+      if (d.state === d.default_state) continue;
+      (engagedByZone[d.zone] ??= []).push(
+        `${deviceShortLabel(d.kind)} ${plainState(d.state) ?? d.state}`,
+      );
+    }
+    const byAsset: Record<string, string[]> = {};
+    for (const v of views) {
+      const labels = engagedByZone[v.asset.zone];
+      if (labels?.length) byAsset[v.asset.id] = labels;
+    }
+    return byAsset;
+  }, [responseDevices, views]);
 
   const toggleLayer = useCallback((id: MapLayerId) => {
     setEnabledLayers((prev) => {
@@ -608,6 +632,8 @@ export function DigitalTwin() {
                   spatialLinks={floorSpatialLinks}
                   opsChipsByAsset={opsChipsByAsset}
                   showOpsLayer={opsLayerOn}
+                  responseByAsset={responseByAsset}
+                  showResponseLayer={responseLayerOn}
                   tourTargetAssetId={tourTargetAssetId}
                 />
               </div>
@@ -636,6 +662,8 @@ export function DigitalTwin() {
             onOverview={showOverview}
             opsEnabled={opsLayerOn}
             onToggleOps={() => toggleLayer("ops")}
+            responseEnabled={responseLayerOn}
+            onToggleResponse={() => toggleLayer("response")}
             shiftForDrawer={Boolean(selected) && viewMode === "detail"}
           />
         ) : null}

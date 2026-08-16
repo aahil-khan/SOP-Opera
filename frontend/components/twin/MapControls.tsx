@@ -3,7 +3,7 @@
 import type { MouseEvent } from "react";
 import styles from "./MapControls.module.css";
 
-export type MapLayerId = "ops";
+export type MapLayerId = "ops" | "response";
 
 interface MapControlsProps {
   onZoomIn: () => void;
@@ -13,6 +13,9 @@ interface MapControlsProps {
   /** When set, show an Ops layer toggle in this stack. */
   opsEnabled?: boolean;
   onToggleOps?: () => void;
+  /** When set, show the automatic-response device layer toggle. */
+  responseEnabled?: boolean;
+  onToggleResponse?: () => void;
   shiftForDrawer?: boolean;
 }
 
@@ -23,14 +26,23 @@ export function MapControls({
   onOverview,
   opsEnabled = false,
   onToggleOps,
+  responseEnabled = false,
+  onToggleResponse,
   shiftForDrawer = false,
 }: MapControlsProps) {
   const showOps = typeof onToggleOps === "function";
+  const showResponse = typeof onToggleResponse === "function";
 
   function handleToggleOps(e: MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
     e.stopPropagation();
     onToggleOps?.();
+  }
+
+  function handleToggleResponse(e: MouseEvent<HTMLButtonElement>) {
+    e.preventDefault();
+    e.stopPropagation();
+    onToggleResponse?.();
   }
 
   return (
@@ -122,6 +134,22 @@ export function MapControls({
           onClick={handleToggleOps}
         >
           <span className={styles.opsLabel}>Ops</span>
+        </button>
+      ) : null}
+      {showResponse ? (
+        <button
+          type="button"
+          className={`${styles.btn} ${styles.btnOps}`}
+          data-active={responseEnabled ? "true" : undefined}
+          aria-pressed={responseEnabled}
+          title={
+            responseEnabled
+              ? "Hide automatic response equipment"
+              : "Show automatic response equipment (ventilation, gates, alarms)"
+          }
+          onClick={handleToggleResponse}
+        >
+          <span className={styles.opsLabel}>Auto</span>
         </button>
       ) : null}
     </div>

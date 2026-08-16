@@ -38,6 +38,12 @@ logger = logging.getLogger(__name__)
 # FK-safe wipe order for runtime (demo) tables. Master/seed data is left intact.
 # ai_ops_events is intentionally excluded — append-only pipeline analytics.
 _RESET_DELETE_ORDER = (
+    # Response rows reference reviews (and each other), so they clear first.
+    # response_devices / response_contacts are seeded reference data and stay,
+    # the same way assets and workers do — but their *state* is reset separately
+    # by reset_response_devices() so a demo does not start with a fan left on.
+    "response_pages",
+    "response_actions",
     "evidence",
     "review_tasks",
     "review_comments",
@@ -285,6 +291,13 @@ class DemoController:
             from app.incidents.service import wipe_promoted_incidents
 
             await wipe_promoted_incidents(session)
+
+            # Devices survive the wipe (seeded reference data), but their *state*
+            # must not: a fan left running or a gate left shut from the previous
+            # run would start the next demo mid-incident.
+            from app.response.repository import reset_device_states
+
+            await reset_device_states(session)
             await session.commit()
 
         orchestrator.start()

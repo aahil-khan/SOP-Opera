@@ -19,6 +19,7 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     from app.assessment.orchestrator import orchestrator
+    from app.response.dispatcher import dispatcher as response_dispatcher
     from app.simulator.ambient import ambient_loop
 
     try:
@@ -28,6 +29,10 @@ async def lifespan(_app: FastAPI):
 
         await apply_schema()
         await seed_minimal()
+        # Response devices/contacts depend on assets and zone_owners existing.
+        from app.db.seed_response import seed_response
+
+        await seed_response()
         try:
             # OpenAI embedding seed can hang on a stalled HTTPS call; don't block boot.
             await asyncio.wait_for(
@@ -51,18 +56,27 @@ async def lifespan(_app: FastAPI):
         ambient_task = ambient_loop.start()
         logger.info("ambient plant loop running")
 
+    # Started unconditionally: `response_auto_enabled` gates whether actions arm
+    # at all, and the ticker still needs to run so already-armed actions from
+    # before a pause are not stranded. It fails closed — see dispatcher docstring.
+    response_task = response_dispatcher.start()
+    logger.info("response dispatcher running")
+
     yield
 
     try:
         from app.db.vector import close_vector_pool
 
         await ambient_loop.stop()
+        await response_dispatcher.stop()
         orchestrator.stop()
         await close_vector_pool()
     except Exception:  # noqa: BLE001
         pass
     if ambient_task is not None:
         ambient_task.cancel()
+    if response_task is not None:
+        response_task.cancel()
     if worker_task is not None:
         worker_task.cancel()
 
@@ -91,6 +105,7 @@ from app.graph.routes import router as graph_router
 from app.handover.routes import router as handover_router
 from app.notifications.routes import router as notifications_router
 from app.reports.routes import router as reports_router
+from app.response.routes import router as response_router
 from app.reviews.routes import router as reviews_router
 from app.simulator.routes import router as demo_router
 from app.tasks.routes import router as tasks_router
@@ -111,6 +126,7 @@ app.include_router(queue_router)
 app.include_router(auth_router)
 app.include_router(tasks_router)
 app.include_router(audit_router)
+app.include_router(response_router)
 
 
 @app.get("/health")
