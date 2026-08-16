@@ -5,7 +5,8 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai_ops.schemas import AiOpsEventOut, AiOpsSummary
+from app.ai_ops.schemas import AiOpsEventOut, AiOpsSummary, ProviderComparisonRow
+from app.assessment.provider_state import VALID_PROVIDERS, check_provider
 from app.core.config import get_settings
 from app.core.stats import LatencySummary
 
@@ -71,6 +72,132 @@ def _langsmith_fields() -> tuple[bool, str, str | None]:
         return False, project, None
     url = (settings.langsmith_project_url or "").strip() or "https://smith.langchain.com"
     return True, project, url
+
+
+async def _provider_rows(session: AsyncSession) -> list[ProviderComparisonRow]:
+    result = await session.execute(
+        text(
+            """
+            SELECT
+                provider,
+                COALESCE(
+                    (array_agg(model ORDER BY recorded_at DESC)
+                        FILTER (WHERE model IS NOT NULL))[1],
+                    NULL
+                ) AS last_model,
+                COUNT(*)::int AS assessment_count,
+                COUNT(*) FILTER (WHERE status = 'complete')::int AS complete_count,
+                COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
+                AVG(latency_ms) FILTER (
+                    WHERE status = 'complete' AND latency_ms IS NOT NULL
+                ) AS mean_latency_ms,
+                COALESCE(
+                    SUM(tokens_in + tokens_out) FILTER (WHERE status = 'complete'),
+                    0
+                )::int AS total_tokens,
+                AVG(tokens_in + tokens_out) FILTER (
+                    WHERE status = 'complete'
+                ) AS mean_tokens,
+                COALESCE(
+                    SUM(cost_usd) FILTER (WHERE status = 'complete'),
+                    0
+                ) AS total_cost_usd,
+                AVG(cost_usd) FILTER (
+                    WHERE status = 'complete' AND cost_usd IS NOT NULL
+                ) AS mean_cost_usd
+            FROM ai_ops_events
+            GROUP BY provider
+            """
+        )
+    )
+    measured: dict[str, dict] = {
+        row._mapping["provider"]: dict(row._mapping)
+        for row in result.fetchall()
+    }
+
+    latencies: dict[str, LatencySummary] = {}
+    lat_result = await session.execute(
+        text(
+            """
+            SELECT provider, latency_ms
+            FROM ai_ops_events
+            WHERE status = 'complete' AND latency_ms IS NOT NULL
+            ORDER BY recorded_at DESC
+            LIMIT :window
+            """
+        ),
+        {"window": LATENCY_SAMPLE_WINDOW},
+    )
+    by_provider: dict[str, list[int]] = {}
+    for row in lat_result.fetchall():
+        by_provider.setdefault(row._mapping["provider"], []).append(
+            row._mapping["latency_ms"]
+        )
+    for provider, values in by_provider.items():
+        latencies[provider] = LatencySummary(values)
+
+    rows: list[ProviderComparisonRow] = []
+    all_providers = list(VALID_PROVIDERS)
+    for provider in all_providers:
+        check = check_provider(provider)
+        m = measured.get(provider)
+        if m is None:
+            rows.append(
+                ProviderComparisonRow(
+                    provider=provider,
+                    model=check.model,
+                    status="not_run" if check.ok else "unavailable",
+                    connection_status=check.status,
+                    connection_ok=check.ok,
+                    note=(
+                        "Available, but no assessment has been recorded for this provider."
+                        if check.ok
+                        else check.reason
+                    ),
+                )
+            )
+            continue
+        total = int(m["assessment_count"] or 0)
+        failed = int(m["failed_count"] or 0)
+        latency = latencies.get(provider, LatencySummary([]))
+        mean_latency = m["mean_latency_ms"]
+        mean_tokens = m["mean_tokens"]
+        total_cost = m["total_cost_usd"]
+        mean_cost = m["mean_cost_usd"]
+        rows.append(
+            ProviderComparisonRow(
+                provider=provider,
+                model=m["last_model"] or check.model,
+                status="measured",
+                connection_status=check.status,
+                connection_ok=check.ok,
+                note=check.reason,
+                assessment_count=total,
+                complete_count=int(m["complete_count"] or 0),
+                failed_count=failed,
+                mean_latency_ms=(
+                    round(float(mean_latency), 2)
+                    if mean_latency is not None
+                    else None
+                ),
+                p50_latency_ms=(
+                    round(latency.p50_ms, 2) if latency.p50_ms is not None else None
+                ),
+                p95_latency_ms=(
+                    round(latency.p95_ms, 2) if latency.p95_ms is not None else None
+                ),
+                total_tokens=int(m["total_tokens"] or 0),
+                mean_tokens=(
+                    round(float(mean_tokens), 1) if mean_tokens is not None else None
+                ),
+                total_cost_usd=round(float(total_cost or 0.0), 8),
+                mean_cost_usd=(
+                    round(float(mean_cost), 8) if mean_cost is not None else None
+                ),
+                failure_rate=round(failed / total, 4) if total > 0 else None,
+            )
+        )
+    return rows
 
 
 async def get_summary(session: AsyncSession) -> AiOpsSummary:
@@ -205,6 +332,7 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
         ),
         last_retrieval_embedding_model=(lr["embedding_model"] if lr else None),
         rag_gate_threshold=float(get_settings().rag_score_threshold),
+        providers=await _provider_rows(session),
         data_source="local_db",
         persists_across_demo_reset=True,
         total_assessments=total,

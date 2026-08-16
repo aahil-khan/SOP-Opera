@@ -389,9 +389,9 @@ async def enqueue_for_review(
     runtime default chosen on AI Ops applies to every enqueued job.
     """
     if provider_override is None:
-        from app.assessment.provider_state import get_runtime_provider
+        from app.assessment.provider_state import get_effective_runtime_provider
 
-        provider_override = get_runtime_provider()
+        provider_override = get_effective_runtime_provider()
     fact_ids = await _true_fact_ids(session, review.asset_id)
     ver_row = await session.execute(
         text(

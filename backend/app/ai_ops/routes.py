@@ -6,16 +6,17 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_ops.schemas import (
     AiOpsEventOut,
     AiOpsSummary,
+    ProviderConnectionOut,
     ProviderStateIn,
     ProviderStateOut,
 )
 from app.ai_ops.service import get_summary, list_recent_events
 from app.assessment.provider_state import (
     VALID_PROVIDERS,
-    get_runtime_provider,
+    check_provider,
+    effective_provider_check,
     set_runtime_provider,
 )
-from app.core.config import get_settings
 from app.db.session import get_session
 from app.realtime.connection_manager import manager
 
@@ -23,12 +24,20 @@ router = APIRouter(prefix="/ai-ops", tags=["ai-ops"])
 
 
 def _provider_state() -> ProviderStateOut:
-    runtime = get_runtime_provider()
-    env_default = get_settings().ai_provider or "mock"
+    check, source, configured_default = effective_provider_check()
+    fallback_reason = None
+    if source == "auto_default" and check.provider != "ollama":
+        fallback_reason = (
+            "Ollama was not available, so automatic selection fell through."
+        )
     return ProviderStateOut(
-        active_provider=runtime or env_default,
-        source="runtime_override" if runtime else "env_default",
-        env_default=env_default,
+        active_provider=check.provider,
+        active_model=check.model,
+        source=source,
+        env_default=configured_default or check.provider,
+        configured_default=configured_default,
+        connection=ProviderConnectionOut(**check.__dict__),
+        fallback_reason=fallback_reason,
         available=list(VALID_PROVIDERS),
     )
 
@@ -43,10 +52,30 @@ async def get_provider_state() -> ProviderStateOut:
 async def put_provider_state(body: ProviderStateIn) -> ProviderStateOut:
     """Set (or clear with null) the runtime default provider for new assessments."""
     try:
+        if body.provider is not None:
+            check = check_provider(body.provider)
+            if not check.ok:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"{check.provider} connection failed: {check.reason}",
+                )
         set_runtime_provider(body.provider)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return _provider_state()
+
+
+@router.post("/provider/test", response_model=ProviderConnectionOut)
+async def test_provider_connection(body: ProviderStateIn) -> ProviderConnectionOut:
+    """Check a provider without changing the runtime default."""
+    provider = body.provider
+    if provider is None:
+        check, _source, _configured_default = effective_provider_check()
+    else:
+        check = check_provider(provider)
+    if check.provider not in VALID_PROVIDERS:
+        raise HTTPException(status_code=400, detail=check.reason)
+    return ProviderConnectionOut(**check.__dict__)
 
 
 @router.get("/events", response_model=list[AiOpsEventOut])

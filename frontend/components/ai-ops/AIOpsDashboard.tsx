@@ -6,13 +6,18 @@ import {
   fetchAiOpsSummary,
   fetchProviderState,
   putProviderState,
+  testProviderConnection,
   type AiOpsEvent,
   type AiOpsSummary,
+  type ProviderConnection,
   type ProviderState,
 } from "@/lib/liveApi";
+import {
+  providerStatusTone,
+  providerTitle,
+  type Tone,
+} from "@/lib/aiOpsProviderPresentation";
 import styles from "./AIOpsDashboard.module.css";
-
-type Tone = "good" | "warn" | "bad" | "neutral";
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -123,7 +128,15 @@ export function AIOpsDashboard() {
   const [summary, setSummary] = useState<AiOpsSummary | null>(null);
   const [events, setEvents] = useState<AiOpsEvent[] | null>(null);
   const [provider, setProvider] = useState<ProviderState | null>(null);
+  const [providerSelectValue, setProviderSelectValue] =
+    useState<string>("__default__");
   const [providerBusy, setProviderBusy] = useState(false);
+  const [providerCheck, setProviderCheck] = useState<ProviderConnection | null>(
+    null,
+  );
+  const [providerStatusText, setProviderStatusText] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -138,6 +151,9 @@ export function AIOpsDashboard() {
       setSummary(data);
       setEvents(recent);
       setProvider(prov);
+      setProviderSelectValue(
+        prov.source === "runtime_override" ? prov.active_provider : "__default__",
+      );
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -152,14 +168,32 @@ export function AIOpsDashboard() {
 
   const selectProvider = useCallback(
     async (value: string) => {
+      setProviderSelectValue(value);
       setProviderBusy(true);
+      setProviderStatusText("Testing connection...");
+      setProviderCheck(null);
       try {
-        const next = await putProviderState(
-          value === "__default__" ? null : value,
-        );
+        const selected = value === "__default__" ? null : value;
+        const check = await testProviderConnection(selected);
+        setProviderCheck(check);
+        if (!check.ok) {
+          throw new Error(
+            `${providerTitle(check.provider)} connection failed: ${
+              check.reason ?? "provider is unavailable"
+            }`,
+          );
+        }
+        const next = await putProviderState(selected);
         setProvider(next);
+        setProviderSelectValue(
+          next.source === "runtime_override"
+            ? next.active_provider
+            : "__default__",
+        );
+        setProviderStatusText("Connected");
         setError(null);
       } catch (err) {
+        setProviderStatusText("Connection failed");
         setError(err instanceof Error ? err.message : String(err));
       } finally {
         setProviderBusy(false);
@@ -173,6 +207,9 @@ export function AIOpsDashboard() {
   const tracingOn = Boolean(summary?.langsmith_enabled);
   const inputShare =
     summary && totalTokens > 0 ? summary.total_input_tokens / totalTokens : 0;
+  const activeConnection = providerCheck ?? provider?.connection ?? null;
+  const selectedProviderLabel = providerTitle(provider?.active_provider);
+  const selectedModel = provider?.active_model ?? provider?.connection.model ?? "—";
 
   return (
     <div className={styles.wrap} data-tour="aiops">
@@ -196,23 +233,37 @@ export function AIOpsDashboard() {
             <select
               className={styles.providerSelect}
               disabled={providerBusy || provider == null}
-              value={
-                provider?.source === "runtime_override"
-                  ? provider.active_provider
-                  : "__default__"
-              }
+              value={providerSelectValue}
               onChange={(e) => void selectProvider(e.target.value)}
             >
               <option value="__default__">
-                default ({provider?.env_default ?? "mock"})
+                default ({providerTitle(provider?.env_default)})
               </option>
               {(provider?.available ?? []).map((p) => (
                 <option key={p} value={p}>
-                  {p}
+                  {providerTitle(p)}
                 </option>
               ))}
             </select>
           </label>
+          <span
+            className={styles.providerStatus}
+            data-tone={providerStatusTone(
+              activeConnection?.status,
+              activeConnection?.ok,
+            )}
+            title={
+              provider?.fallback_reason ??
+              activeConnection?.reason ??
+              provider?.scope ??
+              undefined
+            }
+          >
+            {providerStatusText ??
+              `${providerTitle(activeConnection?.provider)} · ${
+                activeConnection?.status ?? "not tested"
+              }`}
+          </span>
           <span
             className={styles.traceChip}
             data-on={tracingOn}
@@ -251,6 +302,35 @@ export function AIOpsDashboard() {
       </header>
 
       {error && <p className={styles.error}>{error}</p>}
+
+      <section className={styles.providerBand}>
+        <div className={styles.providerFact}>
+          <span>Effective provider</span>
+          <strong>{selectedProviderLabel}</strong>
+        </div>
+        <div className={styles.providerFact}>
+          <span>Model</span>
+          <strong>{selectedModel}</strong>
+        </div>
+        <div className={styles.providerFact}>
+          <span>Connection</span>
+          <strong>
+            {providerBusy
+              ? "Testing connection..."
+              : activeConnection?.status ?? "Not tested"}
+          </strong>
+        </div>
+        <div className={styles.providerFact}>
+          <span>Default source</span>
+          <strong>
+            {provider?.source === "runtime_override"
+              ? "Runtime override"
+              : provider?.source === "auto_default"
+                ? "Automatic"
+                : "Configured env"}
+          </strong>
+        </div>
+      </section>
 
       <div className={styles.heroRow} aria-label="Key metrics">
         <HeroStat
@@ -509,6 +589,87 @@ export function AIOpsDashboard() {
           </div>
         </section>
       </div>
+
+      <section className={styles.panel}>
+        <header className={styles.panelHeader}>
+          <h2 className={styles.panelTitle}>Provider comparison</h2>
+          <p className={styles.panelSubtitle}>
+            Measured rows come from assessment events; unavailable and not-run rows keep their numbers blank
+          </p>
+        </header>
+        <div className={styles.panelBody}>
+          {summary?.providers && summary.providers.length > 0 ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.eventsTable}>
+                <thead>
+                  <tr>
+                    <th>Provider</th>
+                    <th>Model</th>
+                    <th>Status</th>
+                    <th>Assessments</th>
+                    <th>Latency p50/p95</th>
+                    <th>Avg latency</th>
+                    <th>Tokens</th>
+                    <th>Cost / run</th>
+                    <th>Failure rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.providers.map((row) => (
+                    <tr key={row.provider} data-status={row.status}>
+                      <td>{providerTitle(row.provider)}</td>
+                      <td>{row.model ?? "Not available"}</td>
+                      <td>
+                        <span
+                          className={styles.statusChip}
+                          data-status={row.status}
+                          title={row.note ?? undefined}
+                        >
+                          {row.status === "measured"
+                            ? "Measured"
+                            : row.status === "not_run"
+                              ? "Not run"
+                              : row.connection_status}
+                        </span>
+                      </td>
+                      <td>
+                        {row.assessment_count > 0
+                          ? `${row.complete_count}/${row.assessment_count} complete`
+                          : "Not measured"}
+                      </td>
+                      <td>
+                        {row.p50_latency_ms == null && row.p95_latency_ms == null
+                          ? "Not measured"
+                          : `${fmtLatency(row.p50_latency_ms)} / ${fmtLatency(
+                              row.p95_latency_ms,
+                            )}`}
+                      </td>
+                      <td>{fmtLatency(row.mean_latency_ms)}</td>
+                      <td>
+                        {row.total_tokens == null
+                          ? "Not measured"
+                          : fmtTokens(row.total_tokens)}
+                      </td>
+                      <td>
+                        {row.mean_cost_usd == null
+                          ? "Not measured"
+                          : fmtCost(row.mean_cost_usd)}
+                      </td>
+                      <td>
+                        {row.failure_rate == null
+                          ? "Not measured"
+                          : pct(row.failure_rate)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className={styles.note}>Provider comparison is not available yet.</p>
+          )}
+        </div>
+      </section>
 
       <section className={styles.panel}>
         <header className={styles.panelHeader}>

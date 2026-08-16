@@ -208,6 +208,35 @@ export interface AiOpsSummary {
   last_retrieval_score: number | null;
   last_retrieval_embedding_model: string | null;
   rag_gate_threshold: number | null;
+  providers: ProviderComparisonRow[];
+}
+
+export interface ProviderConnection {
+  provider: string;
+  model: string | null;
+  ok: boolean;
+  status: string;
+  reason: string | null;
+}
+
+export interface ProviderComparisonRow {
+  provider: string;
+  model: string | null;
+  status: "measured" | "not_run" | "unavailable" | string;
+  connection_status: string;
+  connection_ok: boolean;
+  note: string | null;
+  assessment_count: number;
+  complete_count: number;
+  failed_count: number;
+  mean_latency_ms: number | null;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  total_tokens: number | null;
+  mean_tokens: number | null;
+  total_cost_usd: number | null;
+  mean_cost_usd: number | null;
+  failure_rate: number | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -522,8 +551,12 @@ export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
 
 export interface ProviderState {
   active_provider: string;
-  source: "runtime_override" | "env_default";
+  active_model: string | null;
+  source: "runtime_override" | "env_default" | "auto_default";
   env_default: string;
+  configured_default: string | null;
+  connection: ProviderConnection;
+  fallback_reason: string | null;
   available: string[];
   scope: string;
 }
@@ -537,6 +570,15 @@ export function putProviderState(
 ): Promise<ProviderState> {
   return request<ProviderState>("/ai-ops/provider", {
     method: "PUT",
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export function testProviderConnection(
+  provider: string | null,
+): Promise<ProviderConnection> {
+  return request<ProviderConnection>("/ai-ops/provider/test", {
+    method: "POST",
     body: JSON.stringify({ provider }),
   });
 }

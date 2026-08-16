@@ -33,7 +33,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import os
 import time
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
@@ -271,32 +270,12 @@ def provider_available(provider: str) -> tuple[bool, str | None]:
     A leg that cannot run is reported as NOT RUN with the reason. It is never
     estimated, and never filled in from a previous run of a different provider.
     """
-    settings = get_settings()
-    key = provider.lower()
-    if key == "mock":
-        return True, None
-    if key in ("openai_compatible", "openai"):
-        if not (settings.openai_api_key or os.environ.get("OPENAI_API_KEY")):
-            return False, "OPENAI_API_KEY is not set — no request was made"
-        return True, None
-    if key == "ollama":
-        import urllib.error
-        import urllib.request
+    from app.assessment.provider_state import check_provider
 
-        url = f"{settings.ollama_base_url.rstrip('/')}/api/tags"
-        try:
-            with urllib.request.urlopen(url, timeout=3) as resp:  # noqa: S310
-                body = json.loads(resp.read().decode("utf-8"))
-        except (urllib.error.URLError, OSError, ValueError) as exc:
-            return False, f"Ollama not reachable at {settings.ollama_base_url} ({exc})"
-        names = {m.get("name", "").split(":")[0] for m in body.get("models", [])}
-        if settings.ollama_model.split(":")[0] not in names:
-            return False, (
-                f"Ollama model '{settings.ollama_model}' not pulled "
-                f"(have: {', '.join(sorted(names)) or 'none'})"
-            )
+    check = check_provider(provider)
+    if check.ok:
         return True, None
-    return False, f"Unknown provider '{provider}'"
+    return False, check.reason
 
 
 async def bench_provider(

@@ -5,6 +5,34 @@ from typing import Literal
 from pydantic import BaseModel, Field
 
 
+class ProviderConnectionOut(BaseModel):
+    provider: str
+    model: str | None = None
+    ok: bool
+    status: str
+    reason: str | None = None
+
+
+class ProviderComparisonRow(BaseModel):
+    provider: str
+    model: str | None = None
+    status: str
+    connection_status: str
+    connection_ok: bool
+    note: str | None = None
+    assessment_count: int = 0
+    complete_count: int = 0
+    failed_count: int = 0
+    mean_latency_ms: float | None = None
+    p50_latency_ms: float | None = None
+    p95_latency_ms: float | None = None
+    total_tokens: int | None = None
+    mean_tokens: float | None = None
+    total_cost_usd: float | None = None
+    mean_cost_usd: float | None = None
+    failure_rate: float | None = None
+
+
 class AiOpsSummary(BaseModel):
     data_source: Literal["local_db"] = "local_db"
     persists_across_demo_reset: bool = True
@@ -61,18 +89,24 @@ class AiOpsSummary(BaseModel):
     last_retrieval_score: float | None = None
     last_retrieval_embedding_model: str | None = None
     rag_gate_threshold: float | None = None
+    providers: list[ProviderComparisonRow] = Field(default_factory=list)
 
 
 class ProviderStateOut(BaseModel):
     """Effective AI provider selection for subsequent assessments."""
 
     active_provider: str
-    source: Literal["runtime_override", "env_default"]
+    active_model: str | None = None
+    source: Literal["runtime_override", "env_default", "auto_default"]
     env_default: str
+    configured_default: str | None = None
+    connection: ProviderConnectionOut
+    fallback_reason: str | None = None
     available: list[str]
     scope: str = (
         "Applies to assessments enqueued by this API process from now on; "
-        "resets to the env default on restart."
+        "runtime overrides reset on restart. Without an explicit provider, "
+        "automatic selection tries Ollama, then OpenAI-compatible, then mock."
     )
 
 
