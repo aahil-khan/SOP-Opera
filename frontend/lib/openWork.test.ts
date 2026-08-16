@@ -40,7 +40,7 @@ function view(
             conditions: null,
             decided_by: "u1",
             created_at: "2026-01-01T00:00:00Z",
-          } as NonNullable<NonNullable<TestView["detail"]>["decision"]>);
+          } as unknown as NonNullable<NonNullable<TestView["detail"]>["decision"]>);
 
   const wantsDetail =
     taskSummary !== undefined || extras?.decisionOutcome !== undefined;
@@ -78,7 +78,7 @@ function view(
             evidence_refs: [],
             model_meta: {},
             created_at: "2026-01-01T00:00:00Z",
-          } as NonNullable<TestView["assessment"]>)
+          } as unknown as NonNullable<TestView["assessment"]>)
         : null,
     risk_level: extras?.assessmentRisk ?? "nominal",
     sensor_critical: false,
