@@ -354,13 +354,13 @@ export function AIOpsDashboard() {
                 value={fmtLatency(summary?.p50_latency_ms)}
                 hint={
                   summary
-                    ? `Median completed run, over the last ${summary.latency_sample_count} sample(s)`
+                    ? `Median completed run, over the last ${summary.latency_sample_count} ${summary.latency_sample_count === 1 ? "sample" : "samples"}`
                     : "Median completed run"
                 }
               />
               <StatPair
                 label="LLM-degraded"
-                value={summary ? String(summary.degraded_count) : "—"}
+                value={summary ? String(summary.llm_degraded_count) : "—"}
                 hint="Completed runs where at least one agent call fell back to a template while the pipeline still finished"
               />
             </div>

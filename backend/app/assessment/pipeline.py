@@ -60,9 +60,15 @@ def _retrieval_trace_message(hybrid: Any, threshold: float) -> str:
     """One judge-readable line: what vector search scored and why the mode won."""
     best = hybrid.best_score
     if hybrid.mode == "rag":
+        # Count only the vector hits, not the merged list — `hybrid.refs` also
+        # carries deterministic regs/SOPs, which never go through the gate.
+        vector_n = getattr(hybrid, "vector_ref_count", 0)
+        other_n = max(0, len(hybrid.refs) - vector_n)
+        tail = f" (+{other_n} deterministic)" if other_n else ""
         return (
             f"Vector hit scored {best:.2f} ≥ gate {threshold:.2f} — "
-            f"using {len(hybrid.refs)} vector-backed references"
+            f"using {vector_n} vector-backed reference"
+            f"{'' if vector_n == 1 else 's'}{tail}"
         )
     if hybrid.mode == "skipped":
         return "No derived facts — retrieval skipped"

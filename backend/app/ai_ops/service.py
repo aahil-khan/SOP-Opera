@@ -89,7 +89,7 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
                 ) AS provider_error_count,
                 COUNT(*) FILTER (
                     WHERE status = 'complete' AND degraded = TRUE
-                ) AS degraded_count,
+                ) AS llm_degraded_count,
                 COALESCE(SUM(llm_fallback_count), 0) AS llm_fallback_count,
                 COALESCE(SUM(llm_attempt_count), 0) AS llm_attempt_count,
                 COUNT(*) FILTER (WHERE retrieval_mode = 'rag') AS rag_count,
@@ -142,8 +142,8 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
     llm_fallback_rate = (
         (llm_fallback_total / llm_attempt_total) if llm_attempt_total > 0 else 0.0
     )
-    degraded_count = int(row["degraded_count"] or 0)
-    degraded_rate = (degraded_count / complete) if complete > 0 else 0.0
+    llm_degraded_count = int(row["llm_degraded_count"] or 0)
+    llm_degraded_rate = (llm_degraded_count / complete) if complete > 0 else 0.0
     mean_rel = row["mean_retrieval_relevance"]
     mean_retrieval_relevance = float(mean_rel) if mean_rel is not None else None
     mean_lat = row["mean_latency_ms"]
@@ -213,11 +213,11 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
         success_rate=round(success_rate, 4),
         validation_failure_count=int(row["validation_failure_count"] or 0),
         provider_error_count=int(row["provider_error_count"] or 0),
-        degraded_count=degraded_count,
+        llm_degraded_count=llm_degraded_count,
         llm_fallback_count=llm_fallback_total,
         llm_attempt_count=llm_attempt_total,
         llm_fallback_rate=round(llm_fallback_rate, 4),
-        degraded_rate=round(degraded_rate, 4),
+        llm_degraded_rate=round(llm_degraded_rate, 4),
         rag_hit_rate=round(rag_hit_rate, 4),
         rag_fallback_rate=round(rag_fallback_rate, 4),
         mean_retrieval_relevance=(

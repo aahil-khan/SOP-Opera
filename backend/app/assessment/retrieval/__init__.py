@@ -54,6 +54,7 @@ class HybridRetrievalResult:
         best_score: float | None,
         embedding_model: str | None,
         source_types: list[str],
+        vector_ref_count: int = 0,
     ) -> None:
         self.refs = refs
         self.mode = mode
@@ -61,6 +62,11 @@ class HybridRetrievalResult:
         self.best_score = best_score
         self.embedding_model = embedding_model
         self.source_types = source_types
+        # How many of `refs` actually came from vector search. `refs` is the
+        # merged list — even in "rag" mode it carries deterministic regs and
+        # SOPs, which are never vector-searched (see RAG_VECTOR_SOURCE_TYPES).
+        # Reporting len(refs) as the vector count overstates what the gate did.
+        self.vector_ref_count = vector_ref_count
 
 
 def _merge_rag_incidents_with_det(
@@ -162,6 +168,7 @@ async def retrieve(
     best = max((r.score or 0.0 for r in rag_refs), default=None)
     if quality == "good":
         merged = _merge_rag_incidents_with_det(rag_refs, det_refs)
+        rag_keys = {(r.source, str(r.id)) for r in rag_refs}
         return HybridRetrievalResult(
             refs=merged,
             mode="rag",
@@ -169,6 +176,9 @@ async def retrieve(
             best_score=best,
             embedding_model=embedding_model,
             source_types=list(source_types),
+            vector_ref_count=sum(
+                1 for r in merged if (r.source, str(r.id)) in rag_keys
+            ),
         )
 
     return HybridRetrievalResult(

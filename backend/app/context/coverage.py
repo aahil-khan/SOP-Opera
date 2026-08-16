@@ -13,7 +13,9 @@ Two detection halves, per the finals plan:
   `derived_facts.rule_sensor_unreliable`, called from here and deliberately not
   registered in DERIVED_FACT_RULES (see its docstring).
 - **Staleness** (absence of data) lives here in the context read path, as a
-  last-seen-per-asset query. A rule cannot observe silence.
+  last-seen-per-asset query over *both* telemetry tables — hard-ingest
+  `context_entries` and the always-on ambient ring `telemetry_samples`. A rule
+  cannot observe silence, and neither table alone sees the whole live feed.
 
 The canonical enum addition for `shared/` is routed to Aahil as a proposed diff
 (`.claude/proposed-diffs/`); until it merges, this local type is the source.
@@ -23,7 +25,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime, timezone
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from sqlalchemy import text
@@ -42,6 +44,31 @@ class AssetCoverage:
     last_sensor_seen: datetime | None
     seconds_since_sensor: float | None
     reason: str
+
+
+def _degraded_reason(entries: list[ContextEntryView], settings: Any) -> str:
+    """
+    Name what the sensor actually said, not just that something was wrong —
+    the supervisor needs to know whether to trust the number or call an
+    instrument tech, and "readings are suspect" answers neither.
+    """
+    floor = float(settings.sensor_confidence_floor)
+    for e in entries:
+        if e.category != "sensor":
+            continue
+        if e.payload.get("fault") is True or e.payload.get("status") == "fault":
+            code = e.payload.get("fault_code")
+            detail = f" ({code})" if code else ""
+            return (
+                f"Sensor reported a fault{detail} — the channel is reporting, "
+                "but it says its own reading is untrustworthy."
+            )
+        if e.confidence < floor:
+            return (
+                f"Sensor reported confidence {e.confidence:.2f}, below the "
+                f"{floor:.2f} floor — reading is present but not dependable."
+            )
+    return "A sensor reported low confidence or a fault — readings are suspect."
 
 
 def classify_coverage(
@@ -74,10 +101,7 @@ def classify_coverage(
         )
 
     if rule_sensor_unreliable(valid_entries, now=now) is not None:
-        return (
-            "degraded",
-            "A sensor reported low confidence or a fault — readings are suspect.",
-        )
+        return "degraded", _degraded_reason(valid_entries, settings)
 
     return "assessed", "Sensor data current and self-reported healthy."
 
@@ -86,20 +110,48 @@ async def sensor_last_seen(
     session: AsyncSession, asset_ids: list[UUID] | None = None
 ) -> dict[UUID, datetime]:
     """
-    Latest sensor-entry arrival per asset — regardless of validity window, so a
+    Latest sensor arrival per asset — regardless of validity window, so a
     reading that expired still counts as "last heard from" for staleness math.
+
+    Reads **both** halves of the live telemetry path, because they are separate
+    tables and neither alone answers "when did we last hear from this asset":
+
+    - `context_entries` — hard ingest (scenarios, `POST /context`, the webhook,
+      the ambient heartbeat). Low rate, opens reviews, computes derived facts.
+    - `telemetry_samples` — the always-on ambient soft tick, which is what
+      actually keeps every asset warm (`simulator/ambient.py::_soft_tick` →
+      `telemetry_store.persist_samples`). It never touches `context_entries`.
+
+    Querying only `context_entries` measured staleness against a table the
+    ambient heartbeat never updates, so every asset read as blind — the plant
+    rendered uninstrumented rather than assessed-and-nominal.
+
+    Note `telemetry_samples` is a bounded ring (`ambient_telemetry_keep` rows
+    per asset), which is fine here: pruning drops the *oldest* rows, never the
+    newest, so the MAX this needs always survives.
     """
-    where = ""
+    where_ctx = ""
+    where_tel = ""
     params: dict = {}
     if asset_ids is not None:
-        where = "AND asset_id = ANY(CAST(:asset_ids AS uuid[]))"
+        where_ctx = "AND asset_id = ANY(CAST(:asset_ids AS uuid[]))"
+        where_tel = where_ctx
         params["asset_ids"] = [str(a) for a in asset_ids]
     result = await session.execute(
         text(
             f"""
-            SELECT asset_id, MAX(valid_from) AS last_seen
-            FROM context_entries
-            WHERE category = 'sensor' {where}
+            SELECT asset_id, MAX(last_seen) AS last_seen
+            FROM (
+                SELECT asset_id, MAX(valid_from) AS last_seen
+                FROM context_entries
+                WHERE category = 'sensor' {where_ctx}
+                GROUP BY asset_id
+                UNION ALL
+                SELECT asset_id, MAX(ts) AS last_seen
+                FROM telemetry_samples
+                WHERE category = 'sensor' {where_tel}
+                GROUP BY asset_id
+            ) heard
             GROUP BY asset_id
             """
         ),

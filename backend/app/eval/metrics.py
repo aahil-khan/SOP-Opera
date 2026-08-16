@@ -212,13 +212,20 @@ class EvalReport:
                     f"{_fmt_t(s.t_single_sensor_minutes)} | {lead} |"
                 )
             if dist.median_minutes is not None:
+                n = dist.defined_count
+                # This report is judge-facing, and today n is genuinely 1 —
+                # "the 1 scenario(s)" is the sentence they actually read.
+                subject = (
+                    "the 1 scenario with a defined lead time"
+                    if n == 1
+                    else f"the {n} scenarios with a defined lead time"
+                )
                 lines.extend(
                     [
                         "",
-                        f"**Spread over the {dist.defined_count} scenario(s) with a "
-                        f"defined lead time:** min {dist.min_minutes:.0f} · median "
-                        f"{dist.median_minutes:.0f} · max {dist.max_minutes:.0f} "
-                        "minutes.",
+                        f"**Spread over {subject}:** min {dist.min_minutes:.0f} · "
+                        f"median {dist.median_minutes:.0f} · max "
+                        f"{dist.max_minutes:.0f} minutes.",
                     ]
                 )
             lines.append("")

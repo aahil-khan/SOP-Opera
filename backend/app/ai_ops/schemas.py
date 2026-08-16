@@ -14,11 +14,15 @@ class AiOpsSummary(BaseModel):
     success_rate: float = Field(ge=0.0, le=1.0, default=0.0)
     validation_failure_count: int = 0
     provider_error_count: int = 0
-    degraded_count: int = 0
+    # Assessment health: completed runs where an agent call fell back to a
+    # template. Prefixed `llm_` to keep it distinct from the sensor-coverage
+    # `degraded_channel_count` below — same word, unrelated concept, and both
+    # render on the AI Ops page.
+    llm_degraded_count: int = 0
     llm_fallback_count: int = 0
     llm_attempt_count: int = 0
     llm_fallback_rate: float = Field(ge=0.0, le=1.0, default=0.0)
-    degraded_rate: float = Field(ge=0.0, le=1.0, default=0.0)
+    llm_degraded_rate: float = Field(ge=0.0, le=1.0, default=0.0)
     rag_hit_rate: float = Field(ge=0.0, le=1.0, default=0.0)
     rag_fallback_rate: float = Field(ge=0.0, le=1.0, default=0.0)
     mean_retrieval_relevance: float | None = None

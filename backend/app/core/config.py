@@ -55,7 +55,13 @@ class Settings(BaseSettings):
     cert_expiry_warning_days: int = 14
     # "Blind, not safe" (W3a): sensor coverage is an orthogonal field beside
     # risk_level, never a risk level. No reading newer than this → the channel
-    # is blind; ambient heartbeats every 120s, so 180 tolerates one missed beat.
+    # is blind. Staleness is measured against the live telemetry path — the
+    # ambient soft tick writes a `sensor` row to telemetry_samples for
+    # `ambient_batch_size` assets every `ambient_tick_seconds`, so with the
+    # defaults (2 assets / 3s) a 27-asset plant completes a full sweep in ~42s
+    # and 180 tolerates roughly four missed sweeps. Raise this if you raise
+    # ambient_tick_seconds or shrink ambient_batch_size, or assets will go
+    # blind between their own heartbeats. See app/context/coverage.py.
     sensor_stale_after_seconds: int = 180
     # Self-reported degradation: a sensor entry below this confidence (or with a
     # fault payload) marks coverage degraded. Detected by rule_sensor_unreliable.

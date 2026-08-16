@@ -76,7 +76,7 @@ one process-minute per step.
 | spatial_proximity | t+1 min | — | — |
 | vsp_coke_oven | t+6 min | t+34 min | **28 min** |
 
-**Spread over the 1 scenario(s) with a defined lead time:** min 28 · median 28 · max 28 minutes.
+**Spread over the 1 scenario with a defined lead time:** min 28 · median 28 · max 28 minutes.
 
 ## Hazard-dimension ablation
 

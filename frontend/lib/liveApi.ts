@@ -178,11 +178,13 @@ export interface AiOpsSummary {
   success_rate: number;
   validation_failure_count: number;
   provider_error_count: number;
-  degraded_count: number;
+  // Assessment health (LLM fell back to a template). Distinct from
+  // degraded_channel_count below, which is sensor coverage.
+  llm_degraded_count: number;
   llm_fallback_count: number;
   llm_attempt_count: number;
   llm_fallback_rate: number;
-  degraded_rate: number;
+  llm_degraded_rate: number;
   rag_hit_rate: number;
   rag_fallback_rate: number;
   mean_retrieval_relevance: number | null;
@@ -496,6 +498,12 @@ export interface ThresholdsConfigPatch {
     tank_level_low_pct: number;
     weather_wind_hold_ms: number;
     cert_expiry_warning_days: number;
+  }>;
+  // W3a coverage knobs — the ThresholdEditor sends these, so the patch type
+  // has to describe them or the contract drifts silently.
+  coverage?: Partial<{
+    sensor_stale_after_seconds: number;
+    sensor_confidence_floor: number;
   }>;
 }
 
