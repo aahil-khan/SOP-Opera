@@ -50,12 +50,20 @@ def _parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     p.add_argument("--days", type=int, default=7, help="Simulated days to cover (default 7)")
     p.add_argument(
+        "--total",
+        type=int,
+        default=None,
+        help="Exact number of reviews to generate. Distributed across the --days window "
+        "using realistic day weighting (weekday/weekend, seasonal), rather than a flat "
+        "spread. Overrides --reviews-per-week when given.",
+    )
+    p.add_argument(
         "--reviews-per-week",
         type=float,
         default=7.5,
-        help="Target average reviews/week (default 7.5). Daily count is drawn from a "
-        "Poisson distribution around this rate, not a fixed range — real safety events "
-        "don't arrive on a schedule, so some days have none and some have three.",
+        help="Target average reviews/week (default 7.5), used when --total is not given. "
+        "Daily count is drawn from a Poisson distribution around this rate — real safety "
+        "events don't arrive on a schedule, so some days have none and some have three.",
     )
     p.add_argument("--seed", type=int, default=1)
     p.add_argument(
@@ -109,6 +117,95 @@ SUPERVISORS = [
 OPERATOR_ACTORS = [{"id": wid, "name": name, "role": "field_operator"} for wid, name, _certs in WORKERS]
 
 RISK_WEIGHTS = {"elevated": 85, "blocking": 15}  # matches the validated Track A corpus mix
+
+# --- Realism shaping -------------------------------------------------------
+# A real plant's incident record is not uniform. Three things shape it, and
+# all three are modelled below because their absence is what makes generated
+# data read as generated: process areas generate far more safety events than
+# offices; events cluster in the working day; and weekends/holidays are quiet.
+
+# Relative event likelihood per asset zone. Hot, pressurised, gas-handling and
+# lifting areas dominate a real incident log; control rooms and offices barely
+# appear. Weights are plausible-plant judgement, not derived from the rule set.
+_ZONE_WEIGHTS = {
+    "coke-oven-battery": 10.0, "gas-cleaning": 9.0, "dri-plant": 8.0,
+    "byproduct-plant": 7.0, "boiler-house": 6.5, "tank-farm": 6.0,
+    "compressor-yard": 5.5, "etp": 4.5, "pump-house": 4.0, "crane-deck": 4.0,
+    "conveyor-gantry": 3.5, "furnace": 3.5, "hazardous": 3.5,
+    "raw-material-yard": 3.0, "pipe-rack": 3.0, "workshop": 2.5,
+    "fire-water": 2.0, "substation": 2.0, "weighbridge": 1.8,
+    "cooling-towers": 1.8, "instrument-air": 1.5, "hvac": 1.2,
+    "muster-point": 1.0, "control-room": 0.8, "central-control": 0.6,
+    "scada": 0.5, "admin-office": 0.4,
+}
+_ASSET_WEIGHTS = [_ZONE_WEIGHTS.get(ASSET_BY_ID[a]["zone"], 2.0) for a in ASSET_IDS]
+
+# Shift structure: day shift runs the most work, so it sees the most events.
+# (start_hour, span_hours, weight)
+_SHIFTS = [(6, 8, 0.50), (14, 8, 0.32), (22, 8, 0.18)]
+
+# Weekend maintenance windows are lighter; Monday runs slightly hot as the
+# week's work restarts. Index 0 = Monday.
+_WEEKDAY_WEIGHTS = [1.15, 1.0, 1.0, 1.0, 0.95, 0.6, 0.5]
+
+# Indian steel-plant summer (Apr–Jun) drives more heat/gas excursions; the
+# monsoon and winter months are calmer. Index 0 = January.
+_MONTH_WEIGHTS = [0.85, 0.9, 1.05, 1.25, 1.35, 1.2, 1.0, 0.95, 0.95, 1.0, 0.9, 0.85]
+
+_CONDITIONS_POOL = [
+    "Resume only after gas test confirms two consecutive clear readings.",
+    "Continuous atmospheric monitoring for the remainder of the shift.",
+    "Standby fire watch posted until the permit is closed.",
+    "Re-verify isolation with the area authority before restart.",
+    "Restrict access to essential personnel; log every entry.",
+    "Conditions logged for shift handover; incoming operator to re-check on arrival.",
+    "Escalate to the area supervisor if the reading does not fall within 30 minutes.",
+    "Additional ventilation to run until levels return to normal band.",
+]
+
+_COMMENT_POOL = [
+    "Verified on the floor before signing off.",
+    "Cross-checked against the previous shift's log — same asset flagged twice this week.",
+    "Reading confirmed by a second handheld instrument.",
+    "Discussed with the area authority; agreed on the conditions below.",
+    "Permit holder briefed directly.",
+    None, None, None,  # most decisions carry no free-text comment
+]
+
+_REC_BY_RISK = {
+    "blocking": [
+        "Halt work and re-verify isolation before resuming.",
+        "Stop the activity, evacuate the immediate zone, and re-test the atmosphere.",
+        "Suspend the permit until the control failure is corrected and re-verified.",
+        "Cease hot work; do not restart until a clear gas test is recorded.",
+    ],
+    "elevated": [
+        "Continue with heightened monitoring and log a follow-up check.",
+        "Maintain the activity under continuous supervision; re-check in 30 minutes.",
+        "Proceed with additional ventilation and a posted fire watch.",
+        "Allow work to continue; schedule an inspection before the next shift.",
+        "Keep the permit open but re-confirm controls at the next handover.",
+    ],
+}
+
+
+def _pick_timestamp(day_start: datetime) -> datetime:
+    """
+    A time-of-day drawn from the shift pattern, not uniform across 24h.
+
+    The night shift is wrapped into the same calendar day (22:00-24:00 or
+    00:00-06:00) rather than allowed to run past midnight. Letting it spill
+    forward silently moved ~18% of every day's events onto the next date,
+    which flattened the weekday/weekend weighting this function exists to
+    produce — Monday drained into Tuesday and weekends stopped looking quiet.
+    """
+    start_h, span_h, _ = random.choices(_SHIFTS, weights=[s[2] for s in _SHIFTS])[0]
+    hour = (start_h + random.random() * span_h) % 24
+    return day_start + timedelta(hours=hour, minutes=random.uniform(0, 59))
+
+
+def _day_weight(day: datetime) -> float:
+    return _WEEKDAY_WEIGHTS[day.weekday()] * _MONTH_WEIGHTS[day.month - 1]
 
 # --- Story templates ---------------------------------------------------------
 # Each entry: fact_type -> (headline, detail_fn(asset_name) -> str, context category/payload_fn)
@@ -345,7 +442,16 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
         summary += f" Compounded by {_STORIES[fact_types[1]]['headline'].lower()}."
 
     created_at = sim_time
-    closed_at = sim_time + timedelta(minutes=random.randint(20, 90))
+    # Decision latency is long-tailed, not a flat band: most calls are quick, a
+    # minority drag while someone walks the floor or waits on a gas test, and
+    # night-shift decisions skew slower (thinner staffing). Computed here rather
+    # than at the decision INSERT below because `closed_at` must land after it —
+    # a review cannot close before the decision that closed it.
+    _latency = random.choice([random.uniform(4, 18), random.uniform(18, 45), random.uniform(45, 150)])
+    if created_at.hour >= 22 or created_at.hour < 6:
+        _latency *= random.uniform(1.2, 1.8)
+    submitted_at = created_at + timedelta(minutes=_latency)
+    closed_at = submitted_at + timedelta(minutes=random.uniform(3, 40))
 
     origin = "operator" if operator else "system"
     await session.execute(
@@ -401,23 +507,23 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
     )
 
     rec_id = uuid.uuid4()
-    rec_text = "Halt work and re-verify isolation before resuming." if risk_level == "blocking" else "Continue with heightened monitoring and log a follow-up check."
+    rec_text = random.choice(_REC_BY_RISK[risk_level])
     await session.execute(
         text("INSERT INTO recommendations (id, assessment_id, text, rationale, disposition) VALUES (:id, :aid, :text, :rationale, 'accepted')"),
         {"id": rec_id, "aid": assessment_id, "text": rec_text, "rationale": reasoning_factors[0]["detail"]},
     )
 
     decision_id = uuid.uuid4()
-    submitted_at = created_at + timedelta(minutes=random.randint(10, 25))
-    conditions = "Conditions logged for shift handover." if outcome != "approved" else None
+    conditions = random.choice(_CONDITIONS_POOL) if outcome != "approved" else None
+    comments = random.choice(_COMMENT_POOL)
     await session.execute(
         text(
             """
-            INSERT INTO decisions (id, review_id, assessment_id, decided_by, outcome, conditions, submitted_at)
-            VALUES (:id, :review_id, :aid, :decided_by, :outcome, :conditions, :submitted_at)
+            INSERT INTO decisions (id, review_id, assessment_id, decided_by, outcome, conditions, comments, submitted_at)
+            VALUES (:id, :review_id, :aid, :decided_by, :outcome, :conditions, :comments, :submitted_at)
             """
         ),
-        {"id": decision_id, "review_id": review_id, "aid": assessment_id, "decided_by": supervisor["id"], "outcome": outcome, "conditions": conditions, "submitted_at": submitted_at},
+        {"id": decision_id, "review_id": review_id, "aid": assessment_id, "decided_by": supervisor["id"], "outcome": outcome, "conditions": conditions, "comments": comments, "submitted_at": submitted_at},
     )
 
     outcome_labels = {"approved": "Approved", "approved_with_conditions": "Approved with conditions", "blocked": "Blocked"}
@@ -451,6 +557,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "outcome": outcome,
             "outcome_label": outcome_labels[outcome],
             "conditions": conditions,
+            "comments": comments,
             "decided_by": {"id": supervisor["id"], "name": supervisor["name"]},
             "submitted_at": _iso(submitted_at),
             "assessment_id": str(assessment_id),
@@ -548,7 +655,10 @@ async def main() -> None:
 
     daily_rate = ARGS.reviews_per_week / 7.0
     print(f"Seeding quick mock data against: {_settings.database_url}")
-    print(f"days={ARGS.days} target={ARGS.reviews_per_week}/week (~{daily_rate:.2f}/day, Poisson) seed={ARGS.seed}")
+    if ARGS.total is not None:
+        print(f"days={ARGS.days} total={ARGS.total} (exact, weighted across the window) seed={ARGS.seed}")
+    else:
+        print(f"days={ARGS.days} target={ARGS.reviews_per_week}/week (~{daily_rate:.2f}/day, Poisson) seed={ARGS.seed}")
     print(f"Supervisors: {', '.join(s['name'] for s in SUPERVISORS)}")
     print(f"Operators (raise ~30% of reviews): {', '.join(o['name'] for o in OPERATOR_ACTORS)}")
 
@@ -560,20 +670,37 @@ async def main() -> None:
         print(f"Loaded {len(regulations)} regulations for citations.")
 
     window_end = datetime.now(timezone.utc)
+    # Normalised to midnight. Without this, each "day start" carries the current
+    # wall-clock time (e.g. 21:47), so _pick_timestamp's shift offset pushed most
+    # events onto the following calendar date — which silently destroyed the
+    # weekday/weekend weighting below (Monday's events landed on Tuesday).
+    _midnight = window_end.replace(hour=0, minute=0, second=0, microsecond=0)
+    day_starts = [_midnight - timedelta(days=ARGS.days - d) for d in range(ARGS.days)]
+
+    if ARGS.total is not None:
+        # Exact-count mode: place each review on a day chosen by that day's
+        # realistic weight (weekday/weekend + season), so the total lands
+        # precisely while the *shape* still varies the way a real log does.
+        weights = [_day_weight(d) for d in day_starts]
+        chosen_days = random.choices(day_starts, weights=weights, k=ARGS.total)
+        plan = sorted(chosen_days)
+    else:
+        plan = []
+        for day_start in day_starts:
+            for _ in range(_poisson(daily_rate * _day_weight(day_start))):
+                plan.append(day_start)
+
     total_reviews = 0
     t0 = _time.monotonic()
     async with SessionLocal() as session:
-        for day in range(ARGS.days):
-            day_start = window_end - timedelta(days=ARGS.days - day)
-            n = _poisson(daily_rate)
-            for _ in range(n):
-                asset = ASSET_BY_ID[random.choice(ASSET_IDS)]
-                sim_time = day_start + timedelta(hours=random.uniform(0, 23), minutes=random.uniform(0, 59))
-                await seed_one_review(session, asset, sim_time, regulations)
-                total_reviews += 1
-            if (day + 1) % 30 == 0 or day == ARGS.days - 1:
+        for i, day_start in enumerate(plan):
+            asset = ASSET_BY_ID[random.choices(ASSET_IDS, weights=_ASSET_WEIGHTS)[0]]
+            sim_time = _pick_timestamp(day_start)
+            await seed_one_review(session, asset, sim_time, regulations)
+            total_reviews += 1
+            if (i + 1) % 50 == 0 or i == len(plan) - 1:
                 elapsed = _time.monotonic() - t0
-                print(f"  day {day + 1}/{ARGS.days} | {elapsed:6.1f}s elapsed | {total_reviews} reviews so far")
+                print(f"  {i + 1}/{len(plan)} | {elapsed:6.1f}s elapsed")
         await session.commit()
 
     elapsed = _time.monotonic() - t0
