@@ -7,7 +7,11 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
-from tests.test_decisions import VESSEL_A, _bring_to_pending_decision, client  # noqa: F401
+from tests.test_decisions import (  # noqa: F401
+    VESSEL_A,
+    _bring_to_pending_decision,
+    client,
+)
 from tests.test_review_closure import _decide
 
 OTHER_ASSET = UUID("22222222-2222-2222-2222-222222222222")

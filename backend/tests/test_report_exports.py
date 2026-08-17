@@ -16,10 +16,9 @@ from uuid import uuid4
 
 from app.reports.export_pdf import render_report_pdf
 from app.reports.export_xlsx import render_dataset_xlsx, render_report_xlsx
-from app.reports.packet import PacketMeta, hydrate_packet
+from app.reports.packet import hydrate_packet
 from app.reports.schemas import ReportIntegrity, ReportOut
-
-from tests.report_fixtures import make_packet, make_report
+from tests.report_fixtures import make_report
 
 EXPECTED_SHEETS = [
     "Summary",

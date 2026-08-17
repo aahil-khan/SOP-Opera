@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-from app.core.config import get_settings
 from shared.python.schemas import (
     AreaOwner,
     DerivedFact,
     ReasoningFactor,
     RetrievedReference,
 )
+
+from app.core.config import get_settings
 
 FACT_HEADLINES: dict[str, str] = {
     "elevated_gas": "Elevated gas",
@@ -122,11 +124,7 @@ def _find_metric_reading(
         if val is None or not ok(val):
             continue
         unit = unit_of(payload)
-        if best is None:
-            best = (val, unit)
-        elif prefer == "max" and val > best[0]:
-            best = (val, unit)
-        elif prefer == "min" and val < best[0]:
+        if best is None or prefer == "max" and val > best[0] or prefer == "min" and val < best[0]:
             best = (val, unit)
         elif prefer == "first":
             continue

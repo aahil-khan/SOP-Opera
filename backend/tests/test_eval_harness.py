@@ -6,14 +6,13 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.context.derived_facts import ContextEntryView
-from app.eval.dataset import build_dataset, hero_checkpoint, static_cases
-from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
 from app.context.lead_time import (
     compute_lead_time_for_verdict,
     estimate_seconds_until_gas_critical,
 )
+from app.eval.dataset import build_dataset, hero_checkpoint, static_cases
+from app.eval.detectors import compound_alarm, forecast_alarm, single_sensor_alarm
 from app.eval.lead_time import (
-    compute_scenario_lead_time,
     hero_lead_time,
 )
 from app.eval.metrics import run_evaluation

@@ -7,6 +7,7 @@ from types import SimpleNamespace
 from uuid import UUID, uuid4
 
 import pytest
+from shared.python.schemas import DerivedFact
 
 from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.agents.llm import (
@@ -15,7 +16,6 @@ from app.agents.llm import (
     sum_usage,
     usage_record,
 )
-from shared.python.schemas import DerivedFact
 
 
 def test_extract_usage_from_usage_metadata():

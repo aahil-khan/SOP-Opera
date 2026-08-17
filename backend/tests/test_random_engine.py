@@ -7,8 +7,8 @@ import random
 import pytest
 
 from app.simulator.random_engine import (
-    RandomModeConfig,
     SIGNAL_CATALOG,
+    RandomModeConfig,
     build_steps_for_signals,
     pick_signals,
 )

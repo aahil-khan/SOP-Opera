@@ -22,7 +22,7 @@ from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.realtime.connection_manager import manager
 from app.simulator.dsl import ScenarioStep
-from app.simulator.sources import CATEGORY_TO_SOURCE, OrchestratorSim, SOURCE_LABELS
+from app.simulator.sources import CATEGORY_TO_SOURCE, SOURCE_LABELS, OrchestratorSim
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +297,7 @@ class AmbientPlantLoop:
         try:
             async with SessionLocal() as session:
                 self._assets_cache = await _load_assets(session)
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("ambient: asset refresh failed", exc_info=True)
 
     def _next_batch(self, n: int) -> list[dict[str, str]]:
@@ -355,7 +355,7 @@ class AmbientPlantLoop:
                     samples,
                     keep_per_asset=int(settings.ambient_telemetry_keep),
                 )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("ambient soft persist failed", exc_info=True)
 
     async def _coincidence(
@@ -395,7 +395,7 @@ class AmbientPlantLoop:
                 asset["name"],
                 category,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("ambient coincidence failed")
 
     async def _heartbeat(
@@ -438,7 +438,7 @@ class AmbientPlantLoop:
                 category=category,
                 payload=payload,
             )
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.debug("ambient heartbeat ingest failed", exc_info=True)
 
     async def _loop(self) -> None:
@@ -464,7 +464,7 @@ class AmbientPlantLoop:
                 await asyncio.sleep(settings.ambient_tick_seconds)
         except asyncio.CancelledError:
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("ambient loop crashed")
         finally:
             self._running = False

@@ -20,7 +20,6 @@ from app.reports.packet import (
     report_ref,
     version_label,
 )
-
 from tests.report_fixtures import make_packet
 
 
@@ -140,7 +139,9 @@ def test_hydrate_malformed_v2_degrades_instead_of_raising():
     """A report you cannot open is worse than one with empty sections."""
     hydrated = hydrate_packet({"meta": "not-an-object"}, row=_row({}))
     assert hydrated is not None
-    assert hydrated.meta.built_from == "unreadable_v2"
+    # Renamed from "unreadable_v2" when packet v3 landed: both v2 and v3 rows
+    # take this path, so the marker is no longer version-specific.
+    assert hydrated.meta.built_from == "unreadable_packet"
 
 
 def test_labels_are_human():

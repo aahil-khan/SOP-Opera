@@ -7,12 +7,14 @@ service module.
 from __future__ import annotations
 
 import json
+from collections.abc import Mapping
 from datetime import datetime
-from typing import Any, Mapping
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
+
 
 def _rows(result) -> list[dict[str, Any]]:
     return [dict(r._mapping) for r in result.fetchall()]

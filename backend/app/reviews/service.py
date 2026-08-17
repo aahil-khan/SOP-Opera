@@ -2,19 +2,17 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from shared.python.schemas import Context, DerivedFact, Review
+from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
+
 from app.context.derived_facts import load_valid_context
 from app.context.schemas import ReviewDetailOut
-from shared.python.schemas import Context
-from shared.python.schemas import DerivedFact, Review
-from app.reviews.state_machine import ReviewEvent
-from app.reviews.repository import create_review, get_review, transition_review
-from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import text
-
 from app.core.config import get_settings
+from app.reviews.repository import create_review, get_review, transition_review
+from app.reviews.state_machine import ReviewEvent
 from app.risk import policy as risk_policy
 from app.risk.policy import CRITICAL_SENSOR_FACTS
-
 
 REASSESSABLE_STATES = frozenset({"opened", "pending_decision", "reopened"})
 ACTIVE_REVIEW_STATES = frozenset(
@@ -238,9 +236,10 @@ async def get_review_detail(
     session: AsyncSession, review_id: UUID
 ) -> ReviewDetailOut | None:
     # Deferred to avoid circular import with context.service → reviews.service.
+    from shared.python.schemas import Asset
+
     from app.context.service import get_asset
     from app.reviews.ownership import get_zone_owner, resolve_worker_names
-    from shared.python.schemas import Asset
 
     review = await get_review(session, review_id)
     if review is None:

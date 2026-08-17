@@ -3,13 +3,13 @@ from __future__ import annotations
 import logging
 from uuid import UUID
 
+from shared.python.schemas import Review
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.audit.service import record_audit
 from app.realtime.connection_manager import manager
 from app.reviews.state_machine import ReviewEvent, next_state
-from shared.python.schemas import Review
 
 logger = logging.getLogger(__name__)
 
@@ -320,7 +320,7 @@ async def transition_review(
 
             try:
                 await index_promoted_incident(promoted_incident_id)
-            except Exception:  # noqa: BLE001 — report freeze already succeeded
+            except Exception:
                 logger.exception(
                     "failed to index promoted incident %s after close of %s",
                     promoted_incident_id,

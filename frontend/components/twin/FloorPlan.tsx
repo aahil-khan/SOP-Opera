@@ -73,6 +73,13 @@ interface FloorPlanProps {
   opsChipsByAsset?: Record<string, AssetOpsChips>;
   /** When true, render the ops chip layer. */
   showOpsLayer?: boolean;
+  /**
+   * assetId -> short labels of response equipment currently off its default
+   * state ("Ventilation on"). Only engaged equipment is passed: painting every
+   * fan and gate permanently would hide the one moment that matters.
+   */
+  responseByAsset?: Record<string, string[]>;
+  showResponseLayer?: boolean;
   /** Tour cast-select: only this asset's hit target gets `data-tour`. */
   tourTargetAssetId?: string | null;
 }
@@ -345,6 +352,8 @@ export const FloorPlan = memo(function FloorPlan({
   spatialLinks = [],
   opsChipsByAsset = {},
   showOpsLayer = false,
+  responseByAsset = {},
+  showResponseLayer = false,
   tourTargetAssetId = null,
 }: FloorPlanProps) {
   const [schematic, setSchematic] = useState<string>("");
@@ -656,6 +665,37 @@ export const FloorPlan = memo(function FloorPlan({
                   onHover={paintTip}
                   onLeave={clearTip}
                 />
+              );
+            })
+          : null}
+
+        {/* Automatic-response equipment — bottom-left of the asset boundary,
+            clear of the ops chips at top-right. Rendered only while engaged. */}
+        {showResponseLayer
+          ? floorEntries.map(([assetId, entry]) => {
+              if (!entry.hit) return null;
+              const labels = responseByAsset[assetId];
+              if (!labels || labels.length === 0) return null;
+              const { x, y, h } = entry.hit;
+              const text = labels.join(" · ");
+              return (
+                <g
+                  key={`resp-${assetId}`}
+                  className={styles.responseBadge}
+                  pointerEvents="none"
+                  aria-hidden="true"
+                >
+                  <rect
+                    x={x + 2}
+                    y={y + h - 14}
+                    width={Math.min(150, 7 + text.length * 4.6)}
+                    height={12}
+                    rx={3}
+                  />
+                  <text x={x + 6} y={y + h - 5}>
+                    {text}
+                  </text>
+                </g>
               );
             })
           : null}

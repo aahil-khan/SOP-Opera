@@ -406,6 +406,7 @@ function pinHeroDomain(): void {
     "permits",
     "people",
     "evidence",
+    "response",
     "spatial",
   ];
   useLiveStore.getState().openAssetDomain(view.asset.id, order[0]);
@@ -516,9 +517,9 @@ export const TOUR_STEPS: TourStep[] = [
   {
     id: "evidence-radar",
     act: "Act IV · The Evidence",
-    title: "Five domains, one shape.",
+    title: "Six domains, one shape.",
     body:
-      "The radar fuses five evidence domains — sensors, permits, people, evidence and spatial — into a single silhouette. A lopsided pentagon tells the supervisor at a glance where the danger is coming from. Try it: click any wedge to open that domain's detail.",
+      "The radar fuses six domains — sensors, permits, people, evidence, response and spatial — into a single silhouette. A lopsided hexagon tells the supervisor at a glance where the danger is coming from, and what the system already did about it. Try it: click any wedge to open that domain's detail.",
     route: "/operator",
     anchor: "domain-radar",
     placement: "left",
@@ -527,7 +528,7 @@ export const TOUR_STEPS: TourStep[] = [
     interactive: {
       // Wedge click opens DomainDetailFlyout (local state) — don't auto-advance
       // or the flyout never gets a chance to be read. User continues with Next.
-      hint: "Click any wedge on the pentagon to open its domain, then continue.",
+      hint: "Click any wedge on the hexagon to open its domain, then continue.",
       advanceOnClick: false,
     },
     onEnter: (ctx) => {

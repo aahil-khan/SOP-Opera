@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urlparse
 
 import asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine

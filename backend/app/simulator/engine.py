@@ -10,12 +10,13 @@ from datetime import datetime, timezone
 from typing import Any, Literal
 from uuid import UUID
 
+from sqlalchemy import text
+
 from app.assessment.orchestrator import orchestrator
 from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.simulator.dsl import (
     ScenarioFile,
-    ScenarioNotFoundError,
     ScenarioStep,
     load_scenario,
     resolve_asset_id,
@@ -31,7 +32,6 @@ from app.simulator.random_engine import (
     pick_signals,
 )
 from app.simulator.sources import OrchestratorSim, list_sources
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -44,14 +44,20 @@ logger = logging.getLogger(__name__)
 # seeded history survives any number of demo resets.
 #
 # Ordering is FK-driven (children before parents) and unchanged; only the
-# scoping is new. Tables with no link back to `reviews` are handled by their
-# own marker: context_entries/derived_facts by provider, and
-# telemetry_samples/audit_entries wholesale (the mock seeder writes neither).
+# scoping is new. Response rows reference reviews (and each other), so they
+# clear first — response_devices / response_contacts are seeded reference
+# data and stay, the same way assets and workers do, but their *state* is
+# reset separately by reset_device_states() so a demo does not start with a
+# fan left on. Tables with no link back to `reviews` are handled by their own
+# marker: context_entries/derived_facts by provider, and telemetry_samples/
+# audit_entries wholesale (the mock seeder writes neither).
 _REAL_REVIEWS = "(SELECT id FROM reviews WHERE NOT is_seeded)"
 _REAL_ASSESSMENTS = f"(SELECT id FROM assessments WHERE review_id IN {_REAL_REVIEWS})"
 _MOCK_PROVIDER = "quick_mock"
 
 _RESET_DELETE_STATEMENTS = (
+    f"DELETE FROM response_pages WHERE review_id IN {_REAL_REVIEWS}",
+    f"DELETE FROM response_actions WHERE review_id IN {_REAL_REVIEWS}",
     f"DELETE FROM evidence WHERE review_id IN {_REAL_REVIEWS}",
     f"DELETE FROM review_tasks WHERE review_id IN {_REAL_REVIEWS}",
     f"DELETE FROM review_comments WHERE review_id IN {_REAL_REVIEWS}",
@@ -310,6 +316,13 @@ class DemoController:
             from app.incidents.service import wipe_promoted_incidents
 
             await wipe_promoted_incidents(session)
+
+            # Devices survive the wipe (seeded reference data), but their *state*
+            # must not: a fan left running or a gate left shut from the previous
+            # run would start the next demo mid-incident.
+            from app.response.repository import reset_device_states
+
+            await reset_device_states(session)
             await session.commit()
 
         # A reset returns the plant to a clean live state, so the mock corpus
@@ -412,7 +425,7 @@ class DemoController:
         except asyncio.CancelledError:
             logger.info("demo scenario %s cancelled", scenario.name)
             raise
-        except Exception:  # noqa: BLE001 — stop the run rather than crash silently
+        except Exception:
             logger.exception(
                 "demo scenario %s failed at step %d",
                 scenario.name,
@@ -505,7 +518,7 @@ class DemoController:
         except asyncio.CancelledError:
             logger.info("random mode cancelled")
             raise
-        except Exception:  # noqa: BLE001
+        except Exception:
             logger.exception("random mode failed after %d issues", self._issues_spawned)
         finally:
             self._running = False

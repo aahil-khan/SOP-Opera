@@ -36,8 +36,8 @@ circularity. What differs is the *criterion built on top of them*.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Callable
 
 from app.context.derived_facts import ContextEntryView
 from app.core.config import get_settings

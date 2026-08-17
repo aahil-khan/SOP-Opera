@@ -290,20 +290,24 @@ export function ReviewSidebar({
 
   return (
     <>
-      <button
-        type="button"
-        className={styles.rail}
-        data-open={open}
-        onClick={() => onOpenChange(true)}
-        aria-expanded={open}
-        aria-controls="open-work-panel"
-        title="Open work"
-      >
-        <span className={styles.railLabel}>Open work</span>
-        {affectedCount > 0 && (
-          <span className={styles.railCount}>{affectedCount}</span>
-        )}
-      </button>
+      {/* Collapsed: a single segment. Auto response used to sit here as a second
+          mode, but it is scoped to one review, so it now lives in the review
+          drawer beside the assessment it belongs to. */}
+      <div className={styles.rail} data-open={open}>
+        <button
+          type="button"
+          className={styles.railSegment}
+          onClick={() => onOpenChange(true)}
+          aria-expanded={open}
+          aria-controls="open-work-panel"
+          title="Open work"
+        >
+          <span className={styles.railLabel}>Open work</span>
+          {affectedCount > 0 && (
+            <span className={styles.railCount}>{affectedCount}</span>
+          )}
+        </button>
+      </div>
 
       <aside
         id="open-work-panel"

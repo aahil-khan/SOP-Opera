@@ -11,14 +11,16 @@ from httpx import ASGITransport, AsyncClient
 
 @pytest_asyncio.fixture
 async def client():
-    from app.core.config import get_settings
-    from app.db.session import apply_schema, engine, _asyncpg_dsn
-    from app.db.vector import close_vector_pool
-    from app.db.seed import seed_minimal
-    from app.simulator.engine import demo_controller
-    from app.assessment.orchestrator import orchestrator
-    import asyncpg
     import os
+
+    import asyncpg
+
+    from app.assessment.orchestrator import orchestrator
+    from app.core.config import get_settings
+    from app.db.seed import seed_minimal
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
+    from app.db.vector import close_vector_pool
+    from app.simulator.engine import demo_controller
 
     settings = get_settings()
     try:

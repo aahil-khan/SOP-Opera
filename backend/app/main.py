@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+from shared.python.schemas import PingResponse
 
 from app.core.config import get_settings
 from app.realtime.connection_manager import manager
-from shared.python.schemas import PingResponse
 
 logger = logging.getLogger(__name__)
 settings = get_settings()
@@ -19,15 +19,20 @@ settings = get_settings()
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     from app.assessment.orchestrator import orchestrator
+    from app.response.dispatcher import dispatcher as response_dispatcher
     from app.simulator.ambient import ambient_loop
 
     try:
-        from app.db.session import apply_schema
         from app.db.seed import seed_minimal
         from app.db.seed_embeddings import seed_embeddings
+        from app.db.session import apply_schema
 
         await apply_schema()
         await seed_minimal()
+        # Response devices/contacts depend on assets and zone_owners existing.
+        from app.db.seed_response import seed_response
+
+        await seed_response()
         try:
             # OpenAI embedding seed can hang on a stalled HTTPS call; don't block boot.
             await asyncio.wait_for(
@@ -51,18 +56,27 @@ async def lifespan(_app: FastAPI):
         ambient_task = ambient_loop.start()
         logger.info("ambient plant loop running")
 
+    # Started unconditionally: `response_auto_enabled` gates whether actions arm
+    # at all, and the ticker still needs to run so already-armed actions from
+    # before a pause are not stranded. It fails closed — see dispatcher docstring.
+    response_task = response_dispatcher.start()
+    logger.info("response dispatcher running")
+
     yield
 
     try:
         from app.db.vector import close_vector_pool
 
         await ambient_loop.stop()
+        await response_dispatcher.stop()
         orchestrator.stop()
         await close_vector_pool()
     except Exception:  # noqa: BLE001
         pass
     if ambient_task is not None:
         ambient_task.cancel()
+    if response_task is not None:
+        response_task.cancel()
     if worker_task is not None:
         worker_task.cancel()
 
@@ -78,22 +92,23 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from app.context.routes import router as context_router  # noqa: E402
-from app.reviews.routes import router as reviews_router  # noqa: E402
-from app.decisions.routes import router as decisions_router  # noqa: E402
-from app.simulator.routes import router as demo_router  # noqa: E402
-from app.reports.routes import router as reports_router  # noqa: E402
-from app.notifications.routes import router as notifications_router  # noqa: E402
-from app.ai_ops.routes import router as ai_ops_router  # noqa: E402
-from app.graph.routes import router as graph_router  # noqa: E402
-from app.handover.routes import router as handover_router  # noqa: E402
-from app.config.routes import router as config_router  # noqa: E402
-from app.eval.routes import router as eval_router  # noqa: E402
-from app.context.ingest_routes import router as ingest_router  # noqa: E402
-from app.assessment.queue_routes import router as queue_router  # noqa: E402
-from app.auth.routes import router as auth_router  # noqa: E402
+from app.ai_ops.routes import router as ai_ops_router
+from app.assessment.queue_routes import router as queue_router
+from app.audit.routes import router as audit_router
+from app.auth.routes import router as auth_router
+from app.config.routes import router as config_router
+from app.context.ingest_routes import router as ingest_router
+from app.context.routes import router as context_router
+from app.decisions.routes import router as decisions_router
+from app.eval.routes import router as eval_router
+from app.graph.routes import router as graph_router
+from app.handover.routes import router as handover_router
+from app.notifications.routes import router as notifications_router
+from app.reports.routes import router as reports_router
+from app.response.routes import router as response_router
+from app.reviews.routes import router as reviews_router
+from app.simulator.routes import router as demo_router
 from app.tasks.routes import router as tasks_router
-from app.audit.routes import router as audit_router  # noqa: E402
 
 app.include_router(context_router)
 app.include_router(reviews_router)
@@ -111,6 +126,7 @@ app.include_router(queue_router)
 app.include_router(auth_router)
 app.include_router(tasks_router)
 app.include_router(audit_router)
+app.include_router(response_router)
 
 
 @app.get("/health")

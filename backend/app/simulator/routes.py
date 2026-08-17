@@ -157,7 +157,7 @@ async def start_random(body: RandomStartBody | None = None) -> dict:
         base.update(patch)
     try:
         config = RandomModeConfig.model_validate(base)
-    except Exception as exc:  # noqa: BLE001
+    except Exception as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     try:
         return await demo_controller.start_random(config)

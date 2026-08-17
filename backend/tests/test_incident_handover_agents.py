@@ -6,12 +6,12 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
+from shared.python.schemas import DerivedFact
 
 from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.agents.nodes.incident_pattern import incident_pattern_agent
 from app.agents.nodes.shift_handover import shift_handover_agent
 from app.agents.state import AgentState
-from shared.python.schemas import DerivedFact
 
 VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 

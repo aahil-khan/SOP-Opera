@@ -514,3 +514,196 @@ CREATE UNIQUE INDEX IF NOT EXISTS uq_reports_review_seq
 -- Every report read path filters or orders by review_id; there was no index.
 CREATE INDEX IF NOT EXISTS idx_reports_review
     ON reports(review_id, closure_event_seq DESC);
+
+-- ---------------------------------------------------------------------------
+-- W1 · Emergency Response Orchestrator
+--
+-- Response state is a deliberately SEPARATE AXIS from the fact/verdict path.
+-- Nothing under app/risk, app/context or app/eval reads these tables, and no
+-- response action ever writes a context_entries row.
+--
+-- If one did, the loop would close: action -> context entry -> derived fact ->
+-- classify() -> verdict. The orchestrator could then suppress the hazard that
+-- triggered it — freeze a permit, `permit_conflict` stops firing, the verdict
+-- falls to nominal, and the system reports solving a problem it merely hid.
+-- That is the circularity already removed from the eval harness once.
+-- Enforced by tests/test_response_independence.py.
+-- ---------------------------------------------------------------------------
+
+-- Controllable plant actuators. `assets` are things we observe; these are the
+-- few things we can act on. Seeded reference data — a demo reset does not clear
+-- them, the same way it does not clear assets.
+CREATE TABLE IF NOT EXISTS response_devices (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    asset_id UUID REFERENCES assets(id),
+    zone TEXT NOT NULL,
+    -- ventilation | pa_zone | exclusion_signage | tool_issuance_gate
+    -- | muster_alarm | permit_gate
+    kind TEXT NOT NULL,
+    label TEXT NOT NULL,
+    state TEXT NOT NULL,
+    default_state TEXT NOT NULL,
+    -- Where the device lands if we lose control of it. Recorded per row rather
+    -- than inferred, because it is what a revocation reverts to.
+    fail_safe_state TEXT NOT NULL,
+    reversible BOOLEAN NOT NULL DEFAULT TRUE,
+    controllable BOOLEAN NOT NULL DEFAULT TRUE,
+    -- Every device in this build is simulated. The column exists so the
+    -- in-product "simulated" label is driven by data rather than a hardcoded
+    -- string, and so a real integration flips one row instead of editing code.
+    simulated BOOLEAN NOT NULL DEFAULT TRUE,
+    updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- One device of a given kind per zone: "the ventilation for coke-oven-battery".
+-- Blast-radius containment is checked against `zone`, so two rows sharing a
+-- (zone, kind) would make "which one did we command?" ambiguous in the audit.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_response_devices_zone_kind
+    ON response_devices(zone, kind);
+
+-- Who to page, in what order, for a zone. Backfilled from zone_owners until the
+-- finals response directory lands; `contact` is deliberately fictional.
+CREATE TABLE IF NOT EXISTS response_contacts (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    role TEXT NOT NULL,
+    zone TEXT NOT NULL,
+    contact TEXT NOT NULL,
+    escalation_order INT NOT NULL DEFAULT 1,
+    worker_id UUID REFERENCES workers(id),
+    simulated BOOLEAN NOT NULL DEFAULT TRUE
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_response_contacts_zone_order
+    ON response_contacts(zone, escalation_order);
+
+-- One row per action the orchestrator considered — including the ones it
+-- REFUSED. A refusal is evidence that the envelope is a gate rather than a
+-- description, so it is persisted and rendered, not dropped.
+CREATE TABLE IF NOT EXISTS response_actions (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    -- CASCADE: a response row is meaningless without its review, and several
+    -- existing paths delete reviews (the demo reset, test cleanups). Without it
+    -- this table silently becomes a foreign key that blocks all of them. The
+    -- audit entries describing these actions survive regardless — audit_entries
+    -- deliberately carries no FK.
+    review_id UUID NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    asset_id UUID REFERENCES assets(id),
+    tier INT NOT NULL,
+    action_kind TEXT NOT NULL,
+    device_id UUID REFERENCES response_devices(id),
+    -- Free-form target for actions with no device row. A permit freeze puts the
+    -- permit's *context entry* id here: the `permits` table is not written by
+    -- anything in this codebase, so the live representation of a permit is the
+    -- context entry the rules read.
+    target_ref TEXT,
+    -- armed | active | aborted | revoked | refused | superseded
+    status TEXT NOT NULL,
+    envelope JSONB NOT NULL DEFAULT '{}'::jsonb,
+    refusal_reason TEXT,
+    actor TEXT NOT NULL,
+    armed_at TIMESTAMPTZ,
+    -- Arming window. The action executes only once now() passes this, which is
+    -- what gives the supervisor a visible abort.
+    execute_after TIMESTAMPTZ,
+    executed_at TIMESTAMPTZ,
+    aborted_at TIMESTAMPTZ,
+    aborted_by TEXT,
+    revoked_at TIMESTAMPTZ,
+    revoked_by TEXT,
+    revoke_reason TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- Tier 0 preserves evidence once per incident, not once per context entry.
+-- Without this a re-assessment would append a second snapshot and the audit
+-- chain would grow at telemetry rate instead of incident rate.
+CREATE UNIQUE INDEX IF NOT EXISTS uq_response_actions_tier0_per_review
+    ON response_actions(review_id)
+    WHERE tier = 0;
+
+-- A review is re-assessed whenever new context arrives, and each pass evaluates
+-- the same action set. Without this, a second assessment arms a second
+-- "ventilation on" for the same incident: the rail shows the action twice, the
+-- responder is paged twice, and the audit records two commands where one was
+-- intended. At most one *live or currently-reported* action per kind per review.
+--
+-- Terminal rows (aborted, revoked, superseded) are excluded, so a hazard that
+-- returns after a revocation can legitimately re-arm.
+--
+-- Retire pre-existing duplicates before constraining. apply_schema() runs this
+-- file as one unit, so a failing CREATE UNIQUE INDEX would abort every statement
+-- after it on a dev database seeded before the index existed — the same trap the
+-- reports renumbering above avoids. Keep the newest row per key.
+WITH ranked AS (
+    SELECT id,
+           ROW_NUMBER() OVER (
+               PARTITION BY review_id, action_kind
+               ORDER BY created_at DESC, id DESC
+           ) AS rn
+    FROM response_actions
+    WHERE status IN ('armed', 'active', 'refused')
+)
+UPDATE response_actions a
+SET status = 'superseded'
+FROM ranked
+WHERE a.id = ranked.id
+  AND ranked.rn > 1;
+
+CREATE UNIQUE INDEX IF NOT EXISTS uq_response_actions_live_per_kind
+    ON response_actions(review_id, action_kind)
+    WHERE status IN ('armed', 'active', 'refused');
+
+CREATE INDEX IF NOT EXISTS idx_response_actions_review
+    ON response_actions(review_id, created_at DESC);
+
+-- The rail reads "everything not yet finished" on every load, and the dispatcher
+-- ticker polls for due armed rows.
+CREATE INDEX IF NOT EXISTS idx_response_actions_status
+    ON response_actions(status, execute_after);
+
+-- One row per dispatch attempt. An escalation is a new row linked back to the
+-- one that went unanswered, so the chain of "who did we try, and when" survives.
+CREATE TABLE IF NOT EXISTS response_pages (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    action_id UUID NOT NULL REFERENCES response_actions(id) ON DELETE CASCADE,
+    review_id UUID NOT NULL REFERENCES reviews(id) ON DELETE CASCADE,
+    contact_id UUID NOT NULL REFERENCES response_contacts(id),
+    role TEXT NOT NULL,
+    zone TEXT NOT NULL,
+    -- sms | radio | pa — all simulated, and labelled as such wherever shown.
+    channel TEXT NOT NULL,
+    escalation_order INT NOT NULL,
+    -- dispatched | acknowledged | escalated | exhausted
+    status TEXT NOT NULL,
+    -- Self-reference with no FK: a demo reset deletes this table in a single
+    -- statement, which a self-FK would reject row by row.
+    escalated_from_id UUID,
+    dispatched_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acknowledged_at TIMESTAMPTZ,
+    acknowledged_by TEXT
+);
+
+-- The escalation sweep polls for dispatched pages older than the ack timeout.
+CREATE INDEX IF NOT EXISTS idx_response_pages_status
+    ON response_pages(status, dispatched_at);
+
+-- A database created before the cascade was added carries the plain FK, which
+-- blocks every existing path that deletes a review. DROP IF EXISTS + ADD is
+-- idempotent across boots; the constraint names are Postgres's defaults.
+ALTER TABLE response_actions
+    DROP CONSTRAINT IF EXISTS response_actions_review_id_fkey;
+ALTER TABLE response_actions
+    ADD CONSTRAINT response_actions_review_id_fkey
+    FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE;
+
+ALTER TABLE response_pages
+    DROP CONSTRAINT IF EXISTS response_pages_review_id_fkey;
+ALTER TABLE response_pages
+    ADD CONSTRAINT response_pages_review_id_fkey
+    FOREIGN KEY (review_id) REFERENCES reviews(id) ON DELETE CASCADE;
+
+ALTER TABLE response_pages
+    DROP CONSTRAINT IF EXISTS response_pages_action_id_fkey;
+ALTER TABLE response_pages
+    ADD CONSTRAINT response_pages_action_id_fkey
+    FOREIGN KEY (action_id) REFERENCES response_actions(id) ON DELETE CASCADE;
