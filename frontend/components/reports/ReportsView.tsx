@@ -181,9 +181,9 @@ export function ReportsView() {
         <div className={styles.headerText}>
           <h1 className={styles.title}>Closure reports</h1>
           <p className={styles.subtitle}>
-            Closing a decided review freezes an immutable audit packet — the
-            decision of record, the evidence it rested on, the regulations
-            cited, and the hash-chained trail behind it.
+            Closing a review freezes a permanent packet: the decision, the
+            evidence it rested on, and the regulations cited — sealed under a
+            hash-chained audit trail.
           </p>
         </div>
         <div className={styles.headerActions}>
