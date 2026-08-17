@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import type { HandoverItem } from "@/shared/schemas";
 import styles from "./Handover.module.css";
 
@@ -38,6 +38,44 @@ export interface HandoverLedgerProps {
   busyItemId?: string | null;
 }
 
+/** Worst-first, matching the ranking `handover/composer.py` already sorts items by. */
+const _RISK_ORDER: Record<string, number> = { blocking: 0, critical: 0, elevated: 1, nominal: 2 };
+
+/**
+ * Groups items by asset, preserving each group's internal order (already
+ * risk/type-ranked by the backend). Multiple items about the same asset —
+ * routine when a busy asset spawns several tasks in one shift — cluster
+ * under one heading instead of repeating the asset name in every card title
+ * with nothing visually tying them together.
+ *
+ * Each group also carries its worst contained risk level, so the cluster's
+ * rail can read as severe even if a lower-risk item happens to sort first —
+ * a busy asset with one blocking and one nominal item is still a busy asset.
+ */
+function groupByAsset(
+  items: HandoverItem[],
+): { assetName: string; items: HandoverItem[]; worstRisk: string }[] {
+  const groups: { assetName: string; items: HandoverItem[]; worstRisk: string }[] = [];
+  const index = new Map<string, number>();
+  for (const item of items) {
+    const key = item.asset_name ?? "Plant-wide";
+    let i = index.get(key);
+    if (i === undefined) {
+      i = groups.length;
+      index.set(key, i);
+      groups.push({ assetName: key, items: [], worstRisk: "nominal" });
+    }
+    const g = groups[i];
+    g.items.push(item);
+    if (
+      (_RISK_ORDER[item.risk_level] ?? 3) < (_RISK_ORDER[g.worstRisk] ?? 3)
+    ) {
+      g.worstRisk = item.risk_level;
+    }
+  }
+  return groups;
+}
+
 export function HandoverLedger({
   items,
   canAcknowledge,
@@ -50,6 +88,8 @@ export function HandoverLedger({
 }: HandoverLedgerProps) {
   const required = items.filter((i) => i.requires_ack);
   const awareness = items.filter((i) => !i.requires_ack);
+  const requiredGroups = groupByAsset(required);
+  const awarenessGroups = groupByAsset(awareness);
 
   if (items.length === 0) {
     return (
@@ -71,20 +111,30 @@ export function HandoverLedger({
             Must acknowledge
             <span className={styles.count}>{required.length}</span>
           </h2>
-          <ul className={styles.itemList}>
-            {required.map((item) => (
-              <HandoverItemCard
-                key={item.id}
-                item={item}
-                canAcknowledge={canAcknowledge}
-                canEdit={canEdit}
-                onAcknowledge={onAcknowledge}
-                onRemove={onRemove}
-                onSelectAsset={onSelectAsset}
-                busy={busyItemId === item.id}
-              />
-            ))}
-          </ul>
+          {requiredGroups.map((g) => (
+            <AssetGroup
+              key={g.assetName}
+              assetName={g.assetName}
+              count={g.items.length}
+              worstRisk={g.worstRisk}
+              multi={requiredGroups.length > 1}
+            >
+              <ul className={styles.itemList}>
+                {g.items.map((item) => (
+                  <HandoverItemCard
+                    key={item.id}
+                    item={item}
+                    canAcknowledge={canAcknowledge}
+                    canEdit={canEdit}
+                    onAcknowledge={onAcknowledge}
+                    onRemove={onRemove}
+                    onSelectAsset={onSelectAsset}
+                    busy={busyItemId === item.id}
+                  />
+                ))}
+              </ul>
+            </AssetGroup>
+          ))}
         </section>
       )}
 
@@ -94,21 +144,70 @@ export function HandoverLedger({
             For awareness
             <span className={styles.count}>{awareness.length}</span>
           </h2>
-          <ul className={styles.itemList}>
-            {awareness.map((item) => (
-              <HandoverItemCard
-                key={item.id}
-                item={item}
-                canAcknowledge={false}
-                canEdit={canEdit}
-                onRemove={onRemove}
-                onSelectAsset={onSelectAsset}
-                busy={busyItemId === item.id}
-              />
-            ))}
-          </ul>
+          {awarenessGroups.map((g) => (
+            <AssetGroup
+              key={g.assetName}
+              assetName={g.assetName}
+              count={g.items.length}
+              worstRisk={g.worstRisk}
+              multi={awarenessGroups.length > 1}
+            >
+              <ul className={styles.itemList}>
+                {g.items.map((item) => (
+                  <HandoverItemCard
+                    key={item.id}
+                    item={item}
+                    canAcknowledge={false}
+                    canEdit={canEdit}
+                    onRemove={onRemove}
+                    onSelectAsset={onSelectAsset}
+                    busy={busyItemId === item.id}
+                  />
+                ))}
+              </ul>
+            </AssetGroup>
+          ))}
         </section>
       )}
+    </div>
+  );
+}
+
+/**
+ * A per-asset cluster within a section. Only shows its own heading when
+ * there's more than one asset in the section — a single-asset section
+ * (the common case for a quiet shift) would otherwise repeat the same
+ * name twice for no reason.
+ *
+ * The rail tints to the cluster's worst contained risk, and a count badge
+ * appears once an asset actually has more than one carried-forward item —
+ * that's the compound-risk case worth flagging, not a redundant "1 item".
+ */
+function AssetGroup({
+  assetName,
+  count,
+  worstRisk,
+  multi,
+  children,
+}: {
+  assetName: string;
+  count: number;
+  worstRisk: string;
+  multi: boolean;
+  children: ReactNode;
+}) {
+  if (!multi) return <>{children}</>;
+  return (
+    <div className={styles.assetGroup} data-risk={worstRisk}>
+      <h3 className={styles.assetGroupLabel}>
+        {assetName}
+        {count > 1 && (
+          <span className={styles.assetGroupCount}>
+            {count} item{count === 1 ? "" : "s"}
+          </span>
+        )}
+      </h3>
+      {children}
     </div>
   );
 }

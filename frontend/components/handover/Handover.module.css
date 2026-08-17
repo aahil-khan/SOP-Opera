@@ -484,6 +484,56 @@
   list-style: none;
 }
 
+/* Per-asset cluster within a "Must acknowledge"/"For awareness" section —
+   only rendered when a section spans more than one asset (see AssetGroup in
+   HandoverLedger.tsx). A left rail ties the cards to their heading without
+   competing with each card's own risk-colored accent border. The rail tints
+   to the cluster's worst contained risk, so a busy asset with a blocking
+   item inside reads as severe even at a glance, before opening any card. */
+.assetGroup {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-left: var(--space-3);
+  border-left: 2px solid var(--border-muted);
+}
+
+.assetGroup[data-risk="elevated"] {
+  border-left-color: color-mix(in srgb, var(--status-elevated) 55%, transparent);
+}
+
+.assetGroup[data-risk="blocking"],
+.assetGroup[data-risk="critical"] {
+  border-left-color: color-mix(in srgb, var(--status-blocking) 55%, transparent);
+}
+
+.assetGroup + .assetGroup {
+  margin-top: var(--space-1);
+}
+
+.assetGroupLabel {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  margin: 0;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+/* Only shown when an asset carries more than one item — the compound-risk
+   case worth calling out, not a redundant "1 item" on every cluster. */
+.assetGroupCount {
+  font-family: var(--font-mono);
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  padding: 0.05rem 0.35rem;
+  border-radius: var(--radius-sm);
+  color: var(--text-muted);
+  background: var(--surface-canvas);
+  border: 1px solid var(--border-muted);
+}
+
 .item {
   --item-accent: var(--domain-evidence);
   display: flex;
