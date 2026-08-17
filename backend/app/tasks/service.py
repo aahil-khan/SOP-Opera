@@ -169,6 +169,8 @@ async def list_tasks(
     assigned_worker_id: UUID,
     limit: int = 50,
 ) -> list[TaskListOut]:
+    from app.db.session import get_seeded_mode
+
     result = await session.execute(
         text(
             """
@@ -203,6 +205,7 @@ async def list_tasks(
             LEFT JOIN users u ON u.id = d.decided_by
             WHERE t.assigned_worker_id = CAST(:wid AS uuid)
               AND t.status <> 'cancelled'
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY
               CASE t.status
                 WHEN 'open' THEN 0
@@ -213,7 +216,11 @@ async def list_tasks(
             LIMIT :limit
             """
         ),
-        {"wid": str(assigned_worker_id), "limit": max(1, min(limit, 200))},
+        {
+            "wid": str(assigned_worker_id),
+            "limit": max(1, min(limit, 200)),
+            "seeded_mode": get_seeded_mode(),
+        },
     )
 
     out: list[TaskListOut] = []

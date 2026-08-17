@@ -26,6 +26,26 @@ ACTIVE_REVIEW_STATES = frozenset(
 )
 
 
+async def is_seeded_review(session: AsyncSession, review_id: UUID) -> bool:
+    """
+    True if this review belongs to the mock corpus (`quick_mock_seed.py`).
+
+    Used to refuse live state-changing actions (e.g. the manual `/reopen`
+    endpoint) on a review that isn't real — the same rule
+    `find_latest_review_for_asset` enforces for the automatic
+    reopen-on-floor-report path. A seeded review is read-only historical
+    decoration; no live actor should ever be able to transition one, because
+    the display filter would then hide the real work glued onto it. See the
+    PR #17 review for the reproduced bug this guards against.
+    """
+    result = await session.execute(
+        text("SELECT is_seeded FROM reviews WHERE id = CAST(:id AS uuid)"),
+        {"id": str(review_id)},
+    )
+    row = result.first()
+    return bool(row is not None and row._mapping["is_seeded"])
+
+
 def _active_rule_facts(current_true_facts: list[DerivedFact]) -> set[str]:
     return {
         f.fact_type
@@ -81,6 +101,16 @@ def should_reassess(
 async def find_active_review_for_asset(
     session: AsyncSession, asset_id: UUID
 ) -> Review | None:
+    """
+    In-flight review for an asset, if any.
+
+    `AND NOT is_seeded` is defense-in-depth: seeded reviews are always
+    written closed (verified), so this clause is currently a no-op in
+    practice — but it means a seeded row that somehow ends up non-closed
+    (e.g. a stale row left behind by the bug this guards against elsewhere,
+    see `find_latest_review_for_asset`) still can't be picked up as live,
+    in-flight work.
+    """
     result = await session.execute(
         text(
             """
@@ -95,6 +125,7 @@ async def find_active_review_for_asset(
             FROM reviews
             WHERE asset_id = CAST(:asset_id AS uuid)
               AND state <> 'closed'
+              AND NOT is_seeded
             ORDER BY created_at DESC
             LIMIT 1
             """
@@ -122,7 +153,16 @@ async def find_active_review_for_asset(
 async def find_latest_review_for_asset(
     session: AsyncSession, asset_id: UUID
 ) -> Review | None:
-    """Most recent review for an asset, including closed."""
+    """
+    Most recent review for an asset, including closed.
+
+    Used by the supervisor floor-report path to decide whether to reopen an
+    existing closed review instead of creating a duplicate. `is_seeded` rows
+    are excluded unconditionally (not gated on the seeded-mode toggle) —
+    real work must never resume a fabricated demo review, since the fake
+    row is display-filtered when seeded mode is off and the live report
+    would silently vanish into it. See PR #17 review for the reproduced bug.
+    """
     result = await session.execute(
         text(
             """
@@ -136,6 +176,7 @@ async def find_latest_review_for_asset(
                    created_at
             FROM reviews
             WHERE asset_id = CAST(:asset_id AS uuid)
+              AND NOT is_seeded
             ORDER BY created_at DESC
             LIMIT 1
             """
@@ -436,6 +477,8 @@ async def list_reviews(
     on every domain event — and it previously returned every review ever created.
     The worker-scoped variants below already had a LIMIT; this one was missed.
     """
+    from app.db.session import get_seeded_mode
+
     clauses = ["1=1"]
     params: dict = {}
     if state:
@@ -444,6 +487,10 @@ async def list_reviews(
     if asset_id:
         clauses.append("asset_id = CAST(:asset_id AS uuid)")
         params["asset_id"] = str(asset_id)
+    if not get_seeded_mode():
+        # Seeded mode off: real data only. On: real + mock together (both
+        # visible at once — see db/session.py's docstring on the flag).
+        clauses.append("is_seeded = FALSE")
     where = " AND ".join(clauses)
     result = await session.execute(
         text(
@@ -489,6 +536,7 @@ async def list_shared_reviews_for_worker(
     *,
     worker_id: UUID,
 ) -> list:
+    from app.db.session import get_seeded_mode
     from app.reviews.schemas import SharedReviewOut
 
     result = await session.execute(
@@ -524,11 +572,12 @@ async def list_shared_reviews_for_worker(
             LEFT JOIN workers w ON w.id = r.raised_by_worker_id
             WHERE CAST(:wid AS uuid) = ANY(r.tagged_worker_ids)
               AND r.state <> 'closed'
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY r.created_at DESC
             LIMIT 50
             """
         ),
-        {"wid": str(worker_id)},
+        {"wid": str(worker_id), "seeded_mode": get_seeded_mode()},
     )
     out: list[SharedReviewOut] = []
     for row in result.fetchall():
@@ -556,6 +605,7 @@ async def list_raised_reviews_for_worker(
     *,
     worker_id: UUID,
 ) -> list:
+    from app.db.session import get_seeded_mode
     from app.reviews.schemas import SharedReviewOut
 
     result = await session.execute(
@@ -584,11 +634,12 @@ async def list_raised_reviews_for_worker(
             WHERE r.raised_by_worker_id = CAST(:wid AS uuid)
               AND r.origin = 'supervisor'
               AND r.state <> 'closed'
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY r.created_at DESC
             LIMIT 50
             """
         ),
-        {"wid": str(worker_id)},
+        {"wid": str(worker_id), "seeded_mode": get_seeded_mode()},
     )
     out: list[SharedReviewOut] = []
     for row in result.fetchall():
@@ -617,6 +668,7 @@ async def list_zone_reviews_for_worker(
     worker_id: UUID,
 ) -> list:
     """Open reviews on assets in zones this worker owns (pre-decision visibility)."""
+    from app.db.session import get_seeded_mode
     from app.reviews.schemas import SharedReviewOut
 
     result = await session.execute(
@@ -647,11 +699,12 @@ async def list_zone_reviews_for_worker(
             LEFT JOIN workers w ON w.id = r.raised_by_worker_id
             WHERE zo.worker_id = CAST(:wid AS uuid)
               AND r.state <> 'closed'
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY r.created_at DESC
             LIMIT 50
             """
         ),
-        {"wid": str(worker_id)},
+        {"wid": str(worker_id), "seeded_mode": get_seeded_mode()},
     )
     out: list[SharedReviewOut] = []
     for row in result.fetchall():

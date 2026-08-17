@@ -35,3 +35,8 @@ postgres-data/
 # Claude Code local state. Worktrees are per-machine and were previously
 # committed as gitlinks; the rest of .claude/ stays shareable (e.g. settings.json).
 .claude/worktrees/
+
+# Local-only working docs
+docs/problem-statement-alignment.md
+docs/sop-opera-finals-workplan.md
+docs/track-a-tasks.md

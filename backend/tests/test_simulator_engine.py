@@ -125,36 +125,175 @@ async def test_concurrent_start_raises_409(ready):
 
 @pytest.mark.asyncio
 async def test_reset_cancels_and_wipes(ready):
+    """
+    Reset clears real runtime rows but must leave the seeded/demo corpus
+    (reviews.is_seeded, scripts/quick_mock_seed.py) untouched — see
+    simulator/engine.py's _RESET_DELETE_STATEMENTS and the PR #17 review
+    that flagged the previous version of this test (a blanket "everything
+    is 0" assertion) as encoding the old, pre-seeded-mode contract.
+
+    A seeded review/context-entry/derived-fact is inserted here rather than
+    relying on one already existing in the test DB, so this actually proves
+    preservation — asserting scoped-real-rows-are-0 alone would pass just as
+    well under a regression back to blanket-wipe, since there'd be nothing
+    seeded to catch it deleting.
+
+    There is no separate test database in this repo (tests run against the
+    same Postgres `database_url` as local dev — see CLAUDE.md's *Tests*
+    section), so everything inserted here is cleaned up in a `finally`
+    regardless of outcome, and tagged with a per-run UUID marker rather than
+    a fixed literal so two overlapping/failed runs can't collide.
+    """
+    import uuid as uuid_mod
+
     from app.db.session import SessionLocal
 
-    # Start a multi-step scenario so there's something to cancel mid-flight
-    await demo_controller.start("compound_risk")
-    # Give it a moment to emit the first (delay=0) step
-    await asyncio.sleep(0.5)
+    marker = f"seeded_test_{uuid_mod.uuid4().hex[:8]}"
+    seeded_review_id: object | None = None
+    seeded_ctx_id: object | None = None
 
-    result = await demo_controller.reset()
-    assert result["status"] == "reset"
-    st = demo_controller.status()
-    assert st["running"] is False
-    assert st["scenario"] is None
-
-    async with SessionLocal() as session:
-        for table in (
-            "reviews",
-            "derived_facts",
-            "context_entries",
-            "assessments",
-            "audit_entries",
-        ):
-            count = (
-                await session.execute(text(f"SELECT count(*) FROM {table}"))
+    try:
+        async with SessionLocal() as session:
+            asset_id = (
+                await session.execute(text("SELECT id FROM assets LIMIT 1"))
             ).scalar_one()
-            assert count == 0, f"{table} should be empty after reset, got {count}"
+            owner_id = (
+                await session.execute(text("SELECT id FROM users LIMIT 1"))
+            ).scalar_one()
 
-    # Fresh start still works after reset
-    status = await demo_controller.start("gas_leak")
-    assert status["running"] is True
-    await _wait_idle(demo_controller, timeout=15.0)
+            seeded_review_id = (
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO reviews
+                            (asset_id, state, owner_id, triggered_by, is_seeded)
+                        VALUES
+                            (CAST(:aid AS uuid), 'closed', CAST(:oid AS uuid),
+                             :marker, TRUE)
+                        RETURNING id
+                        """
+                    ),
+                    {"aid": str(asset_id), "oid": str(owner_id), "marker": marker},
+                )
+            ).scalar_one()
+
+            seeded_ctx_id = (
+                await session.execute(
+                    text(
+                        """
+                        INSERT INTO context_entries
+                            (asset_id, category, payload, provider,
+                             valid_from, valid_until, confidence)
+                        VALUES
+                            (CAST(:aid AS uuid), 'sensor', '{}'::jsonb,
+                             'quick_mock', now(), now() + interval '1 day', 1.0)
+                        RETURNING id
+                        """
+                    ),
+                    {"aid": str(asset_id)},
+                )
+            ).scalar_one()
+
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO derived_facts
+                        (asset_id, fact_type, value, source_context_ids, computed_at)
+                    VALUES
+                        (CAST(:aid AS uuid), :marker, 'true'::jsonb,
+                         CAST(:cids AS uuid[]), now())
+                    """
+                ),
+                {"aid": str(asset_id), "marker": marker, "cids": [str(seeded_ctx_id)]},
+            )
+            await session.commit()
+
+        # Start a multi-step scenario so there's something to cancel mid-flight
+        await demo_controller.start("compound_risk")
+        # Give it a moment to emit the first (delay=0) step
+        await asyncio.sleep(0.5)
+
+        result = await demo_controller.reset()
+        assert result["status"] == "reset"
+        st = demo_controller.status()
+        assert st["running"] is False
+        assert st["scenario"] is None
+
+        async with SessionLocal() as session:
+            real_row_counts = {
+                "reviews": "SELECT count(*) FROM reviews WHERE NOT is_seeded",
+                "context_entries": "SELECT count(*) FROM context_entries WHERE provider <> 'quick_mock'",
+                "assessments": (
+                    "SELECT count(*) FROM assessments a JOIN reviews r "
+                    "ON r.id = a.review_id WHERE NOT r.is_seeded"
+                ),
+            }
+            for table, query in real_row_counts.items():
+                count = (await session.execute(text(query))).scalar_one()
+                assert count == 0, f"real {table} should be empty after reset, got {count}"
+
+            # audit_entries has no is_seeded concept of its own (the mock
+            # seeder writes none) — still wiped wholesale.
+            audit_count = (
+                await session.execute(text("SELECT count(*) FROM audit_entries"))
+            ).scalar_one()
+            assert audit_count == 0, f"audit_entries should be empty after reset, got {audit_count}"
+
+            # The seeded rows inserted above must have survived the reset.
+            seeded_review_state = (
+                await session.execute(
+                    text("SELECT state FROM reviews WHERE id = CAST(:id AS uuid)"),
+                    {"id": str(seeded_review_id)},
+                )
+            ).scalar_one_or_none()
+            assert seeded_review_state == "closed", (
+                "seeded review should survive reset, got "
+                f"{seeded_review_state!r}"
+            )
+            seeded_ctx_count = (
+                await session.execute(
+                    text(
+                        "SELECT count(*) FROM context_entries WHERE id = CAST(:id AS uuid)"
+                    ),
+                    {"id": str(seeded_ctx_id)},
+                )
+            ).scalar_one()
+            assert seeded_ctx_count == 1, "seeded context entry should survive reset"
+            seeded_fact_count = (
+                await session.execute(
+                    text("SELECT count(*) FROM derived_facts WHERE fact_type = :marker"),
+                    {"marker": marker},
+                )
+            ).scalar_one()
+            assert seeded_fact_count == 1, "seeded derived fact should survive reset"
+
+            # Reset also turns seeded mode off (see engine.py's _wipe_runtime).
+            from app.db.session import get_seeded_mode
+
+            assert get_seeded_mode() is False
+
+        # Fresh start still works after reset
+        status = await demo_controller.start("gas_leak")
+        assert status["running"] is True
+        await _wait_idle(demo_controller, timeout=15.0)
+    finally:
+        # Seeded rows survive DemoController.reset() by design (that's the
+        # behavior under test), so they must be cleaned up explicitly here
+        # rather than relying on reset to do it.
+        async with SessionLocal() as session:
+            await session.execute(
+                text("DELETE FROM derived_facts WHERE fact_type = :marker"),
+                {"marker": marker},
+            )
+            await session.execute(
+                text("DELETE FROM context_entries WHERE id = CAST(:id AS uuid)"),
+                {"id": str(seeded_ctx_id)} if seeded_ctx_id else {"id": str(uuid_mod.uuid4())},
+            )
+            await session.execute(
+                text("DELETE FROM reviews WHERE triggered_by = :marker"),
+                {"marker": marker},
+            )
+            await session.commit()
 
 
 @pytest.mark.asyncio

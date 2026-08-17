@@ -82,7 +82,11 @@ export function ReportsView() {
     (showSpinner: boolean) => {
       let cancelled = false;
       if (showSpinner) setLoading(true);
-      void fetchReports({ include_superseded: includeSuperseded })
+      // Explicit limit: the endpoint defaults to 200, which silently truncated
+      // the register (and every headline stat computed from it) once the corpus
+      // grew past that. 1000 is the endpoint's own ceiling — see
+      // reports/routes.py::get_reports.
+      void fetchReports({ include_superseded: includeSuperseded, limit: 1000 })
         .then((data) => {
           if (cancelled) return;
           setReports(data);
