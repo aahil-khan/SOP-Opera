@@ -31,6 +31,26 @@ function outcomeRisk(outcome: string | null): string {
   return "halted";
 }
 
+function SortIcon({ dir }: { dir: "asc" | "desc" }) {
+  return (
+    <svg
+      className={styles.sortIcon}
+      data-dir={dir}
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 13.5 V2.5 M4.5 10 L8 13.5 L11.5 10" />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -77,6 +97,7 @@ export function ReportsView() {
   const [risks, setRisks] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [includeSuperseded, setIncludeSuperseded] = useState(false);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const load = useCallback(
     (showSpinner: boolean) => {
@@ -118,7 +139,7 @@ export function ReportsView() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return reports.filter((r) => {
+    const filtered = reports.filter((r) => {
       if (outcome && r.outcome !== outcome) return false;
       if (risks.length > 0 && !risks.includes(r.risk_level ?? "")) return false;
       if (!q) return true;
@@ -129,7 +150,13 @@ export function ReportsView() {
         (r.decided_by_name ?? "").toLowerCase().includes(q)
       );
     });
-  }, [reports, outcome, risks, query]);
+    const sorted = [...filtered].sort((a, b) => {
+      const at = new Date(a.frozen_at ?? a.generated_at).getTime();
+      const bt = new Date(b.frozen_at ?? b.generated_at).getTime();
+      return sortDir === "desc" ? bt - at : at - bt;
+    });
+    return sorted;
+  }, [reports, outcome, risks, query, sortDir]);
 
   const kpis = useMemo(() => {
     const current = reports.filter((r) => r.is_current);
@@ -256,6 +283,20 @@ export function ReportsView() {
             </button>
           )}
         </div>
+
+        <button
+          type="button"
+          className={styles.sortBtn}
+          aria-label={
+            sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"
+          }
+          onClick={() =>
+            setSortDir((prev) => (prev === "desc" ? "asc" : "desc"))
+          }
+        >
+          Date
+          <SortIcon dir={sortDir} />
+        </button>
 
         <label className={styles.toggle}>
           <input
