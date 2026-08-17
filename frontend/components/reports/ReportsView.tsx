@@ -186,7 +186,7 @@ export function ReportsView() {
           <h1 className={styles.title}>Closure reports</h1>
           <p className={styles.subtitle}>
             Closing a review freezes a permanent packet: the decision, the
-            evidence it rested on, and the regulations cited — sealed under a
+            evidence it rested on, and the regulations cited, sealed under a
             hash-chained audit trail.
           </p>
         </div>
