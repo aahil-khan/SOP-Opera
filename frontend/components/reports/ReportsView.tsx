@@ -204,7 +204,13 @@ export function ReportsView() {
         </div>
         <div
           className={styles.hero}
-          data-tone={kpis.blockedPct >= 50 ? "bad" : "warn"}
+          data-tone={
+            kpis.blockedPct >= 50
+              ? "bad"
+              : kpis.blockedPct >= 20
+                ? "warn"
+                : "good"
+          }
         >
           <span className={styles.heroValue}>{kpis.blockedPct}%</span>
           <span className={styles.heroLabel}>Blocked share</span>
@@ -261,6 +267,8 @@ export function ReportsView() {
             </button>
           ))}
         </div>
+
+        <div className={styles.toolbarDivider} aria-hidden="true" />
 
         <div className={styles.searchWrap}>
           <SearchIcon />
