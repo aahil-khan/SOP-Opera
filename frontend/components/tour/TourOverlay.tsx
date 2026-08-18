@@ -52,13 +52,23 @@ const RING_BLEED = 10;
 const RING_CLEARANCE = VIEWPORT_MARGIN + RING_BLEED + ANCHOR_PAD;
 const CARD_GAP = 16;
 const CARD_WIDTH = 360;
+/** Ceiling on a step's awaitEnter work before the tour moves on regardless. */
+const AWAIT_ENTER_MAX_MS = 6000;
+const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** rAF frames to hunt a missing anchor before degrading (~2s at 60fps). */
 const ANCHOR_RAF_MAX = 120;
-/** After waitUntil, brief retries for optional surfaces before skipping. */
-const AVAILABLE_TRIES = 5;
-const AVAILABLE_RETRY_MS = 80;
-/** Hard cap for waitUntil / availableWhen (~5s). */
-const GATE_MS = 5_000;
+/** After waitUntil, retries for optional surfaces before skipping the step.
+ *  80ms x 5 = 400ms was far under the real settle time and made Acts III-IX
+ *  skip themselves in a cascade on a freshly reset demo. Measured against the
+ *  compound_risk scenario: review appears ~2s after start, reaches
+ *  pending_decision ~6s. 150ms x 80 = 12s leaves real headroom on stage
+ *  hardware. Waiting is free while the narration is being read aloud; skipping
+ *  five acts is not. */
+const AVAILABLE_TRIES = 80;
+const AVAILABLE_RETRY_MS = 150;
+/** Hard cap for waitUntil / availableWhen. Was 5s — under the ~6s the scenario
+ *  needs, so the gate expired before the hero review existed. */
+const GATE_MS = 15_000;
 
 let cachedNavHeight = 48;
 
@@ -506,7 +516,13 @@ export function TourOverlay() {
             /* onEnter is best-effort */
           });
         if (step.awaitEnter) {
-          await run;
+          // Bounded. `await run` with no ceiling means one hung fetch inside an
+          // onEnter stops the tour dead and silently: Act VI's onEnter seals the
+          // hero review over the network, and when that never settled the step
+          // machine waited forever -- controls vanished, the route never
+          // changed, and Acts VI-IX plus the Curtain Call never played. A tour
+          // that degrades is recoverable on stage; one that stops is not.
+          await Promise.race([run, sleep(AWAIT_ENTER_MAX_MS)]);
           if (cancelled) return;
           await resolveAnchor();
           return;
@@ -646,23 +662,19 @@ export function TourOverlay() {
   const step = TOUR_STEPS[stepIndex];
   if (!step) return null;
 
-  if (!anchorReady) {
-    return (
-      <div
-        className={styles.root}
-        role="dialog"
-        aria-modal="true"
-        aria-label="SOP Opera guided tour"
-        aria-busy="true"
-      />
-    );
-  }
-
-  const paddedRect = rect ? spotlightRect(rect, targetElRef.current) : null;
+  // While a step is still resolving its anchor this used to return an empty
+  // div — no card, no controls, no Skip. On a freshly reset demo the hero
+  // review takes ~6s to exist, so Act III sat completely blank and the tour
+  // looked dead with only Esc to escape it. Keep the narration and the
+  // controls on screen throughout; only the spotlight waits for the anchor.
+  // rect is deliberately dropped while waiting: it still holds the *previous*
+  // step's measurement, and drawing that would spotlight the wrong element.
+  const paddedRect =
+    anchorReady && rect ? spotlightRect(rect, targetElRef.current) : null;
   const scrollport = scrollportRef.current;
   const { style: cardStyle, placement } = computeCardPosition(
     paddedRect,
-    step.anchor ? step.placement ?? "bottom" : "center",
+    step.anchor && anchorReady ? step.placement ?? "bottom" : "center",
   );
 
   return (
@@ -671,6 +683,7 @@ export function TourOverlay() {
       role="dialog"
       aria-modal="true"
       aria-label="SOP Opera guided tour"
+      aria-busy={!anchorReady || undefined}
     >
       <Spotlight
         rect={paddedRect}
