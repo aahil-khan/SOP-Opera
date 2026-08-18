@@ -38,8 +38,12 @@ import styles from "./TourOverlay.module.css";
 
 /** Breathing room (px) around the spotlit element and between it and the card. */
 const ANCHOR_PAD = 8;
-/** Extra lift above the target so the ring clears page headings. */
-const ANCHOR_PAD_TOP = 22;
+/** Top pad is deliberately equal to ANCHOR_PAD. It used to be 22 as an "extra
+ *  lift above the target so the ring clears page headings", but `topMin` in
+ *  spotlightRect() already clamps to the nav floor, so the lift was redundant —
+ *  it only made every ring sit 14px high, reading as misalignment on the steps
+ *  that frame tall panels (tour-defects.md 5a/9/10). Keep these equal. */
+const ANCHOR_PAD_TOP = ANCHOR_PAD;
 /** Keep the ring fully on-screen — edge-flush targets used to clip the halo. */
 const VIEWPORT_MARGIN = 12;
 /** Halo box-shadow bleed that can paint outside the ring box into the nav. */
