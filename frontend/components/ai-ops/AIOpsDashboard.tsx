@@ -1,10 +1,23 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { fetchAiOpsSummary, type AiOpsSummary } from "@/lib/liveApi";
+import {
+  fetchAiOpsEvents,
+  fetchAiOpsSummary,
+  fetchProviderState,
+  putProviderState,
+  testProviderConnection,
+  type AiOpsEvent,
+  type AiOpsSummary,
+  type ProviderConnection,
+  type ProviderState,
+} from "@/lib/liveApi";
+import {
+  providerStatusTone,
+  providerTitle,
+  type Tone,
+} from "@/lib/aiOpsProviderPresentation";
 import styles from "./AIOpsDashboard.module.css";
-
-type Tone = "good" | "warn" | "bad" | "neutral";
 
 function pct(rate: number): string {
   return `${(rate * 100).toFixed(1)}%`;
@@ -113,14 +126,34 @@ function StatPair({
 
 export function AIOpsDashboard() {
   const [summary, setSummary] = useState<AiOpsSummary | null>(null);
+  const [events, setEvents] = useState<AiOpsEvent[] | null>(null);
+  const [provider, setProvider] = useState<ProviderState | null>(null);
+  const [providerSelectValue, setProviderSelectValue] =
+    useState<string>("__default__");
+  const [providerBusy, setProviderBusy] = useState(false);
+  const [providerCheck, setProviderCheck] = useState<ProviderConnection | null>(
+    null,
+  );
+  const [providerStatusText, setProviderStatusText] = useState<string | null>(
+    null,
+  );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
     try {
-      const data = await fetchAiOpsSummary();
+      const [data, recent, prov] = await Promise.all([
+        fetchAiOpsSummary(),
+        fetchAiOpsEvents(12),
+        fetchProviderState(),
+      ]);
       setSummary(data);
+      setEvents(recent);
+      setProvider(prov);
+      setProviderSelectValue(
+        prov.source === "runtime_override" ? prov.active_provider : "__default__",
+      );
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
@@ -133,11 +166,50 @@ export function AIOpsDashboard() {
     void refresh();
   }, [refresh]);
 
+  const selectProvider = useCallback(
+    async (value: string) => {
+      setProviderSelectValue(value);
+      setProviderBusy(true);
+      setProviderStatusText("Testing connection...");
+      setProviderCheck(null);
+      try {
+        const selected = value === "__default__" ? null : value;
+        const check = await testProviderConnection(selected);
+        setProviderCheck(check);
+        if (!check.ok) {
+          throw new Error(
+            `${providerTitle(check.provider)} connection failed: ${
+              check.reason ?? "provider is unavailable"
+            }`,
+          );
+        }
+        const next = await putProviderState(selected);
+        setProvider(next);
+        setProviderSelectValue(
+          next.source === "runtime_override"
+            ? next.active_provider
+            : "__default__",
+        );
+        setProviderStatusText("Connected");
+        setError(null);
+      } catch (err) {
+        setProviderStatusText("Connection failed");
+        setError(err instanceof Error ? err.message : String(err));
+      } finally {
+        setProviderBusy(false);
+      }
+    },
+    [],
+  );
+
   const totalTokens =
     (summary?.total_input_tokens ?? 0) + (summary?.total_output_tokens ?? 0);
   const tracingOn = Boolean(summary?.langsmith_enabled);
   const inputShare =
     summary && totalTokens > 0 ? summary.total_input_tokens / totalTokens : 0;
+  const activeConnection = providerCheck ?? provider?.connection ?? null;
+  const selectedProviderLabel = providerTitle(provider?.active_provider);
+  const selectedModel = provider?.active_model ?? provider?.connection.model ?? "—";
 
   return (
     <div className={styles.wrap} data-tour="aiops">
@@ -150,6 +222,48 @@ export function AIOpsDashboard() {
           </p>
         </div>
         <div className={styles.headerControls}>
+          <label
+            className={styles.providerPicker}
+            title={
+              provider?.scope ??
+              "Provider for assessments enqueued from now on (in-process; resets on restart)"
+            }
+          >
+            <span className={styles.providerLabel}>Provider</span>
+            <select
+              className={styles.providerSelect}
+              disabled={providerBusy || provider == null}
+              value={providerSelectValue}
+              onChange={(e) => void selectProvider(e.target.value)}
+            >
+              <option value="__default__">
+                default ({providerTitle(provider?.env_default)})
+              </option>
+              {(provider?.available ?? []).map((p) => (
+                <option key={p} value={p}>
+                  {providerTitle(p)}
+                </option>
+              ))}
+            </select>
+          </label>
+          <span
+            className={styles.providerStatus}
+            data-tone={providerStatusTone(
+              activeConnection?.status,
+              activeConnection?.ok,
+            )}
+            title={
+              provider?.fallback_reason ??
+              activeConnection?.reason ??
+              provider?.scope ??
+              undefined
+            }
+          >
+            {providerStatusText ??
+              `${providerTitle(activeConnection?.provider)} · ${
+                activeConnection?.status ?? "not tested"
+              }`}
+          </span>
           <span
             className={styles.traceChip}
             data-on={tracingOn}
@@ -189,6 +303,35 @@ export function AIOpsDashboard() {
 
       {error && <p className={styles.error}>{error}</p>}
 
+      <section className={styles.providerBand}>
+        <div className={styles.providerFact}>
+          <span>Effective provider</span>
+          <strong>{selectedProviderLabel}</strong>
+        </div>
+        <div className={styles.providerFact}>
+          <span>Model</span>
+          <strong>{selectedModel}</strong>
+        </div>
+        <div className={styles.providerFact}>
+          <span>Connection</span>
+          <strong>
+            {providerBusy
+              ? "Testing connection..."
+              : activeConnection?.status ?? "Not tested"}
+          </strong>
+        </div>
+        <div className={styles.providerFact}>
+          <span>Default source</span>
+          <strong>
+            {provider?.source === "runtime_override"
+              ? "Runtime override"
+              : provider?.source === "auto_default"
+                ? "Automatic"
+                : "Configured env"}
+          </strong>
+        </div>
+      </section>
+
       <div className={styles.heroRow} aria-label="Key metrics">
         <HeroStat
           value={summary ? pct(summary.success_rate) : "—"}
@@ -197,9 +340,13 @@ export function AIOpsDashboard() {
           tone={summary ? rateTone(summary.success_rate, 0.95, 0.85) : "neutral"}
         />
         <HeroStat
-          value={fmtLatency(summary?.mean_latency_ms)}
-          label="Mean latency"
-          hint="Average wall-clock time from job claim to persisted verdict"
+          value={fmtLatency(summary?.p50_latency_ms)}
+          label="Latency p50"
+          hint={
+            summary
+              ? `Median wall-clock time from job claim to persisted verdict. p95 ${fmtLatency(summary.p95_latency_ms)} · mean ${fmtLatency(summary.mean_latency_ms)}, over the last ${summary.latency_sample_count} completed run(s). The median is what a supervisor usually waits; p95 is the slow tail a mean hides.`
+              : "Median wall-clock time from job claim to persisted verdict"
+          }
         />
         <HeroStat
           value={summary ? fmtTokens(totalTokens) : "—"}
@@ -211,6 +358,22 @@ export function AIOpsDashboard() {
           label="Total cost"
           hint="Estimated USD from token pricing tables — mock and Ollama always record $0"
           tone={summary && summary.total_cost_usd > 0 ? "warn" : "neutral"}
+        />
+        <HeroStat
+          value={
+            summary
+              ? `${summary.blind_channel_count}/${summary.asset_count}`
+              : "—"
+          }
+          label="Blind channels"
+          hint={
+            summary && summary.degraded_channel_count > 0
+              ? `Assets with no live sensor reading — plus ${summary.degraded_channel_count} degraded (low confidence / fault). Blind is not safe.`
+              : "Assets with no live sensor reading inside the stale window. Blind is not safe."
+          }
+          tone={
+            summary && summary.blind_channel_count > 0 ? "warn" : "good"
+          }
         />
       </div>
 
@@ -262,8 +425,22 @@ export function AIOpsDashboard() {
                 hint="Failed runs where the provider call itself errored — timeout, API error, or similar"
               />
               <StatPair
+                label="Latency p95"
+                value={fmtLatency(summary?.p95_latency_ms)}
+                hint="Slowest 1 in 20 completed runs — the tail a mean hides, and the number a control room actually feels"
+              />
+              <StatPair
+                label="Latency p50"
+                value={fmtLatency(summary?.p50_latency_ms)}
+                hint={
+                  summary
+                    ? `Median completed run, over the last ${summary.latency_sample_count} ${summary.latency_sample_count === 1 ? "sample" : "samples"}`
+                    : "Median completed run"
+                }
+              />
+              <StatPair
                 label="LLM-degraded"
-                value={summary ? String(summary.degraded_count) : "—"}
+                value={summary ? String(summary.llm_degraded_count) : "—"}
                 hint="Completed runs where at least one agent call fell back to a template while the pipeline still finished"
               />
             </div>
@@ -309,6 +486,24 @@ export function AIOpsDashboard() {
               hint="Average cosine-similarity score of the historical-incident chunks that cleared the RAG quality gate (RAG hits only, 0–1)"
               tone="neutral"
             />
+            {summary?.last_retrieval_mode ? (
+              <p className={styles.note}>
+                Last run:{" "}
+                {summary.last_retrieval_score != null
+                  ? `vector best ${summary.last_retrieval_score.toFixed(2)} ${
+                      summary.last_retrieval_mode === "rag" ? "≥" : "<"
+                    } gate ${summary.rag_gate_threshold?.toFixed(2) ?? "—"} → `
+                  : ""}
+                <strong>
+                  {summary.last_retrieval_mode === "rag"
+                    ? "vector references used"
+                    : "deterministic SQL citations"}
+                </strong>
+                {summary.last_retrieval_embedding_model
+                  ? ` · embeddings: ${summary.last_retrieval_embedding_model}`
+                  : ""}
+              </p>
+            ) : null}
             <div className={styles.statGrid}>
               <StatPair
                 label="Retrievals run"
@@ -394,6 +589,153 @@ export function AIOpsDashboard() {
           </div>
         </section>
       </div>
+
+      <section className={styles.panel}>
+        <header className={styles.panelHeader}>
+          <h2 className={styles.panelTitle}>Provider comparison</h2>
+          <p className={styles.panelSubtitle}>
+            Measured rows come from assessment events; unavailable and not-run rows keep their numbers blank
+          </p>
+        </header>
+        <div className={styles.panelBody}>
+          {summary?.providers && summary.providers.length > 0 ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.eventsTable}>
+                <thead>
+                  <tr>
+                    <th>Provider</th>
+                    <th>Model</th>
+                    <th>Status</th>
+                    <th>Assessments</th>
+                    <th>Latency p50/p95</th>
+                    <th>Avg latency</th>
+                    <th>Tokens</th>
+                    <th>Cost / run</th>
+                    <th>Failure rate</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.providers.map((row) => (
+                    <tr key={row.provider} data-status={row.status}>
+                      <td>{providerTitle(row.provider)}</td>
+                      <td>{row.model ?? "Not available"}</td>
+                      <td>
+                        <span
+                          className={styles.statusChip}
+                          data-status={row.status}
+                          title={row.note ?? undefined}
+                        >
+                          {row.status === "measured"
+                            ? "Measured"
+                            : row.status === "not_run"
+                              ? "Not run"
+                              : row.connection_status}
+                        </span>
+                      </td>
+                      <td>
+                        {row.assessment_count > 0
+                          ? `${row.complete_count}/${row.assessment_count} complete`
+                          : "Not measured"}
+                      </td>
+                      <td>
+                        {row.p50_latency_ms == null && row.p95_latency_ms == null
+                          ? "Not measured"
+                          : `${fmtLatency(row.p50_latency_ms)} / ${fmtLatency(
+                              row.p95_latency_ms,
+                            )}`}
+                      </td>
+                      <td>{fmtLatency(row.mean_latency_ms)}</td>
+                      <td>
+                        {row.total_tokens == null
+                          ? "Not measured"
+                          : fmtTokens(row.total_tokens)}
+                      </td>
+                      <td>
+                        {row.mean_cost_usd == null
+                          ? "Not measured"
+                          : fmtCost(row.mean_cost_usd)}
+                      </td>
+                      <td>
+                        {row.failure_rate == null
+                          ? "Not measured"
+                          : pct(row.failure_rate)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className={styles.note}>Provider comparison is not available yet.</p>
+          )}
+        </div>
+      </section>
+
+      <section className={styles.panel}>
+        <header className={styles.panelHeader}>
+          <h2 className={styles.panelTitle}>Recent assessments</h2>
+          <p className={styles.panelSubtitle}>
+            Every run stamped with the provider and model that produced it
+            {provider?.source === "runtime_override"
+              ? ` · runtime override: ${provider.active_provider} (in-process, resets on restart)`
+              : ""}
+          </p>
+        </header>
+        <div className={styles.panelBody}>
+          {events && events.length > 0 ? (
+            <div className={styles.tableWrap}>
+              <table className={styles.eventsTable}>
+                <thead>
+                  <tr>
+                    <th>When</th>
+                    <th>Status</th>
+                    <th>Provider</th>
+                    <th>Model</th>
+                    <th>Latency</th>
+                    <th>Tokens</th>
+                    <th>Cost</th>
+                    <th>Retrieval</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {events.map((e) => (
+                    <tr key={e.assessment_id} data-status={e.status}>
+                      <td title={e.recorded_at}>
+                        {new Date(e.recorded_at).toLocaleTimeString()}
+                      </td>
+                      <td>
+                        <span
+                          className={styles.statusChip}
+                          data-status={e.status}
+                        >
+                          {e.status}
+                          {e.degraded ? " · degraded" : ""}
+                        </span>
+                      </td>
+                      <td>{e.provider}</td>
+                      <td>{e.model ?? "—"}</td>
+                      <td>{fmtLatency(e.latency_ms)}</td>
+                      <td>{fmtTokens(e.tokens_in + e.tokens_out)}</td>
+                      <td>{fmtCost(e.cost_usd)}</td>
+                      <td>
+                        {e.retrieval_mode ?? "—"}
+                        {e.retrieval_score != null
+                          ? ` (${e.retrieval_score.toFixed(2)})`
+                          : ""}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : (
+            <p className={styles.note}>
+              No assessments recorded yet — run a scenario from Demo to
+              populate this log.
+            </p>
+          )}
+        </div>
+      </section>
 
       <p className={styles.sourceNote}>
         Source: local database

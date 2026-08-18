@@ -143,6 +143,76 @@ ZONE_OWNERS = [
 ]
 
 
+# One deliberately unhealthy channel, so the `degraded` coverage state is
+# reachable in the product rather than only in unit tests. Without it every
+# scenario and every ambient sample reports confidence ≥ 0.95 with no fault
+# payload, `rule_sensor_unreliable` never fires, and a judge can only reach
+# `degraded` by hand-crafting a POST /context.
+#
+# Rooftop Cooling Towers is chosen because it carries no scenario and is not a
+# demo focus asset, so a permanently suspect reading there cannot perturb the
+# scripted runs. The entry is labelled synthetic in its own payload and in its
+# provider string, both of which render in the asset's context feed.
+DEGRADED_SENSOR_ASSET_ID = "77777777-7777-7777-7777-777777777806"
+DEGRADED_SENSOR_PROVIDER = "seed:demo-degraded-sensor"
+
+
+async def _seed_degraded_sensor(session: AsyncSession) -> None:
+    """
+    Re-seed the one synthetic degraded channel, idempotently.
+
+    Deleted-then-inserted rather than upserted so the validity window slides
+    forward on every boot — a fixed window would silently expire and take the
+    `degraded` state back out of the demo.
+
+    This writes `context_entries` directly instead of going through
+    `ingest_context`, which is deliberate: ingest would compute derived facts
+    and open a review for a sensor we are describing as untrustworthy. Coverage
+    reads the row on the way out (`context/coverage.py`), and
+    `rule_sensor_unreliable` is not registered, so nothing here can reach
+    `classify()` or move a verdict.
+    """
+    now = datetime.now(timezone.utc)
+    await session.execute(
+        text("DELETE FROM context_entries WHERE provider = :provider"),
+        {"provider": DEGRADED_SENSOR_PROVIDER},
+    )
+    await session.execute(
+        text(
+            """
+            INSERT INTO context_entries (
+                asset_id, category, payload, provider,
+                valid_from, valid_until, confidence
+            )
+            VALUES (
+                CAST(:asset_id AS uuid), 'sensor', CAST(:payload AS jsonb),
+                :provider, :valid_from, :valid_until, :confidence
+            )
+            """
+        ),
+        {
+            "asset_id": DEGRADED_SENSOR_ASSET_ID,
+            "payload": json.dumps(
+                {
+                    "temp_reading": 31.4,
+                    "unit": "C",
+                    "status": "fault",
+                    "fault_code": "TT-4412 drift / last calibration overdue",
+                    "synthetic": True,
+                    "synthetic_note": (
+                        "Seeded demo channel — one deliberately unhealthy "
+                        "sensor so the degraded coverage state is observable."
+                    ),
+                }
+            ),
+            "provider": DEGRADED_SENSOR_PROVIDER,
+            "valid_from": now - timedelta(minutes=1),
+            "valid_until": now + timedelta(days=365),
+            "confidence": 0.30,
+        },
+    )
+
+
 async def seed_minimal(session: AsyncSession | None = None) -> None:
     owns_session = session is None
     if session is None:
@@ -244,6 +314,8 @@ async def seed_minimal(session: AsyncSession | None = None) -> None:
                 ),
                 {"zone": zone, "worker_id": worker_id, "role": role},
             )
+
+        await _seed_degraded_sensor(session)
 
         await session.commit()
         logger.info(

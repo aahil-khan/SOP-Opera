@@ -11,6 +11,7 @@ from pydantic import BaseModel, Field
 from app.realtime.connection_manager import manager
 
 AgentName = Literal[
+    "retrieval",
     "scada",
     "permit",
     "maintenance",

@@ -5,6 +5,7 @@ import os
 from fastapi import HTTPException
 
 from app.config.schemas import (
+    CoverageThresholds,
     RuleThresholds,
     SensorBandThresholds,
     ThresholdsConfigIn,
@@ -25,6 +26,11 @@ RULE_ENV: dict[str, str] = {
     "tank_level_low_pct": "TANK_LEVEL_LOW_PCT",
     "weather_wind_hold_ms": "WEATHER_WIND_HOLD_MS",
     "cert_expiry_warning_days": "CERT_EXPIRY_WARNING_DAYS",
+}
+
+COVERAGE_ENV: dict[str, str] = {
+    "sensor_stale_after_seconds": "SENSOR_STALE_AFTER_SECONDS",
+    "sensor_confidence_floor": "SENSOR_CONFIDENCE_FLOOR",
 }
 
 
@@ -49,6 +55,10 @@ def build_thresholds_config(settings: Settings | None = None) -> ThresholdsConfi
             tank_level_low_pct=s.tank_level_low_pct,
             weather_wind_hold_ms=s.weather_wind_hold_ms,
             cert_expiry_warning_days=s.cert_expiry_warning_days,
+        ),
+        coverage=CoverageThresholds(
+            sensor_stale_after_seconds=s.sensor_stale_after_seconds,
+            sensor_confidence_floor=s.sensor_confidence_floor,
         ),
     )
 
@@ -84,6 +94,12 @@ def apply_threshold_updates(body: ThresholdsConfigIn) -> ThresholdsConfigOut:
     if body.rules is not None:
         for field, env_key in RULE_ENV.items():
             value = getattr(body.rules, field)
+            if value is not None:
+                os.environ[env_key] = str(value)
+
+    if body.coverage is not None:
+        for field, env_key in COVERAGE_ENV.items():
+            value = getattr(body.coverage, field)
             if value is not None:
                 os.environ[env_key] = str(value)
 

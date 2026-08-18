@@ -13,6 +13,7 @@ from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReferen
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.agents.events import broadcast_agent_step, make_step
 from app.agents.graph import run_agent_assessment
 from app.agents.routing import should_load_plant_neighborhood
 from app.ai_ops.events import record_ai_ops_event
@@ -53,6 +54,30 @@ def _classify_failure(exc: Exception | None) -> str:
 
 def _serialize_refs(refs: list[RetrievedReference]) -> list[dict]:
     return [serialize_ref(r) for r in refs]
+
+
+def _retrieval_trace_message(hybrid: Any, threshold: float) -> str:
+    """One judge-readable line: what vector search scored and why the mode won."""
+    best = hybrid.best_score
+    if hybrid.mode == "rag":
+        # Count only the vector hits, not the merged list — `hybrid.refs` also
+        # carries deterministic regs/SOPs, which never go through the gate.
+        vector_n = getattr(hybrid, "vector_ref_count", 0)
+        other_n = max(0, len(hybrid.refs) - vector_n)
+        tail = f" (+{other_n} deterministic)" if other_n else ""
+        return (
+            f"Vector hit scored {best:.2f} ≥ gate {threshold:.2f} — "
+            f"using {vector_n} vector-backed reference"
+            f"{'' if vector_n == 1 else 's'}{tail}"
+        )
+    if hybrid.mode == "skipped":
+        return "No derived facts — retrieval skipped"
+    if best is not None:
+        return (
+            f"Vector hit scored {best:.2f} → below gate {threshold:.2f} → "
+            "deterministic SQL citations"
+        )
+    return "Deterministic SQL citations (vector search not applicable)"
 
 
 def _serialize_factors(factors: list) -> list[dict]:
@@ -469,6 +494,26 @@ async def run_assessment_job(
         enriched_refs = await enrich_references(session, hybrid.refs)
         evidence_ids = [r.id for r in enriched_refs]
 
+        # Quality-gate trace — visible in the Brain panel while assessing, and
+        # prepended to the persisted agent trace below.
+        retrieval_step = make_step(
+            "retrieval",
+            "observation",
+            _retrieval_trace_message(hybrid, settings.rag_score_threshold),
+            review_id=review_id,
+            assessment_id=assessment_id,
+            detail={
+                "mode": hybrid.mode,
+                "quality": hybrid.quality,
+                "best_score": hybrid.best_score,
+                "gate_threshold": settings.rag_score_threshold,
+                "embedding_model": hybrid.embedding_model,
+                "source_types": list(hybrid.source_types),
+                "reference_count": len(enriched_refs),
+            },
+        )
+        await broadcast_agent_step(retrieval_step)
+
         # Resolve context + worker names for structured reasoning factors
         ctx_views = await load_valid_context(session, review.asset_id)
         worker_ids = [
@@ -504,6 +549,45 @@ async def run_assessment_job(
             asset_name=asset_name,
             area_owner=area_owner,
         )
+
+        # W3a — coverage rides alongside the verdict and never changes it. A
+        # blind/degraded channel states the limitation in the Why panel: the
+        # assessment cannot claim "nominal" for data that never arrived.
+        from app.context.coverage import coverage_for_asset
+
+        asset_coverage = await coverage_for_asset(session, review.asset_id)
+        if asset_coverage.coverage != "assessed":
+            mins = (
+                int(asset_coverage.seconds_since_sensor // 60)
+                if asset_coverage.seconds_since_sensor is not None
+                else None
+            )
+            window = (
+                f"in the last {mins} min"
+                if mins is not None
+                else "at any point"
+            )
+            detail = (
+                f"No live sensor reading for {asset_name} {window} — this "
+                "assessment does not cover current sensor state. Blind is "
+                "not safe."
+                if asset_coverage.coverage == "blind"
+                else (
+                    f"A sensor on {asset_name} reported low confidence or a "
+                    "fault — sensor-derived conclusions are degraded."
+                )
+            )
+            reasoning_factors.append(
+                ReasoningFactor(
+                    fact_type="sensor_coverage",
+                    headline=(
+                        "Sensor coverage: blind"
+                        if asset_coverage.coverage == "blind"
+                        else "Sensor coverage: degraded"
+                    ),
+                    detail=detail,
+                )
+            )
 
         # Neighborhood context for Spatial Agent — skip when spatial cannot fire
         plant_context_entries: list[dict] = []
@@ -586,6 +670,8 @@ async def run_assessment_job(
                     assessment_id,
                     exc,
                 )
+
+        agent_trace = [retrieval_step.model_dump(), *agent_trace]
 
         if generation is None or last_error is not None:
             failure_reason = _classify_failure(last_error)
@@ -812,6 +898,7 @@ async def run_assessment_job(
                 "assessment_id": str(assessment_id),
                 "review_id": str(review_id),
                 "risk_level": result.risk_level,
+                "coverage": asset_coverage.coverage,
                 "retrieval_mode": hybrid.mode,
                 "provider": generation.provider,
                 "agent_step_count": len(agent_trace),

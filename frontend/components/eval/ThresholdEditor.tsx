@@ -21,6 +21,8 @@ type Draft = {
   tankLevelLowPct: string;
   weatherWindHoldMs: string;
   certExpiryWarningDays: string;
+  sensorStaleAfterSeconds: string;
+  sensorConfidenceFloor: string;
 };
 
 function draftFromConfig(config: ThresholdsConfig): Draft {
@@ -36,6 +38,10 @@ function draftFromConfig(config: ThresholdsConfig): Draft {
     ...DEFAULT_THRESHOLDS.rules,
     ...config.rules,
   };
+  const coverage = {
+    ...DEFAULT_THRESHOLDS.coverage,
+    ...config.coverage,
+  };
 
   return {
     gasElevated: String(gas.elevated),
@@ -49,6 +55,8 @@ function draftFromConfig(config: ThresholdsConfig): Draft {
     tankLevelLowPct: String(rules.tank_level_low_pct),
     weatherWindHoldMs: String(rules.weather_wind_hold_ms),
     certExpiryWarningDays: String(rules.cert_expiry_warning_days),
+    sensorStaleAfterSeconds: String(coverage.sensor_stale_after_seconds),
+    sensorConfidenceFloor: String(coverage.sensor_confidence_floor),
   };
 }
 
@@ -68,6 +76,8 @@ function parseDraft(draft: Draft): ThresholdsConfig | string {
   const tankLevelLowPct = Number(draft.tankLevelLowPct);
   const weatherWindHoldMs = Number(draft.weatherWindHoldMs);
   const certExpiryWarningDays = Number(draft.certExpiryWarningDays);
+  const sensorStaleAfterSeconds = Number(draft.sensorStaleAfterSeconds);
+  const sensorConfidenceFloor = Number(draft.sensorConfidenceFloor);
 
   const nums = [
     gasElevated,
@@ -81,6 +91,8 @@ function parseDraft(draft: Draft): ThresholdsConfig | string {
     tankLevelLowPct,
     weatherWindHoldMs,
     certExpiryWarningDays,
+    sensorStaleAfterSeconds,
+    sensorConfidenceFloor,
   ];
   if (nums.some((n) => !Number.isFinite(n))) {
     return "All values must be numbers.";
@@ -97,6 +109,12 @@ function parseDraft(draft: Draft): ThresholdsConfig | string {
   if (tankLevelHighPct <= tankLevelLowPct) {
     return "Tank level high must be greater than low.";
   }
+  if (!Number.isInteger(sensorStaleAfterSeconds) || sensorStaleAfterSeconds < 1) {
+    return "Sensor stale-after must be a whole number ≥ 1 second.";
+  }
+  if (sensorConfidenceFloor < 0 || sensorConfidenceFloor > 1) {
+    return "Sensor confidence floor must be between 0 and 1.";
+  }
 
   return {
     sensors: {
@@ -111,6 +129,10 @@ function parseDraft(draft: Draft): ThresholdsConfig | string {
       tank_level_low_pct: tankLevelLowPct,
       weather_wind_hold_ms: weatherWindHoldMs,
       cert_expiry_warning_days: certExpiryWarningDays,
+    },
+    coverage: {
+      sensor_stale_after_seconds: sensorStaleAfterSeconds,
+      sensor_confidence_floor: sensorConfidenceFloor,
     },
   };
 }
@@ -305,6 +327,34 @@ export function ThresholdEditor({ embedded = false }: ThresholdEditorProps) {
               inputMode="numeric"
               value={draft.certExpiryWarningDays}
               onChange={(e) => patch("certExpiryWarningDays", e.target.value)}
+            />
+          </label>
+        </div>
+      </div>
+
+      <div className={styles.group}>
+        <h3 className={styles.groupTitle}>Sensor coverage</h3>
+        <p className={styles.groupHint}>
+          Coverage is separate from risk: an asset with no reading renders blind
+          rather than nominal, and never changes a verdict.
+        </p>
+        <div className={styles.grid}>
+          <label className={styles.field}>
+            <span>Stale after (seconds)</span>
+            <input
+              className={styles.input}
+              inputMode="numeric"
+              value={draft.sensorStaleAfterSeconds}
+              onChange={(e) => patch("sensorStaleAfterSeconds", e.target.value)}
+            />
+          </label>
+          <label className={styles.field}>
+            <span>Confidence floor (0–1)</span>
+            <input
+              className={styles.input}
+              inputMode="decimal"
+              value={draft.sensorConfidenceFloor}
+              onChange={(e) => patch("sensorConfidenceFloor", e.target.value)}
             />
           </label>
         </div>

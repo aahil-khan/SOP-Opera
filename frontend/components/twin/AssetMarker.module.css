@@ -35,6 +35,36 @@
   animation: breathe-scale-strong 1.8s cubic-bezier(0.45, 0, 0.55, 1) infinite;
 }
 
+/* W3a coverage — "no signal" reads gray/hollow, never a risk color. Only a
+   nominal disk is repainted: an elevated/blocking alarm keeps its color, the
+   dashed ring alone marks the coverage gap. */
+.disk[data-coverage="blind"][data-risk="nominal"] {
+  fill: color-mix(in srgb, var(--text-muted) 22%, var(--surface-panel));
+  animation: none;
+}
+
+.disk[data-coverage="degraded"][data-risk="nominal"] {
+  fill: color-mix(in srgb, var(--status-elevated) 30%, var(--surface-panel));
+}
+
+.coverageRing {
+  fill: none;
+  stroke: var(--text-muted);
+  stroke-width: 1.5;
+  stroke-dasharray: 4 3;
+  opacity: 0.9;
+}
+
+.coverageRing[data-coverage="degraded"] {
+  stroke: var(--status-elevated);
+}
+
+.coverageSlash {
+  stroke: var(--text-muted);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
 .disk[data-resolved="true"] {
   animation: none;
   fill: color-mix(in srgb, var(--text-muted) 38%, var(--surface-panel));

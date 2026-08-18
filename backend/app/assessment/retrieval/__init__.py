@@ -9,6 +9,7 @@ from typing import Literal
 from shared.python.schemas import RetrievedReference
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.assessment.embeddings import active_embedding_model
 from app.assessment.retrieval.deterministic import (
     DeterministicRetriever,
     source_types_for_facts,
@@ -21,7 +22,10 @@ logger = logging.getLogger(__name__)
 RetrievalQuality = Literal["good", "weak", "empty"]
 RetrievalMode = Literal["rag", "deterministic", "skipped"]
 
-# Vector RAG only for incidents (orchestrator does not consume regs/SOPs today).
+# Default vector-search scope — incidents only (orchestrator does not consume
+# vector-searched regs/SOPs today). The effective list is the
+# `rag_vector_source_types` setting; this constant is kept as the documented
+# default and import-compat alias.
 RAG_VECTOR_SOURCE_TYPES: list[str] = ["historical_incidents"]
 
 
@@ -49,6 +53,7 @@ class HybridRetrievalResult:
         best_score: float | None,
         embedding_model: str | None,
         source_types: list[str],
+        vector_ref_count: int = 0,
     ) -> None:
         self.refs = refs
         self.mode = mode
@@ -56,6 +61,11 @@ class HybridRetrievalResult:
         self.best_score = best_score
         self.embedding_model = embedding_model
         self.source_types = source_types
+        # How many of `refs` actually came from vector search. `refs` is the
+        # merged list — even in "rag" mode it carries deterministic regs and
+        # SOPs, which are never vector-searched (see RAG_VECTOR_SOURCE_TYPES).
+        # Reporting len(refs) as the vector count overstates what the gate did.
+        self.vector_ref_count = vector_ref_count
 
 
 def _merge_rag_incidents_with_det(
@@ -95,9 +105,7 @@ async def retrieve(
     """
     settings = get_settings()
     source_types = source_types_for_facts(fact_types)
-    embedding_model = (
-        settings.embedding_model if settings.embedding_provider != "mock" else "mock-hash"
-    )
+    embedding_model = active_embedding_model()
 
     if not fact_types:
         return HybridRetrievalResult(
@@ -122,7 +130,12 @@ async def retrieve(
             source_types=list(source_types),
         )
 
-    if "historical_incidents" not in source_types:
+    vector_source_types = [
+        st
+        for st in (settings.rag_vector_source_types or RAG_VECTOR_SOURCE_TYPES)
+        if st in source_types
+    ]
+    if not vector_source_types:
         return HybridRetrievalResult(
             refs=det_refs,
             mode="deterministic" if det_refs else "skipped",
@@ -138,7 +151,7 @@ async def retrieve(
         rag = RagRetriever()
         timeout_s = max(0.1, settings.rag_timeout_ms / 1000.0)
         rag_refs = await asyncio.wait_for(
-            rag.retrieve(query, list(RAG_VECTOR_SOURCE_TYPES), settings.rag_top_k),
+            rag.retrieve(query, vector_source_types, settings.rag_top_k),
             timeout=timeout_s,
         )
         quality = assess_retrieval_quality(
@@ -154,6 +167,7 @@ async def retrieve(
     best = max((r.score or 0.0 for r in rag_refs), default=None)
     if quality == "good":
         merged = _merge_rag_incidents_with_det(rag_refs, det_refs)
+        rag_keys = {(r.source, str(r.id)) for r in rag_refs}
         return HybridRetrievalResult(
             refs=merged,
             mode="rag",
@@ -161,6 +175,9 @@ async def retrieve(
             best_score=best,
             embedding_model=embedding_model,
             source_types=list(source_types),
+            vector_ref_count=sum(
+                1 for r in merged if (r.source, str(r.id)) in rag_keys
+            ),
         )
 
     return HybridRetrievalResult(

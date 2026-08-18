@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     # Allow Next.js dev fallback ports (and 127.0.0.1) without editing CORS_ORIGINS each time.
     cors_localhost_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 
+    # Keep this `mock`. `handover/service.py` and `agents/graph.py` read it
+    # directly, so the code default is what an install with no AI_PROVIDER in
+    # .env actually runs on — it has to be the provider that needs nothing.
     ai_provider: str = "mock"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
@@ -58,6 +61,19 @@ class Settings(BaseSettings):
     tank_level_low_pct: float = 5.0
     weather_wind_hold_ms: float = 15.0
     cert_expiry_warning_days: int = 14
+    # "Blind, not safe" (W3a): sensor coverage is an orthogonal field beside
+    # risk_level, never a risk level. No reading newer than this → the channel
+    # is blind. Staleness is measured against the live telemetry path — the
+    # ambient soft tick writes a `sensor` row to telemetry_samples for
+    # `ambient_batch_size` assets every `ambient_tick_seconds`, so with the
+    # defaults (2 assets / 3s) a 27-asset plant completes a full sweep in ~42s
+    # and 180 tolerates roughly four missed sweeps. Raise this if you raise
+    # ambient_tick_seconds or shrink ambient_batch_size, or assets will go
+    # blind between their own heartbeats. See app/context/coverage.py.
+    sensor_stale_after_seconds: int = 180
+    # Self-reported degradation: a sensor entry below this confidence (or with a
+    # fault payload) marks coverage degraded. Detected by rule_sensor_unreliable.
+    sensor_confidence_floor: float = 0.5
     default_owner_user_id: str = "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa"
     simulator_default_step_delay_seconds: int = 5
     random_max_concurrent_issues: int = 8
@@ -66,7 +82,17 @@ class Settings(BaseSettings):
     random_compound_probability: float = 0.25
 
     rag_enabled: bool = True
+    # Source types eligible for vector search. Regulations/SOPs stay on the
+    # deterministic SQL path until real embeddings land (W5) — extending this
+    # list is the switch. Env override is JSON, e.g.
+    # RAG_VECTOR_SOURCE_TYPES='["historical_incidents","regulations"]'
+    rag_vector_source_types: list[str] = ["historical_incidents"]
+    # mock | local (both hash-based, no semantics) · openai_compatible (hosted,
+    # needs OPENAI_API_KEY) · ollama (local semantic vectors, no key)
     embedding_provider: str = "mock"
+    # Only used when EMBEDDING_PROVIDER=ollama. 768-dim; zero-padded to
+    # embedding_dim, which leaves cosine similarity unchanged.
+    ollama_embedding_model: str = "nomic-embed-text"
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     rag_top_k: int = 5

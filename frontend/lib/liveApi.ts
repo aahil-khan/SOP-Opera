@@ -178,16 +178,21 @@ export interface AiOpsSummary {
   success_rate: number;
   validation_failure_count: number;
   provider_error_count: number;
-  degraded_count: number;
+  // Assessment health (LLM fell back to a template). Distinct from
+  // degraded_channel_count below, which is sensor coverage.
+  llm_degraded_count: number;
   llm_fallback_count: number;
   llm_attempt_count: number;
   llm_fallback_rate: number;
-  degraded_rate: number;
+  llm_degraded_rate: number;
   rag_hit_rate: number;
   rag_fallback_rate: number;
   mean_retrieval_relevance: number | null;
   retrieval_ran_count: number;
   mean_latency_ms: number | null;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  latency_sample_count: number;
   total_input_tokens: number;
   total_output_tokens: number;
   total_cost_usd: number;
@@ -195,6 +200,43 @@ export interface AiOpsSummary {
   langsmith_enabled: boolean;
   langsmith_project: string;
   langsmith_url: string | null;
+  blind_channel_count: number;
+  degraded_channel_count: number;
+  asset_count: number;
+  last_retrieval_mode: string | null;
+  last_retrieval_quality: string | null;
+  last_retrieval_score: number | null;
+  last_retrieval_embedding_model: string | null;
+  rag_gate_threshold: number | null;
+  providers: ProviderComparisonRow[];
+}
+
+export interface ProviderConnection {
+  provider: string;
+  model: string | null;
+  ok: boolean;
+  status: string;
+  reason: string | null;
+}
+
+export interface ProviderComparisonRow {
+  provider: string;
+  model: string | null;
+  status: "measured" | "not_run" | "unavailable" | string;
+  connection_status: string;
+  connection_ok: boolean;
+  note: string | null;
+  assessment_count: number;
+  complete_count: number;
+  failed_count: number;
+  mean_latency_ms: number | null;
+  p50_latency_ms: number | null;
+  p95_latency_ms: number | null;
+  total_tokens: number | null;
+  mean_tokens: number | null;
+  total_cost_usd: number | null;
+  mean_cost_usd: number | null;
+  failure_rate: number | null;
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -461,6 +503,18 @@ export function fetchThresholds(): Promise<ThresholdsConfig> {
   return request<ThresholdsConfig>("/api/config/thresholds");
 }
 
+export interface AssetCoverage {
+  asset_id: string;
+  coverage: "assessed" | "degraded" | "blind";
+  last_sensor_seen: string | null;
+  seconds_since_sensor: number | null;
+  reason: string;
+}
+
+export function fetchAssetsCoverage(): Promise<AssetCoverage[]> {
+  return request<AssetCoverage[]>("/assets/coverage");
+}
+
 export interface ThresholdsConfigPatch {
   sensors?: Partial<
     Record<string, { elevated?: number; critical?: number }>
@@ -473,6 +527,12 @@ export interface ThresholdsConfigPatch {
     tank_level_low_pct: number;
     weather_wind_hold_ms: number;
     cert_expiry_warning_days: number;
+  }>;
+  // W3a coverage knobs — the ThresholdEditor sends these, so the patch type
+  // has to describe them or the contract drifts silently.
+  coverage?: Partial<{
+    sensor_stale_after_seconds: number;
+    sensor_confidence_floor: number;
   }>;
 }
 
@@ -487,6 +547,61 @@ export function putThresholds(
 
 export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
   return request<AiOpsSummary>("/ai-ops/summary");
+}
+
+export interface ProviderState {
+  active_provider: string;
+  active_model: string | null;
+  source: "runtime_override" | "env_default" | "auto_default";
+  env_default: string;
+  configured_default: string | null;
+  connection: ProviderConnection;
+  fallback_reason: string | null;
+  available: string[];
+  scope: string;
+}
+
+export function fetchProviderState(): Promise<ProviderState> {
+  return request<ProviderState>("/ai-ops/provider");
+}
+
+export function putProviderState(
+  provider: string | null,
+): Promise<ProviderState> {
+  return request<ProviderState>("/ai-ops/provider", {
+    method: "PUT",
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export function testProviderConnection(
+  provider: string | null,
+): Promise<ProviderConnection> {
+  return request<ProviderConnection>("/ai-ops/provider/test", {
+    method: "POST",
+    body: JSON.stringify({ provider }),
+  });
+}
+
+export interface AiOpsEvent {
+  assessment_id: string;
+  review_id: string;
+  status: string;
+  provider: string;
+  model: string | null;
+  tokens_in: number;
+  tokens_out: number;
+  cost_usd: number;
+  latency_ms: number;
+  retrieval_mode: string | null;
+  retrieval_score: number | null;
+  failure_reason: string | null;
+  degraded: boolean;
+  recorded_at: string;
+}
+
+export function fetchAiOpsEvents(limit = 20): Promise<AiOpsEvent[]> {
+  return request<AiOpsEvent[]>(`/ai-ops/events?limit=${limit}`);
 }
 
 export interface DetectorSummary {
@@ -522,6 +637,37 @@ export interface EvalSummary {
   regulation_coverage_pct?: number;
   statutory_coverage_pct?: number;
   coverage_by_standard?: Record<string, number>;
+  // Lead time as a distribution across every scripted scenario.
+  lead_times: ScenarioLeadTime[];
+  lead_time_min_minutes: number | null;
+  lead_time_median_minutes: number | null;
+  lead_time_max_minutes: number | null;
+  lead_time_defined_count: number;
+  // Per-dimension recall contribution.
+  ablation: AblationRow[];
+  // What this harness measures — shown on the page.
+  criterion_caveat: string;
+  // Live-run proof: response computed on request.
+  generated_at: string;
+  run_duration_ms: number;
+}
+
+export interface ScenarioLeadTime {
+  scenario: string;
+  t_forecast_minutes: number | null;
+  t_compound_minutes: number | null;
+  t_single_sensor_minutes: number | null;
+  lead_time_minutes: number | null;
+}
+
+export interface AblationRow {
+  dimension: string;
+  label: string;
+  facts_removed: string[];
+  recall: number;
+  recall_drop: number;
+  fn: number;
+  tp: number;
 }
 
 export function fetchEvalSummary(): Promise<EvalSummary> {

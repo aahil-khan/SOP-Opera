@@ -12,6 +12,7 @@ import { useTourStepId } from "@/lib/tourStore";
 import styles from "./AgentBrainPanel.module.css";
 
 const AGENT_LABELS: Record<string, string> = {
+  retrieval: "Retrieval",
   scada: "SCADA",
   permit: "Permit",
   maintenance: "Maintenance",

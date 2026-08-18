@@ -63,6 +63,8 @@ type ZoneHalo = {
 interface FloorPlanProps {
   floor: PlantFloor;
   riskByAsset: Record<string, RiskLevel>;
+  /** W3a sensor coverage — orthogonal to risk; blind ≠ nominal. */
+  coverageByAsset?: Record<string, "assessed" | "degraded" | "blind">;
   criticalByAsset?: Record<string, boolean>;
   resolvedByAsset?: Record<string, boolean>;
   freshByAsset?: Record<string, boolean>;
@@ -344,6 +346,7 @@ function OpsChipIcons({
 export const FloorPlan = memo(function FloorPlan({
   floor,
   riskByAsset,
+  coverageByAsset = {},
   criticalByAsset = {},
   resolvedByAsset = {},
   freshByAsset = {},
@@ -608,6 +611,7 @@ export const FloorPlan = memo(function FloorPlan({
 
         {floorEntries.map(([assetId, entry]) => {
           const risk = riskByAsset[assetId] ?? "nominal";
+          const coverage = coverageByAsset[assetId] ?? "assessed";
           const sensorCritical = criticalByAsset[assetId] ?? false;
           const resolved = resolvedByAsset[assetId] ?? false;
           const fresh = freshByAsset[assetId] ?? false;
@@ -615,6 +619,7 @@ export const FloorPlan = memo(function FloorPlan({
             showOpsLayer && hasAnyOpsChip(opsChipsByAsset[assetId]);
           if (
             risk === "nominal" &&
+            coverage === "assessed" &&
             !sensorCritical &&
             !resolved &&
             !fresh &&
@@ -635,6 +640,7 @@ export const FloorPlan = memo(function FloorPlan({
               x={entry.x}
               y={entry.y}
               risk={risk}
+              coverage={coverage}
               sensorCritical={sensorCritical}
               resolved={resolved}
               fresh={fresh}

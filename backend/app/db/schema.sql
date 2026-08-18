@@ -335,6 +335,7 @@ ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
 -- reports, tasks) inherits visibility by joining back to reviews.id.
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_seeded BOOLEAN NOT NULL DEFAULT FALSE;
 
+
 -- Escalation state removed; map leftover rows to pending_decision.
 UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';
 

@@ -384,7 +384,14 @@ async def enqueue_for_review(
     """
     Insert a pending AI assessment for this review and enqueue it.
     Idempotent: skips if a pending/generating assessment already exists.
+
+    An explicit override (supervisor retry-with-provider) wins; otherwise the
+    runtime default chosen on AI Ops applies to every enqueued job.
     """
+    if provider_override is None:
+        from app.assessment.provider_state import get_effective_runtime_provider
+
+        provider_override = get_effective_runtime_provider()
     fact_ids = await _true_fact_ids(session, review.asset_id)
     ver_row = await session.execute(
         text(

@@ -101,14 +101,25 @@ export function EvalScorecardView() {
               : ""}
           </p>
         </div>
-        <button
-          type="button"
-          className={styles.refresh}
-          disabled={loading}
-          onClick={() => void refresh()}
-        >
-          {loading ? "…" : "Re-run"}
-        </button>
+        <div className={styles.headerActions}>
+          {summary?.generated_at ? (
+            <span
+              className={styles.runStamp}
+              title="The harness executes live on every run — this response was computed on request, not cached"
+            >
+              ran in {(summary.run_duration_ms / 1000).toFixed(1)}s ·{" "}
+              {new Date(summary.generated_at).toLocaleTimeString()}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            className={styles.refresh}
+            disabled={loading}
+            onClick={() => void refresh()}
+          >
+            {loading ? "Running…" : "Run now"}
+          </button>
+        </div>
       </header>
 
       {error && <p className={styles.error}>{error}</p>}
@@ -236,6 +247,7 @@ export function EvalScorecardView() {
               <thead>
                 <tr>
                   <th>Detector</th>
+                  <th>Recall</th>
                   <th>FN</th>
                   <th>Missed</th>
                   <th>Prec.</th>
@@ -250,9 +262,9 @@ export function EvalScorecardView() {
                       summary.compound,
                     ] as const)
                   : ([
-                      { name: "Single-sensor", fn: 0, tp: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
-                      { name: "Forecast", fn: 0, tp: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
-                      { name: "Compound", fn: 0, tp: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
+                      { name: "Single-sensor", fn: 0, tp: 0, recall: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
+                      { name: "Forecast", fn: 0, tp: 0, recall: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
+                      { name: "Compound", fn: 0, tp: 0, recall: 0, false_negative_rate: 0, precision: 0, accuracy: 0 },
                     ] as const)
                 ).map((d) => (
                   <tr
@@ -262,6 +274,7 @@ export function EvalScorecardView() {
                     }
                   >
                     <td>{d.name.replace(/ .*/, "")}</td>
+                    <td>{summary ? pct(d.recall) : "—"}</td>
                     <td>{summary ? pct(d.false_negative_rate) : "—"}</td>
                     <td>
                       {summary ? `${d.fn}/${d.tp + d.fn}` : "—"}
@@ -272,6 +285,15 @@ export function EvalScorecardView() {
                 ))}
               </tbody>
             </table>
+            {summary ? (
+              <p className={styles.caption}>
+                The trade in words: the baseline is{" "}
+                {pct(summary.single_sensor.precision)} precise but misses{" "}
+                {summary.single_sensor.fn} stop-work cases; compound erases
+                every miss for {summary.compound.fp} false alarms (
+                {pct(summary.compound.precision)} precision).
+              </p>
+            ) : null}
             <div className={styles.statGrid}>
               <StatPair
                 label="FN reduction"
@@ -374,6 +396,129 @@ export function EvalScorecardView() {
             <p className={styles.caption}>
               Labels from <code>hazard_ground_truth.py</code> — cannot import
               the risk policy it scores.
+            </p>
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <header className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Lead time across scenarios</h2>
+            <p className={styles.panelSubtitle}>
+              Compound alarm vs single-sensor critical, all five scripted
+              timelines
+            </p>
+          </header>
+          <div className={styles.panelBody}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Scenario</th>
+                  <th>Compound</th>
+                  <th>Critical</th>
+                  <th>Lead</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(summary?.lead_times ?? []).map((s) => (
+                  <tr
+                    key={s.scenario}
+                    data-highlight={
+                      s.scenario === "vsp_coke_oven" ? "true" : undefined
+                    }
+                  >
+                    <td>{s.scenario}</td>
+                    <td>
+                      {s.t_compound_minutes != null
+                        ? `t+${Math.round(s.t_compound_minutes)}m`
+                        : "—"}
+                    </td>
+                    <td>
+                      {s.t_single_sensor_minutes != null
+                        ? `t+${Math.round(s.t_single_sensor_minutes)}m`
+                        : "—"}
+                    </td>
+                    <td>{fmtLead(s.lead_time_minutes)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <div className={styles.statGrid}>
+              <StatPair
+                label="Min"
+                value={fmtLead(summary?.lead_time_min_minutes)}
+                hint="Smallest defined lead time across scenarios"
+              />
+              <StatPair
+                label="Median"
+                value={fmtLead(summary?.lead_time_median_minutes)}
+                hint="Median over scenarios with a defined lead time"
+              />
+              <StatPair
+                label="Max"
+                value={fmtLead(summary?.lead_time_max_minutes)}
+                hint="Largest defined lead time across scenarios"
+              />
+            </div>
+            <p className={styles.caption}>
+              Lead time is defined for {summary?.lead_time_defined_count ?? 0}{" "}
+              of {summary?.lead_times.length ?? 0} scenarios — the rest never
+              cross the single-sensor critical line, so there is nothing for
+              the baseline to catch late. Scenarios without an explicit
+              timeline count one process-minute per step.
+            </p>
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <header className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>Hazard-dimension ablation</h2>
+            <p className={styles.panelSubtitle}>
+              Compound recall with each dimension&apos;s facts suppressed —
+              policy treated as a black box
+            </p>
+          </header>
+          <div className={styles.panelBody}>
+            <table className={styles.table}>
+              <thead>
+                <tr>
+                  <th>Dimension removed</th>
+                  <th>Recall</th>
+                  <th>Drop</th>
+                  <th>Missed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {(summary?.ablation ?? []).map((row) => (
+                  <tr key={row.dimension}>
+                    <td title={`Facts suppressed: ${row.facts_removed.join(", ")}`}>
+                      {row.label}
+                    </td>
+                    <td>{pct(row.recall)}</td>
+                    <td>−{pct(row.recall_drop)}</td>
+                    <td>{row.fn}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            <p className={styles.caption}>
+              The drop is that dimension&apos;s contribution to catching
+              stop-work cases; only the fact set fed to{" "}
+              <code>classify()</code> changes, never its rules or the labels.
+            </p>
+          </div>
+        </section>
+
+        <section className={styles.panel}>
+          <header className={styles.panelHeader}>
+            <h2 className={styles.panelTitle}>What this measures</h2>
+            <p className={styles.panelSubtitle}>
+              The caveat from the eval report, on the page it qualifies
+            </p>
+          </header>
+          <div className={styles.panelBody}>
+            <p className={styles.caveat}>
+              {summary?.criterion_caveat ||
+                "Criterion-coverage measurement — see docs/eval-report.md."}
             </p>
           </div>
         </section>
