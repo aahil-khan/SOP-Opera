@@ -100,3 +100,26 @@
 .detailBody {
   color: var(--text-secondary);
 }
+
+/* W2 — the SOP a fact deviates from. Its own line rather than inline with the
+   detail: it is a different kind of statement (what was breached, not what was
+   observed) and the panel is scanned, not read. */
+.deviation {
+  display: block;
+  margin-top: var(--space-1);
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  color: var(--text-secondary);
+}
+
+.deviation::before {
+  content: "⚠";
+  margin-right: var(--space-1);
+  color: var(--status-elevated);
+}
+
+/* The a-fortiori case reads as weaker than a direct citation, deliberately. */
+.deviationBasis {
+  font-weight: var(--weight-regular);
+  color: var(--text-muted);
+}

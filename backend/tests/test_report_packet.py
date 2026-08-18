@@ -149,3 +149,19 @@ def test_labels_are_human():
     assert fact_label("some_new_rule") == "Some new rule"
     assert version_label(3) == "v3"
     assert report_ref("11111111-2222-3333-4444-555555555555", 2) == "SOP-11111111-v2"
+
+
+def test_clause_is_dropped_when_the_code_already_states_it():
+    """
+    W2 part A. `regulations.clause` now reaches the packet, but four of the five
+    seeded statutory rows carry the section inside the code itself, so showing
+    both prints the section number twice in the card, the PDF and the XLSX.
+    """
+    from app.reports.packet import _additive_clause
+
+    assert _additive_clause("Factories Act 1948 s.36(2)", "s.36(2)") is None
+    assert _additive_clause("Factories Act 1948 s.37(1)", "s.37(1)") is None
+    # The one case where the clause genuinely adds something must survive.
+    assert _additive_clause("OISD-STD-105", "Rev. I") == "Rev. I"
+    assert _additive_clause(None, "s.41B") == "s.41B"
+    assert _additive_clause("OISD-STD-105", None) is None

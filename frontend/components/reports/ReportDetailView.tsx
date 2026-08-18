@@ -609,10 +609,43 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
                           : "Factor";
                     const detail =
                       typeof factor.detail === "string" ? factor.detail : null;
+                    // W2. This is a document rather than a scan surface, so the
+                    // requirement is shown in full here — an SOP reference the
+                    // reader cannot check is the thing being avoided.
+                    const dev =
+                      factor.deviation && typeof factor.deviation === "object"
+                        ? (factor.deviation as {
+                            sop_title?: string;
+                            requirement?: string;
+                            clause?: string | null;
+                            basis?: string;
+                          })
+                        : null;
                     return (
                       <li key={i}>
                         <strong>{headline}</strong>
                         {detail ? ` — ${detail}` : ""}
+                        {dev?.sop_title ? (
+                          <span className={styles.deviation}>
+                            <strong>
+                              Deviates from {dev.sop_title}
+                              {dev.clause ? ` ${dev.clause}` : ""}
+                            </strong>
+                            {dev.basis === "same_hazard" ? (
+                              <em>
+                                {" "}
+                                — governs this hazard at its elevated level; the
+                                corpus seeds no SOP for the threshold breach
+                                itself
+                              </em>
+                            ) : null}
+                            {dev.requirement ? (
+                              <span className={styles.deviationReq}>
+                                {dev.requirement}
+                              </span>
+                            ) : null}
+                          </span>
+                        ) : null}
                       </li>
                     );
                   })}

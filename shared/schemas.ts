@@ -43,6 +43,13 @@ export interface RetrievedReference {
   title?: string | null;
   snippet?: string | null;
   code?: string | null;
+  /**
+   * The specific provision within the source, where the corpus records one.
+   * Seeded on regulations only — the 13 seeded SOPs are single-paragraph
+   * procedures with no numbered internal clauses, so an SOP reference carries
+   * null here rather than a fabricated number.
+   */
+  clause?: string | null;
   triggered_by_fact?: string | null;
   /** Primary-source link, so a cited clause can be checked rather than trusted. */
   source_url?: string | null;
@@ -50,10 +57,33 @@ export interface RetrievedReference {
   occurred_at?: string | null;
 }
 
+/**
+ * The SOP a derived fact departs from (W2).
+ *
+ * `clause` is almost always null and that is deliberate: the seeded SOP corpus
+ * is single-paragraph procedures with no numbered internal clauses, so there is
+ * no section number to quote. Naming the procedure is the claim.
+ */
+export interface SopDeviation {
+  sop_id: string;
+  sop_title: string;
+  /** What the SOP requires, in its own words. */
+  requirement: string;
+  clause?: string | null;
+  /**
+   * "same_hazard" when the SOP governs the elevated form of this hazard rather
+   * than this fact itself (critical_gas → the elevated-gas SOP). Surfaced so the
+   * weaker link reads as the weaker link.
+   */
+  basis: "direct" | "same_hazard";
+}
+
 export interface ReasoningFactor {
   fact_type: string;
   headline: string;
   detail: string;
+  /** Null where the corpus seeds no SOP for this fact. */
+  deviation?: SopDeviation | null;
   evidence: RetrievedReference[];
   context_ids: string[];
 }

@@ -79,6 +79,26 @@ def _round_floats(value: Any) -> Any:
     return value
 
 
+def _additive_clause(code: str | None, clause: str | None) -> str | None:
+    """The clause, unless the code already says it.
+
+    Four of the five seeded statutory rows carry the section inside the code
+    (`Factories Act 1948 s.36(2)` / `s.36(2)`), so rendering both prints the
+    section number twice — in the citation card, the PDF row and the XLSX
+    export alike. `OISD-STD-105` / `Rev. I` is the case where the clause does
+    add something, and that one still shows.
+
+    Applied here rather than in each renderer so the three cannot disagree, and
+    on the packet only: `RetrievedReference.clause` keeps full fidelity for the
+    API and the assessment metadata.
+    """
+    if not clause:
+        return None
+    if code and clause.strip().lower() in code.strip().lower():
+        return None
+    return clause
+
+
 def packet_hash(content: dict) -> str:
     """SHA-256 over the same canonical JSON the audit chain uses."""
     return hashlib.sha256(
@@ -915,7 +935,7 @@ def _build_citations(refs: list, summary: str, *, frozen: bool) -> PacketCitatio
             source=r.get("source") or r.get("source_type"),
             id=str(r.get("id")) if r.get("id") else None,
             code=r.get("code"),
-            clause=r.get("clause"),
+            clause=_additive_clause(r.get("code"), r.get("clause")),
             title=r.get("title"),
             snippet=r.get("snippet") or r.get("text"),
             source_url=r.get("source_url"),

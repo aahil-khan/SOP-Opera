@@ -38,6 +38,7 @@ def _parse_ref(raw: dict | RetrievedReference) -> RetrievedReference:
         title=raw.get("title"),
         snippet=raw.get("snippet"),
         code=raw.get("code"),
+        clause=raw.get("clause"),
         triggered_by_fact=raw.get("triggered_by_fact"),
         source_url=raw.get("source_url"),
         occurred_at=raw.get("occurred_at"),
@@ -121,13 +122,18 @@ async def enrich_references(
         title = r.title
         snippet = r.snippet
         code = r.code
+        clause = r.clause
         source_url = None
         occurred_at = r.occurred_at
         if r.source == "regulations" and key in reg_map:
-            code, title, snippet, _clause, source_url = reg_map[key]
+            # `clause` was selected and then discarded here, so the clause-level
+            # provenance seeded on INDIAN_REGULATIONS never reached a reader.
+            code, title, snippet, clause, source_url = reg_map[key]
         elif r.source == "sops" and key in sop_map:
             title, snippet = sop_map[key]
             code = None
+            # Seeded SOPs have no numbered internal clauses. None, not invented.
+            clause = None
         elif r.source == "historical_incidents":
             if key in inc_map:
                 snippet, occurred_at = inc_map[key]
@@ -143,6 +149,7 @@ async def enrich_references(
                 title=title,
                 snippet=snippet,
                 code=code,
+                clause=clause,
                 triggered_by_fact=r.triggered_by_fact,
                 source_url=source_url,
                 occurred_at=occurred_at,
@@ -161,6 +168,7 @@ def serialize_ref(r: RetrievedReference) -> dict:
         "title": r.title,
         "snippet": r.snippet,
         "code": r.code,
+        "clause": r.clause,
         "triggered_by_fact": r.triggered_by_fact,
         "source_url": r.source_url,
         "occurred_at": r.occurred_at.isoformat()

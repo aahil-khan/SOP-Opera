@@ -266,3 +266,104 @@ def test_format_fact_detail_public_api():
     assert "120" in detail
     assert "ETP" in detail
 
+
+
+# --- W2: SOP deviation frame -------------------------------------------------
+
+
+def _sop_ref(fact_type: str, *, title: str = "SOP-Isolation Verification"):
+    return RetrievedReference(
+        source="sops",
+        id=SOP_ID,
+        retrieval_path="deterministic",
+        title=title,
+        snippet=(
+            "Walk the isolation boundary, apply tags, and obtain a second "
+            "verifier signature before issuing a hot work permit."
+        ),
+        triggered_by_fact=fact_type,
+    )
+
+
+def test_factor_names_the_sop_it_deviates_from():
+    factors = build_reasoning_factors(
+        [_fact("incomplete_isolation")],
+        [],
+        [_sop_ref("incomplete_isolation")],
+        asset_name="Vessel A-12",
+    )
+    dev = factors[0].deviation
+    assert dev is not None
+    assert dev.sop_title == "SOP-Isolation Verification"
+    assert dev.requirement.startswith("Walk the isolation boundary")
+    assert dev.basis == "direct"
+
+
+def test_seeded_sops_carry_no_clause_number():
+    """
+    The corpus has no numbered SOP clauses, so `clause` must stay None.
+
+    This is the guard on W2's honesty claim: the moment something fabricates a
+    section number, "deviates from SOP-X §4.2" stops being checkable and the
+    frame is worth less than the generic regulation citation it replaced.
+    """
+    factors = build_reasoning_factors(
+        [_fact("incomplete_isolation")], [], [_sop_ref("incomplete_isolation")]
+    )
+    assert factors[0].deviation is not None
+    assert factors[0].deviation.clause is None
+
+
+def test_threshold_breach_is_marked_as_the_weaker_a_fortiori_link():
+    """
+    `critical_gas` has no SOP of its own; it borrows the elevated-gas one.
+
+    That is a real but weaker claim, so it has to be labelled `same_hazard`
+    rather than passing as a direct citation.
+    """
+    factors = build_reasoning_factors(
+        [_fact("critical_gas")],
+        [],
+        [_sop_ref("critical_gas", title="SOP-OISD Coke Oven Gas Response")],
+    )
+    assert factors[0].deviation is not None
+    assert factors[0].deviation.basis == "same_hazard"
+
+
+def test_no_sop_in_corpus_means_no_deviation_line():
+    """The three uncovered fact families render blank, not a borrowed SOP."""
+    factors = build_reasoning_factors(
+        [_fact("supervisor_safety_hazard")], [], [_sop_ref("incomplete_isolation")]
+    )
+    assert factors[0].deviation is None
+
+
+def test_an_sop_retrieved_for_another_fact_is_never_borrowed():
+    """
+    `_refs_for_fact` falls back to matching on source type, which is right for
+    filling an evidence list and wrong for naming a breached procedure. A
+    deviation must come from a reference the retriever keyed to *this* fact.
+    """
+    factors = build_reasoning_factors(
+        [_fact("ppe_noncompliance")], [], [_sop_ref("incomplete_isolation")]
+    )
+    assert factors[0].deviation is None
+
+
+def test_deviation_survives_serialization():
+    factors = build_reasoning_factors(
+        [_fact("incomplete_isolation")], [], [_sop_ref("incomplete_isolation")]
+    )
+    from app.assessment.reasoning import serialize_factor
+
+    payload = serialize_factor(factors[0])
+    assert payload["deviation"]["sop_title"] == "SOP-Isolation Verification"
+    assert payload["deviation"]["clause"] is None
+    assert payload["deviation"]["basis"] == "direct"
+
+
+def test_serialized_deviation_is_null_when_absent():
+    factors = build_reasoning_factors([_fact("supervisor_safety_hazard")], [], [])
+    from app.assessment.reasoning import serialize_factor
+
+    assert serialize_factor(factors[0])["deviation"] is None

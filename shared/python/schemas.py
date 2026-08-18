@@ -58,6 +58,14 @@ class RetrievedReference(BaseModel):
     title: str | None = None
     snippet: str | None = None
     code: str | None = None
+    clause: str | None = None
+    """The specific provision within the source, where the corpus records one.
+
+    Seeded on `regulations` only (`db/schema.sql` — `regulations.clause`). The
+    13 seeded SOPs are single-paragraph procedures with no numbered internal
+    clauses, so an SOP reference carries `None` here rather than a fabricated
+    number. Absent is correct; invented would not be.
+    """
     triggered_by_fact: str | None = None
     source_url: str | None = None
     """Primary-source link, so a cited clause can be checked rather than trusted."""
@@ -65,10 +73,37 @@ class RetrievedReference(BaseModel):
     """When a matched historical incident occurred (drives the 'N months ago' echo)."""
 
 
+class SopDeviation(BaseModel):
+    """The SOP a derived fact departs from.
+
+    W2's frame: an assessment should read "deviates from SOP-Isolation
+    Verification", not just cite a regulation that happens to be topical.
+
+    `clause` is almost always None and that is deliberate — the seeded SOP corpus
+    is single-paragraph procedures with no numbered internal clauses, so there is
+    no §4.2 to quote. Naming the procedure is the claim; a clause number we
+    authored ourselves would not survive the grep standard.
+    """
+
+    sop_id: UUID
+    sop_title: str
+    requirement: str
+    """What the SOP requires, in its own words (the seeded body_summary)."""
+    clause: str | None = None
+    basis: Literal["direct", "same_hazard"] = "direct"
+    """`same_hazard` when the SOP governs the elevated form of this hazard rather
+    than this fact itself — critical_gas is governed by the elevated-gas SOP,
+    a fortiori at the higher reading. Surfaced so the weaker link reads as the
+    weaker link instead of passing as a direct citation."""
+
+
 class ReasoningFactor(BaseModel):
     fact_type: str
     headline: str
     detail: str
+    deviation: SopDeviation | None = None
+    """None where the corpus seeds no SOP for this fact — three fact families
+    have none, and a blank is the honest rendering of that."""
     evidence: list[RetrievedReference] = Field(default_factory=list)
     context_ids: list[UUID] = Field(default_factory=list)
 

@@ -30,7 +30,11 @@ _INDIAN_SOP_ORDER = """
 
 RETRIEVAL_RULES: dict[str, list[SourceType]] = {
     "elevated_gas": ["regulations", "historical_incidents"],
-    "critical_gas": ["regulations", "historical_incidents"],
+    # "sops" included so the SOP-deviation frame (W2) can name a procedure for a
+    # threshold breach. The alias below routes it to the elevated-gas SOP — the
+    # corpus has no SOP for the critical level specifically, and inventing one is
+    # exactly what is not being done here.
+    "critical_gas": ["regulations", "historical_incidents", "sops"],
     "permit_conflict": ["sops", "regulations"],
     "zone_occupied": ["historical_incidents", "regulations", "sops"],
     "incomplete_isolation": ["sops", "regulations"],

@@ -10,6 +10,7 @@ from shared.python.schemas import (
     DerivedFact,
     ReasoningFactor,
     RetrievedReference,
+    SopDeviation,
 )
 
 from app.core.config import get_settings
@@ -64,6 +65,55 @@ def _refs_for_fact(
 
     sources = set(RETRIEVAL_RULES.get(fact_type, []))
     return [r for r in refs if r.source in sources]
+
+
+def _sop_deviation(
+    fact_type: str, refs: list[RetrievedReference]
+) -> SopDeviation | None:
+    """Which SOP this fact departs from, or None if the corpus seeds none.
+
+    W2: an assessment that says "deviates from SOP-Isolation Verification" is
+    making a checkable claim about a named procedure; one that cites a topical
+    regulation is not.
+
+    The link is already in the seed — `sops.applies_to_category` holds the
+    governed `fact_type` (`db/seed_embeddings.py`, the SOPS list's fourth tuple
+    element) — so this reads what the retriever already resolved rather than
+    introducing a second mapping that could drift from it.
+
+    Deliberately stricter than `_refs_for_fact`: only a reference the retriever
+    keyed to *this* fact counts. That function falls back to matching on source
+    type when nothing is keyed, which is right for populating an evidence list
+    and wrong here — it would let an SOP retrieved for a different fact be
+    named as the procedure this one deviates from.
+
+    Returns None for the three fact families the corpus does not cover
+    (`supervisor_*`, and anything with no SOPs entry). A blank is the honest
+    rendering; borrowing a neighbouring SOP is not.
+    """
+    from app.assessment.retrieval.deterministic import _lookup_category
+
+    sop = next(
+        (
+            r
+            for r in refs
+            if r.source == "sops"
+            and r.triggered_by_fact == fact_type
+            and r.title
+        ),
+        None,
+    )
+    if sop is None:
+        return None
+    return SopDeviation(
+        sop_id=sop.id,
+        sop_title=sop.title or "",
+        requirement=sop.snippet or "",
+        clause=sop.clause,
+        basis=(
+            "same_hazard" if _lookup_category(fact_type) != fact_type else "direct"
+        ),
+    )
 
 
 def _normalize_unit(unit: str | None, *, default: str) -> str:
@@ -603,6 +653,7 @@ def build_reasoning_factors(
                 fact_type=ft,
                 headline=headline,
                 detail=detail,
+                deviation=_sop_deviation(ft, enriched_refs),
                 evidence=evidence,
                 context_ids=list(fact.source_context_ids),
             )
@@ -617,6 +668,9 @@ def serialize_factor(factor: ReasoningFactor) -> dict:
         "fact_type": factor.fact_type,
         "headline": factor.headline,
         "detail": factor.detail,
+        "deviation": (
+            factor.deviation.model_dump(mode="json") if factor.deviation else None
+        ),
         "evidence": [serialize_ref(r) for r in factor.evidence],
         "context_ids": [str(i) for i in factor.context_ids],
     }
