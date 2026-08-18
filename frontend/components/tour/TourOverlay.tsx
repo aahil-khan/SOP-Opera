@@ -48,6 +48,8 @@ const ANCHOR_PAD_TOP = ANCHOR_PAD;
 const VIEWPORT_MARGIN = 12;
 /** Halo box-shadow bleed that can paint outside the ring box into the nav. */
 const RING_BLEED = 10;
+/** Clearance the ring needs inside a scrollport to keep its pad + halo. */
+const RING_CLEARANCE = VIEWPORT_MARGIN + RING_BLEED + ANCHOR_PAD;
 const CARD_GAP = 16;
 const CARD_WIDTH = 360;
 /** rAF frames to hunt a missing anchor before degrading (~2s at 60fps). */
@@ -371,7 +373,8 @@ export function TourOverlay() {
 
     const revealOn = (el: Element) => {
       targetElRef.current = el;
-      scrollportRef.current = nearestScrollportEl(el);
+      const port = nearestScrollportEl(el);
+      scrollportRef.current = port;
       try {
         el.scrollIntoView({
           block: "nearest",
@@ -380,6 +383,31 @@ export function TourOverlay() {
         });
       } catch {
         /* measure in place */
+      }
+      // `block: "nearest"` is a no-op on a target that is already partly
+      // visible, so a panel sitting low in its scrollport kept getting its ring
+      // truncated by the bottomMax clamp — the ring ended mid-sentence with no
+      // bottom padding (tour-defects.md 5a, 11). Nudge the scrollport so the
+      // ring keeps ANCHOR_PAD clearance on the edge that would otherwise clip.
+      if (port) {
+        try {
+          const pr = port.getBoundingClientRect();
+          const er = el.getBoundingClientRect();
+          const fits = er.height <= pr.height - 2 * RING_CLEARANCE;
+          let delta = 0;
+          if (!fits) {
+            // Taller than its scrollport: pin the top so the clipped edge is the
+            // bottom, where the content visibly continues rather than looking cut.
+            delta = er.top - (pr.top + RING_CLEARANCE);
+          } else if (er.bottom > pr.bottom - RING_CLEARANCE) {
+            delta = er.bottom - (pr.bottom - RING_CLEARANCE);
+          } else if (er.top < pr.top + RING_CLEARANCE) {
+            delta = er.top - (pr.top + RING_CLEARANCE);
+          }
+          if (delta !== 0) port.scrollBy({ top: delta, behavior: "auto" });
+        } catch {
+          /* measure in place */
+        }
       }
       // Measure this frame; one rAF catch-up for post-scroll layout.
       setRect(el.getBoundingClientRect());
@@ -519,12 +547,33 @@ export function TourOverlay() {
     if (el && "ResizeObserver" in window) {
       ro = new ResizeObserver(remeasure);
       ro.observe(el);
+      // Observing only the target catches it *resizing* but not it *moving*.
+      // The Brain panel streams agent steps, so siblings above the anchor grow
+      // and push it down at a constant size — no resize fires, the ring keeps
+      // its first measurement, and it ends up drawn hundreds of px above the
+      // element it frames (tour-defects.md 5a, and much of 5b's "different
+      // state on revisit"). Watch the scrollport too.
+      if (port) ro.observe(port);
+    }
+    // Content mutations move the anchor without resizing anything observable.
+    // remeasure is rAF-throttled and bails when the rect is unchanged, so this
+    // stays cheap even while the agent trace is streaming.
+    let mo: MutationObserver | undefined;
+    const moTarget = port ?? el?.parentElement ?? null;
+    if (moTarget && "MutationObserver" in window) {
+      mo = new MutationObserver(remeasure);
+      mo.observe(moTarget, {
+        childList: true,
+        subtree: true,
+        characterData: true,
+      });
     }
     return () => {
       window.removeEventListener("scroll", remeasure, true);
       window.removeEventListener("resize", remeasure);
       port?.removeEventListener("scroll", remeasure);
       ro?.disconnect();
+      mo?.disconnect();
       if (remeasureRaf.current != null) {
         cancelAnimationFrame(remeasureRaf.current);
         remeasureRaf.current = undefined;
