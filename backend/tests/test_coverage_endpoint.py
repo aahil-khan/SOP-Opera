@@ -118,6 +118,71 @@ async def test_stale_sensor_goes_blind_and_never_reads_safe(client: AsyncClient)
 
 
 @pytest.mark.asyncio
+async def test_seeded_mock_sensor_row_does_not_count_as_heard(
+    client: AsyncClient,
+):
+    """
+    A `quick_mock` row must never make an asset read `assessed`.
+
+    `scripts/quick_mock_seed.py` writes `category='sensor'` context entries with
+    `provider='quick_mock'` for the demonstration corpus. Those are fabricated:
+    nothing was heard from the plant. If coverage counted them, an asset would
+    render covered on the twin — with seeded mode off — purely because a demo
+    row exists, which is the exact inversion this module was built to remove.
+
+    Latent rather than theoretical: it only shows up once a corpus is generated
+    with recent timestamps, which is why it is pinned here.
+    """
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                "DELETE FROM context_entries WHERE asset_id = CAST(:aid AS uuid)"
+            ),
+            {"aid": str(VESSEL_A)},
+        )
+        await session.execute(
+            text(
+                "DELETE FROM telemetry_samples WHERE asset_id = CAST(:aid AS uuid)"
+            ),
+            {"aid": str(VESSEL_A)},
+        )
+        # A mock reading stamped right now — the worst case for staleness math.
+        await session.execute(
+            text(
+                """
+                INSERT INTO context_entries
+                    (asset_id, category, payload, provider,
+                     valid_from, valid_until, confidence)
+                VALUES
+                    (CAST(:aid AS uuid), 'sensor',
+                     CAST('{"gas_reading": 5.0, "unit": "ppm"}' AS jsonb),
+                     'quick_mock', now(), now() + interval '1 hour', 1.0)
+                """
+            ),
+            {"aid": str(VESSEL_A)},
+        )
+        await session.commit()
+
+    resp = await client.get("/assets/coverage")
+    vessel = {r["asset_id"]: r for r in resp.json()}[str(VESSEL_A)]
+    assert vessel["coverage"] == "blind", (
+        "a seeded mock row was counted as a live sensor arrival"
+    )
+
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                "DELETE FROM context_entries "
+                "WHERE asset_id = CAST(:aid AS uuid) AND provider = 'quick_mock'"
+            ),
+            {"aid": str(VESSEL_A)},
+        )
+        await session.commit()
+
+
+@pytest.mark.asyncio
 async def test_ambient_soft_sample_alone_keeps_a_channel_covered(
     client: AsyncClient,
 ):

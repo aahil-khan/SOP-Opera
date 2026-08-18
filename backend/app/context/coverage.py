@@ -129,13 +129,24 @@ async def sensor_last_seen(
     Note `telemetry_samples` is a bounded ring (`ambient_telemetry_keep` rows
     per asset), which is fine here: pruning drops the *oldest* rows, never the
     newest, so the MAX this needs always survives.
+
+    Seeded demonstration rows are excluded. `scripts/quick_mock_seed.py` writes
+    `category='sensor'` entries with `provider='quick_mock'`, and counting them
+    would make an asset read `assessed` on the strength of a mock reading — with
+    seeded mode off, and with nothing having actually been heard. That inverts
+    the point of this module: `assessed` has to mean a real channel reported,
+    not that a demo row exists. `telemetry_samples` needs no equivalent filter —
+    the seeder never writes it.
     """
-    where_ctx = ""
+    # Kept as a tuple so adding a future seeder is a one-line change here rather
+    # than a new WHERE clause to forget.
+    seeded_providers = ("quick_mock",)
+    where_ctx = "AND provider <> ALL(CAST(:seeded_providers AS text[]))"
     where_tel = ""
-    params: dict = {}
+    params: dict = {"seeded_providers": list(seeded_providers)}
     if asset_ids is not None:
-        where_ctx = "AND asset_id = ANY(CAST(:asset_ids AS uuid[]))"
-        where_tel = where_ctx
+        where_ctx += " AND asset_id = ANY(CAST(:asset_ids AS uuid[]))"
+        where_tel += " AND asset_id = ANY(CAST(:asset_ids AS uuid[]))"
         params["asset_ids"] = [str(a) for a in asset_ids]
     result = await session.execute(
         text(

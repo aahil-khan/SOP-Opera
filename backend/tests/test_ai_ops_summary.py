@@ -186,7 +186,15 @@ async def test_ai_ops_summary_math(client: AsyncClient):
     assert abs(body["p95_latency_ms"] - 195.0) < 0.1
     assert "langsmith_enabled" in body
     assert "langsmith_project" in body
-    assert body["langsmith_project"] == "sop-opera"
+    # Whatever LANGCHAIN_PROJECT is set to, not the code default — this reads a
+    # setting, and a developer with a real LangSmith project in .env is not a
+    # test failure. Asserting the literal made the suite red on any configured
+    # machine while staying green in CI, which is the wrong way round.
+    from app.core.config import get_settings as _get_settings
+
+    assert body["langsmith_project"] == (
+        _get_settings().langchain_project or "sop-opera"
+    )
 
 
 @pytest.mark.asyncio

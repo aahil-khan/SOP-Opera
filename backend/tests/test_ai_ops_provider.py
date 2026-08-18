@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 from uuid import UUID
 from types import SimpleNamespace
 
@@ -16,7 +18,26 @@ from tests.test_assessment_pipeline import _cleanup_vessel
 VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
 
 
+def _configured_ollama_model() -> str:
+    """
+    Whatever `.env` actually asks for.
+
+    `check_provider()` compares the tag list against `settings.ollama_model`, and
+    the DB-backed tests below patch only `urlopen` — so they run against the real
+    settings. Hard-coding a model name here makes those tests pass or fail on the
+    contents of the developer's `.env` rather than on the code under test.
+    """
+    from app.core.config import get_settings
+
+    return get_settings().ollama_model
+
+
 class _FakeOllamaResponse:
+    """A tag list that always contains the model the active settings want."""
+
+    def __init__(self, model: str | None = None):
+        self._model = model or _configured_ollama_model()
+
     def __enter__(self):
         return self
 
@@ -24,7 +45,7 @@ class _FakeOllamaResponse:
         return False
 
     def read(self) -> bytes:
-        return b'{"models":[{"name":"llama3.2:latest"}]}'
+        return json.dumps({"models": [{"name": self._model}]}).encode("utf-8")
 
 
 def _settings(*, provider="mock", fields=frozenset(), key=""):
@@ -34,7 +55,7 @@ def _settings(*, provider="mock", fields=frozenset(), key=""):
         openai_model="gpt-4o-mini",
         openai_base_url="https://api.openai.com/v1",
         ollama_base_url="http://ollama.test",
-        ollama_model="llama3.2",
+        ollama_model=_configured_ollama_model(),
         model_fields_set=set(fields),
     )
 

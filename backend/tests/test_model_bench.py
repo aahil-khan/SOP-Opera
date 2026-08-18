@@ -95,7 +95,26 @@ def test_strip_stats_of_nothing_is_zero_not_a_crash():
 
 
 @pytest.mark.asyncio
-async def test_bench_runs_end_to_end_on_mock_and_reports_invariance():
+async def test_bench_runs_end_to_end_on_mock_and_reports_invariance(monkeypatch):
+    # The NOT RUN leg has to be forced, not assumed. `provider_available()` asks
+    # `check_provider()`, which reports openai_compatible as usable whenever
+    # `OPENAI_API_KEY` is set — and Settings reads the repo-root `.env`. On a
+    # machine with a key this test used to run three live, billable OpenAI
+    # requests before failing its own assertion, against this file's stated
+    # contract that the suite is network-free.
+    from app.eval import model_bench
+
+    real_available = model_bench.provider_available
+    monkeypatch.setattr(
+        model_bench,
+        "provider_available",
+        lambda provider: (
+            (False, "no OPENAI_API_KEY configured")
+            if provider == "openai_compatible"
+            else real_available(provider)
+        ),
+    )
+
     report = await run_bench(["mock", "openai_compatible"], repeats=1, case_limit=3)
 
     mock = next(p for p in report.providers if p.provider == "mock")

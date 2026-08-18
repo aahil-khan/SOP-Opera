@@ -27,7 +27,10 @@ class Settings(BaseSettings):
     # Allow Next.js dev fallback ports (and 127.0.0.1) without editing CORS_ORIGINS each time.
     cors_localhost_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
 
-    ai_provider: str = "ollama"
+    # Keep this `mock`. `handover/service.py` and `agents/graph.py` read it
+    # directly, so the code default is what an install with no AI_PROVIDER in
+    # .env actually runs on — it has to be the provider that needs nothing.
+    ai_provider: str = "mock"
     openai_api_key: str = ""
     openai_base_url: str = "https://api.openai.com/v1"
     openai_model: str = "gpt-4o-mini"
