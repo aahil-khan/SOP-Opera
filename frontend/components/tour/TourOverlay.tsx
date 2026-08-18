@@ -550,7 +550,7 @@ export function TourOverlay() {
   }, []);
 
   useEffect(() => {
-    if (!active || !rect) return;
+    if (!active || !anchorReady) return;
     const el = targetElRef.current;
     const port = scrollportRef.current ?? nearestScrollportEl(el);
     scrollportRef.current = port;
@@ -593,7 +593,11 @@ export function TourOverlay() {
         remeasureRaf.current = undefined;
       }
     };
-  }, [active, rect, remeasure]);
+    // Deps deliberately exclude `rect`. Binding on rect meant every remeasure
+    // tore down and rebuilt both observers, which with a streaming agent trace
+    // is a tight disconnect/reconnect loop that starved the auto-advance timer
+    // and killed the tour at Act III. Bind once per step instead.
+  }, [active, anchorReady, stepIndex, remeasure]);
 
   // holdNextUntil: subscribe only when the step needs it (avoids getLiveAssetViews
   // on every store tick for steps without a hold gate).
