@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from uuid import UUID
-
 import pytest
 import pytest_asyncio
+from shared.python.schemas import RetrievedReference
 from sqlalchemy import text
 
 from app.assessment.retrieval.deterministic import DeterministicRetriever
@@ -15,14 +14,14 @@ from app.db.seed_embeddings import seed_embeddings
 from app.db.session import SessionLocal, apply_schema, engine
 from app.db.vector import close_vector_pool
 from app.reviews.ownership import get_zone_owner, resolve_worker_names
-from shared.python.schemas import RetrievedReference
 
 
 @pytest_asyncio.fixture
 async def session():
+    import asyncpg
+
     from app.core.config import get_settings
     from app.db.session import _asyncpg_dsn
-    import asyncpg
 
     settings = get_settings()
     try:

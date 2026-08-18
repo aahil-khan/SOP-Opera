@@ -1,0 +1,4 @@
+[lint]
+# FastAPI's `Depends(...)` in a default argument is the idiomatic pattern,
+# not the mutable-default-argument bug this rule targets.
+ignore = ["B008"]

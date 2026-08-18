@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from shared.python.schemas import AreaOwner
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
-
-from shared.python.schemas import AreaOwner
 
 
 def _valid_uuid_strings(worker_ids: list[str | UUID]) -> list[str]:

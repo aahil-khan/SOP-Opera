@@ -6,10 +6,10 @@ from datetime import datetime, timezone
 from uuid import UUID, uuid4
 
 import pytest
+from shared.python.schemas import DerivedFact
 
 from app.agents.graph import reset_compiled_graph, run_agent_assessment
 from app.agents.tools.rules import RuleToolkit, require_grounding_for_block
-from shared.python.schemas import DerivedFact
 
 
 @pytest.fixture(autouse=True)

@@ -4,8 +4,8 @@ from datetime import datetime, timedelta, timezone
 from uuid import uuid4
 
 from app.context.derived_facts import (
-    ContextEntryView,
     DERIVED_FACT_RULES,
+    ContextEntryView,
     evaluate_rules,
     rule_certification_expiring,
     rule_critical_gas,

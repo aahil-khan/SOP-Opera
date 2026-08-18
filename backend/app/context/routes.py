@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from shared.python.schemas import AreaOwner, Asset, Context
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.context.coverage import coverage_for_assets
@@ -16,7 +17,6 @@ from app.context.service import (
 )
 from app.db.session import get_session
 from app.reviews.ownership import get_zone_owner
-from shared.python.schemas import AreaOwner, Asset, Context
 
 router = APIRouter(tags=["context"])
 

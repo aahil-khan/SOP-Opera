@@ -9,12 +9,12 @@ from typing import Any
 from uuid import UUID
 
 from pydantic import ValidationError
+from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReference
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.events import broadcast_agent_step, make_step
 from app.agents.graph import run_agent_assessment
-from app.handover.repository import fetch_unacknowledged_for_asset
 from app.agents.routing import should_load_plant_neighborhood
 from app.ai_ops.events import record_ai_ops_event
 from app.assessment.orchestrator import PROMPT_VERSION
@@ -28,12 +28,12 @@ from app.assessment.retrieval.enrich import enrich_references, serialize_ref
 from app.context.derived_facts import load_valid_context, load_valid_context_for_assets
 from app.core.config import get_settings
 from app.db.session import SessionLocal
-from app.graph.kg import neighbors_within_radius, get_plant_graph
+from app.graph.kg import get_plant_graph, neighbors_within_radius
+from app.handover.repository import fetch_unacknowledged_for_asset
 from app.realtime.connection_manager import manager
 from app.reviews.ownership import get_zone_owner, resolve_worker_names
 from app.reviews.repository import get_review, transition_review
 from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
-from shared.python.schemas import DerivedFact, ReasoningFactor, RetrievedReference
 
 logger = logging.getLogger(__name__)
 
@@ -203,7 +203,7 @@ def _augment_reasoning_with_predictive_trend(
             )
         )
         return reasoning_factors
-    except Exception:  # noqa: BLE001
+    except Exception:
         logger.debug("augment predictive trend reasoning failed", exc_info=True)
         return reasoning_factors
 
@@ -826,6 +826,31 @@ async def run_assessment_job(
             risk_level=result.risk_level,
             sensor_critical=sensor_critical,
         )
+
+        # W1 · Emergency Response Orchestrator. Runs on the verdict this
+        # assessment just produced, inside the same transaction, so a review can
+        # never be left recorded as blocking with no record of what the system
+        # did about it. A failure here must not lose the assessment — the
+        # response is an addition to the verdict, not a precondition for it.
+        # The savepoint matters: a plain rollback here would discard the
+        # assessment and its metadata too, since none of it has committed yet.
+        try:
+            from app.response.service import evaluate_and_arm
+
+            async with session.begin_nested():
+                await evaluate_and_arm(
+                    session,
+                    review_id=review_id,
+                    asset_id=review.asset_id,
+                    risk_level=result.risk_level,
+                    fact_types=list(fact_types),
+                )
+        except Exception:
+            logger.exception(
+                "response orchestration failed for review %s; assessment stands",
+                review_id,
+            )
+
         await session.commit()
 
         try:

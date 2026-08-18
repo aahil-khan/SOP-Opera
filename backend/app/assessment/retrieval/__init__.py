@@ -6,9 +6,8 @@ import asyncio
 import logging
 from typing import Literal
 
-from sqlalchemy.ext.asyncio import AsyncSession
-
 from shared.python.schemas import RetrievedReference
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment.embeddings import active_embedding_model
 from app.assessment.retrieval.deterministic import (

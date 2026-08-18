@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import AsyncGenerator
 from pathlib import Path
-from urllib.parse import urlparse, unquote
+from urllib.parse import unquote, urlparse
 
 import asyncpg
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
@@ -24,6 +24,27 @@ engine = create_async_engine(
     pool_pre_ping=True,
 )
 SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSession)
+
+# Seeded mode: NOT a second database. Mock rows (scripts/quick_mock_seed.py)
+# live in this same primary database, tagged reviews.is_seeded — see
+# schema.sql. This process-wide flag is a *query filter*, read by the list
+# queries that matter (reviews/service.py::list_reviews,
+# reports/repository.py::select_reports): off shows only is_seeded=false rows
+# (real data), on shows everything (real + mock together, per explicit
+# request — this replaced an earlier dual-database-switch design that showed
+# mock data *instead of* real data rather than alongside it).
+_seeded_mode = False
+
+
+def get_seeded_mode() -> bool:
+    return _seeded_mode
+
+
+def set_seeded_mode(enabled: bool) -> bool:
+    global _seeded_mode
+    _seeded_mode = enabled
+    return _seeded_mode
+
 
 SCHEMA_PATH = Path(__file__).with_name("schema.sql")
 

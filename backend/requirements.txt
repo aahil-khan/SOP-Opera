@@ -19,3 +19,4 @@ langsmith>=0.1.0
 networkx>=3.0
 reportlab>=5.0.0
 XlsxWriter>=3.2.0
+ruff>=0.16.0

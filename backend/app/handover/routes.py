@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.routes import get_current_actor, get_current_actor_from_request
@@ -17,7 +17,6 @@ from app.handover.schemas import (
     HandoverNoteIn,
     HandoverOut,
 )
-from fastapi import Request
 
 router = APIRouter(prefix="/handover", tags=["handover"])
 

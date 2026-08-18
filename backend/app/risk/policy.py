@@ -36,8 +36,9 @@ own. See NON_GROUNDING_SIGNALS.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
-from typing import Any, Iterable, Literal
+from typing import Any, Literal
 
 from app.context.derived_facts import DERIVED_FACT_RULES
 from app.reviews.concerns import BLOCKING_SUPERVISOR_FACTS, SUPERVISOR_FACT_TYPES

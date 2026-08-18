@@ -17,12 +17,14 @@ OWNER = UUID("aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa")
 
 @pytest_asyncio.fixture
 async def client():
-    from app.core.config import get_settings
-    from app.db.session import _asyncpg_dsn, apply_schema, engine
-    from app.db.seed import seed_minimal
-    from app.db.vector import close_vector_pool
-    import asyncpg
     import os
+
+    import asyncpg
+
+    from app.core.config import get_settings
+    from app.db.seed import seed_minimal
+    from app.db.session import _asyncpg_dsn, apply_schema, engine
+    from app.db.vector import close_vector_pool
 
     settings = get_settings()
     try:

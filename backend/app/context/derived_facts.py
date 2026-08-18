@@ -1,15 +1,16 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from typing import Any
 from uuid import UUID, uuid4
 
+from shared.python.schemas import DerivedFact
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
-from shared.python.schemas import DerivedFact
 
 INCOMPATIBLE_WORK_TYPE_PAIRS: frozenset[frozenset[str]] = frozenset(
     {frozenset({"hot_work", "confined_space"})}

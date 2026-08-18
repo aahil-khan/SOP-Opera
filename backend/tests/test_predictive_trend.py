@@ -8,9 +8,9 @@ import pytest
 from app.agents.nodes.predictive_trend import predictive_trend_agent
 from app.assessment.pipeline import _augment_reasoning_with_predictive_trend
 from app.assessment.reasoning import format_predicted_trend_detail
-from app.core.config import get_settings
 from app.context.derived_facts import ContextEntryView
 from app.context.lead_time import estimate_seconds_until_gas_critical, forecast_metric
+from app.core.config import get_settings
 
 NOW = datetime(2026, 1, 15, 8, 0, tzinfo=timezone.utc)
 ASSET = "11111111-1111-1111-1111-111111111111"

@@ -6,9 +6,12 @@ from typing import Any
 
 from app.agents.events import make_step
 from app.agents.state import AgentObservation, AgentState
-from app.context.lead_time import TrendForecast, context_entries_to_views, forecast_asset_trends
+from app.context.lead_time import (
+    TrendForecast,
+    context_entries_to_views,
+    forecast_asset_trends,
+)
 from app.core.config import get_settings
-
 
 _METRIC_LABELS: dict[str, str] = {
     "gas_reading": "gas",

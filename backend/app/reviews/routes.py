@@ -4,43 +4,49 @@ import json
 from datetime import datetime, timedelta, timezone
 from uuid import UUID
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy.ext.asyncio import AsyncSession
+from fastapi import APIRouter, Depends, HTTPException, Query
+from shared.python.schemas import Assessment, ManualAssessmentIn, Review
 from sqlalchemy import text
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.assessment.manual import create_manual_assessment, list_assessments
 from app.assessment.orchestrator import enqueue_for_review
 from app.assessment.schemas import AssessmentOut, RetryIn
+from app.auth.routes import get_current_actor
+from app.auth.schemas import ActorMeOut
 from app.core.config import get_settings
 from app.db.session import get_session
 from app.reports.schemas import ReportSummaryOut
-from app.reviews.repository import (
-    create_review,
-    get_review,
-    transition_review,
-    update_review_supervisor_report,
-)
-from app.reviews.schemas import CreateReviewIn, ReopenIn, ReviewDetailOut, SharedReviewOut
-from app.reviews.service import (
-    find_active_review_for_asset,
-    find_latest_review_for_asset,
-    get_review_detail,
-    list_raised_reviews_for_worker,
-    list_reviews,
-    list_shared_reviews_for_worker,
-    list_zone_reviews_for_worker,
-)
-from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
 from app.reviews.comments_service import (
     ReviewCommentIn,
     ReviewCommentOut,
     create_review_comment,
     list_review_comments,
 )
-from app.auth.routes import get_current_actor
-from app.auth.schemas import ActorMeOut
 from app.reviews.concerns import normalize_concern_type
-from shared.python.schemas import Assessment, ManualAssessmentIn, Review
+from app.reviews.repository import (
+    create_review,
+    get_review,
+    transition_review,
+    update_review_supervisor_report,
+)
+from app.reviews.schemas import (
+    CreateReviewIn,
+    ReopenIn,
+    ReviewDetailOut,
+    SharedReviewOut,
+)
+from app.reviews.service import (
+    find_active_review_for_asset,
+    find_latest_review_for_asset,
+    get_review_detail,
+    is_seeded_review,
+    list_raised_reviews_for_worker,
+    list_reviews,
+    list_shared_reviews_for_worker,
+    list_zone_reviews_for_worker,
+)
+from app.reviews.state_machine import IllegalTransitionError, ReviewEvent
 
 router = APIRouter(prefix="/reviews", tags=["reviews"])
 
@@ -433,6 +439,14 @@ async def reopen_review(
     review = await get_review(session, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
+    if await is_seeded_review(session, review_id):
+        # A mock/demo review is not real work — reopening it would drive it
+        # through the live pipeline and glue real state onto a fabricated
+        # row that the seeded-mode display filter then hides. See PR #17.
+        raise HTTPException(
+            status_code=409,
+            detail="This review is part of the demonstration corpus and cannot be reopened.",
+        )
     try:
         await transition_review(
             session,

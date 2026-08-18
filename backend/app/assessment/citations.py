@@ -16,8 +16,9 @@ persisting a claim the evidence does not back.
 from __future__ import annotations
 
 import re
+from collections.abc import Iterable
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any
 
 # Citation shapes that appear in this corpus. Deliberately narrow: a false
 # positive here would strip legitimate prose.

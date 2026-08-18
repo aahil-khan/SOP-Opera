@@ -741,3 +741,131 @@ export function acknowledgeHandoverItem(
 export function acceptHandover(handoverId: string): Promise<Handover> {
   return request<Handover>(`/handover/${handoverId}/accept`, { method: "POST" });
 }
+
+// --- W1 · Emergency Response Orchestrator ------------------------------------
+
+export interface ResponsePage {
+  id: string;
+  action_id: string;
+  role: string;
+  zone: string;
+  channel: string;
+  escalation_order: number;
+  status: string;
+  dispatched_at: string;
+  acknowledged_at?: string | null;
+  acknowledged_by?: string | null;
+  escalated_from_id?: string | null;
+  simulated: boolean;
+}
+
+export interface ResponseEnvelope {
+  tier: number;
+  reversible: boolean;
+  blast_radius: string;
+  commanded_state?: string | null;
+  reversal?: string;
+  /** Every clause and whether it held — drives the envelope explainer. */
+  clauses: Record<string, boolean>;
+  allowed: boolean;
+  refusal_reason?: string | null;
+}
+
+export interface ResponseAction {
+  id: string;
+  review_id: string;
+  asset_id?: string | null;
+  asset_name?: string | null;
+  tier: number;
+  action_kind: string;
+  label: string;
+  status: string;
+  device_id?: string | null;
+  device_label?: string | null;
+  device_zone?: string | null;
+  device_kind?: string | null;
+  device_state?: string | null;
+  envelope: ResponseEnvelope;
+  refusal_reason?: string | null;
+  actor: string;
+  armed_at?: string | null;
+  /** When an armed action fires. The gap to now() is the abort window. */
+  execute_after?: string | null;
+  executed_at?: string | null;
+  aborted_at?: string | null;
+  revoked_at?: string | null;
+  revoked_by?: string | null;
+  revoke_reason?: string | null;
+  created_at: string;
+  pages: ResponsePage[];
+  simulated: boolean;
+}
+
+export interface ResponseDevice {
+  id: string;
+  asset_id?: string | null;
+  zone: string;
+  kind: string;
+  label: string;
+  state: string;
+  default_state: string;
+  fail_safe_state: string;
+  controllable: boolean;
+  simulated: boolean;
+}
+
+export interface ResponseConfig {
+  auto_enabled: boolean;
+  arm_window_seconds: number;
+  page_ack_timeout_seconds: number;
+  dispatcher: Record<string, unknown>;
+}
+
+export function fetchActiveResponseActions(): Promise<ResponseAction[]> {
+  return request<ResponseAction[]>("/response/active");
+}
+
+export function fetchResponseDevices(): Promise<ResponseDevice[]> {
+  return request<ResponseDevice[]>("/response/devices");
+}
+
+export function fetchReviewResponseActions(
+  reviewId: string,
+): Promise<ResponseAction[]> {
+  return request<ResponseAction[]>(`/response/reviews/${reviewId}/actions`);
+}
+
+export function abortResponseAction(actionId: string): Promise<ResponseAction> {
+  return request<ResponseAction>(`/response/actions/${actionId}/abort`, {
+    method: "POST",
+  });
+}
+
+export function revokeResponseAction(
+  actionId: string,
+  reason?: string | null,
+): Promise<ResponseAction> {
+  return request<ResponseAction>(`/response/actions/${actionId}/revoke`, {
+    method: "POST",
+    body: JSON.stringify({ reason: reason ?? null }),
+  });
+}
+
+export function acknowledgeResponsePage(pageId: string): Promise<ResponsePage> {
+  return request<ResponsePage>(`/response/pages/${pageId}/ack`, {
+    method: "POST",
+  });
+}
+
+export function fetchResponseConfig(): Promise<ResponseConfig> {
+  return request<ResponseConfig>("/response/config");
+}
+
+export function putResponseConfig(
+  autoEnabled: boolean,
+): Promise<ResponseConfig> {
+  return request<ResponseConfig>("/response/config", {
+    method: "PUT",
+    body: JSON.stringify({ auto_enabled: autoEnabled }),
+  });
+}

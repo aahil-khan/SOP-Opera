@@ -5,8 +5,12 @@ from __future__ import annotations
 from typing import Literal
 
 from pydantic import BaseModel, Field
-
-from shared.python.schemas import RecommendationIn, RetrievedReference, ReasoningFactor, RiskLevel
+from shared.python.schemas import (
+    ReasoningFactor,
+    RecommendationIn,
+    RetrievedReference,
+    RiskLevel,
+)
 
 
 class AssessmentResult(BaseModel):

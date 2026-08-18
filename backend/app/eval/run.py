@@ -5,7 +5,7 @@ from __future__ import annotations
 import json
 import sys
 
-from app.eval.metrics import run_evaluation, write_report
+from app.eval.metrics import write_report
 
 
 def main() -> int:
@@ -27,7 +27,7 @@ def main() -> int:
         ),
     }
     print(json.dumps(summary, indent=2))
-    print(f"\nReport written to docs/eval-report.md", file=sys.stderr)
+    print("\nReport written to docs/eval-report.md", file=sys.stderr)
     return 0
 
 

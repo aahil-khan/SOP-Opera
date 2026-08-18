@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     )
 
     database_url: str = "postgresql+asyncpg://sop:sop@localhost:5433/sop_opera"
+    # Standalone corpus DB used by scripts/seed_history.py (the full audit-chain-
+    # valid year-long build) — not read by the running app. Mock data shown via
+    # the in-app "seeded mode" toggle lives tagged (reviews.is_seeded) in the
+    # primary database instead; see db/session.py and scripts/quick_mock_seed.py.
+    history_database_url: str = "postgresql+asyncpg://sop:sop@localhost:5433/sop_opera_history"
     cors_origins: str = "http://localhost:3000,http://localhost:3001"
     # Allow Next.js dev fallback ports (and 127.0.0.1) without editing CORS_ORIGINS each time.
     cors_localhost_regex: str = r"https?://(localhost|127\.0\.0\.1)(:\d+)?"
@@ -116,6 +121,20 @@ class Settings(BaseSettings):
     ambient_status_every_n_ticks: int = 1
     # Soft telemetry ring size per asset (hydrates UI charts on open)
     ambient_telemetry_keep: int = 40
+
+    # Emergency Response Orchestrator (W1).
+    # `response_auto_enabled` is the master arm switch. Disarmed, actions are
+    # still evaluated and shown — the reasoning stays visible with nothing
+    # executing, which is also the safe mode for rehearsal.
+    response_auto_enabled: bool = True
+    # How long an armed action counts down before it executes. This is the
+    # supervisor's visible abort window, so it is deliberately long enough to
+    # read a rail row and react, and short enough to still be a response.
+    response_arm_window_seconds: int = 10
+    # A page with no acknowledgement inside this window escalates to the next
+    # contact in escalation_order.
+    response_page_ack_timeout_seconds: int = 120
+    response_tick_seconds: float = 2.0
 
     @property
     def cors_origin_list(self) -> list[str]:

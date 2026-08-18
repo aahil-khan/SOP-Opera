@@ -16,7 +16,11 @@ from typing import Any
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
+import logging
+
 from app.risk.policy import dimensions_for
+
+logger = logging.getLogger(__name__)
 
 #: Presentation ordering only — the verdict itself is `risk/policy.classify`.
 _RISK_ORDER: dict[str, int] = {"blocking": 0, "elevated": 1, "nominal": 2}
@@ -24,10 +28,13 @@ _RISK_ORDER: dict[str, int] = {"blocking": 0, "elevated": 1, "nominal": 2}
 #: Item types, most urgent kind first, used as the tiebreak within a risk level.
 _TYPE_ORDER: dict[str, int] = {
     "open_review": 0,
-    "decision_condition": 1,
-    "active_fact": 2,
-    "open_task": 3,
-    "note": 4,
+    # Plant the system is actively holding in a protective state ranks just
+    # under the review itself — it is live equipment state, not a note.
+    "response_action": 1,
+    "decision_condition": 2,
+    "active_fact": 3,
+    "open_task": 4,
+    "note": 5,
 }
 
 
@@ -48,13 +55,22 @@ async def compose_carry_forward(
     Returns plain dicts rather than rows so the caller can insert them, and so
     the rules stay testable without a handover row existing.
     """
+    from app.db.session import get_seeded_mode
+
+    # Same flag Reviews/Reports respect (GET/POST /demo/seeded-mode): off shows
+    # only real rows, on shows real + mock together. Handover previously had no
+    # filter at all here, so it kept showing mock carry-forward items even with
+    # seeded mode off — inconsistent with every other page reading this flag.
+    seeded_mode = get_seeded_mode()
+
     since = datetime.now(timezone.utc) - timedelta(hours=window_hours)
     items: list[dict[str, Any]] = []
 
-    items.extend(await _open_reviews(session))
-    items.extend(await _active_facts(session, since=since))
-    items.extend(await _open_tasks(session))
-    items.extend(await _decision_conditions(session, since=since))
+    items.extend(await _open_reviews(session, seeded_mode=seeded_mode))
+    items.extend(await _active_facts(session, since=since, seeded_mode=seeded_mode))
+    items.extend(await _open_tasks(session, seeded_mode=seeded_mode))
+    items.extend(await _decision_conditions(session, since=since, seeded_mode=seeded_mode))
+    items.extend(await _active_response_actions(session, seeded_mode=seeded_mode))
 
     items.sort(key=_rank)
     for position, item in enumerate(items):
@@ -62,7 +78,9 @@ async def compose_carry_forward(
     return items
 
 
-async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
+async def _open_reviews(
+    session: AsyncSession, *, seeded_mode: bool
+) -> list[dict[str, Any]]:
     """
     Every review still in flight, with the risk of its latest complete assessment.
 
@@ -84,9 +102,11 @@ async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
                 LIMIT 1
             ) am ON true
             WHERE r.state <> 'closed'
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY r.created_at DESC
             """
-        )
+        ),
+        {"seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
@@ -114,8 +134,79 @@ async def _open_reviews(session: AsyncSession) -> list[dict[str, Any]]:
     return items
 
 
+async def _active_response_actions(
+    session: AsyncSession, *, seeded_mode: bool
+) -> list[dict[str, Any]]:
+    """
+    Automatic actions still in effect at the shift boundary (W1).
+
+    A fan the system started and a gate it shut are plant state the incoming
+    operator inherits, and nothing else in the carry-forward list would tell
+    them. These always require acknowledgement: the whole point of the handover
+    is that someone knowingly takes custody of them, and leaving that
+    unacknowledged is exactly what `unacknowledged_handover` exists to detect.
+
+    Best-effort — a database without the response tables must not stop a shift
+    handover from being composed.
+    """
+    try:
+        result = await session.execute(
+            text(
+                """
+                SELECT ra.id, ra.review_id, ra.asset_id, ra.action_kind, ra.tier,
+                       ra.executed_at, a.name AS asset_name,
+                       d.label AS device_label, d.state AS device_state
+                FROM response_actions ra
+                JOIN reviews r ON r.id = ra.review_id
+                LEFT JOIN assets a ON a.id = ra.asset_id
+                LEFT JOIN response_devices d ON d.id = ra.device_id
+                WHERE ra.status = 'active' AND ra.tier > 0
+                  AND (:seeded_mode OR NOT r.is_seeded)
+                ORDER BY ra.tier DESC, ra.executed_at DESC
+                """
+            ),
+            {"seeded_mode": seeded_mode},
+        )
+    except Exception:  # noqa: BLE001
+        logger.warning("response actions unavailable for handover composition")
+        return []
+
+    from app.response.envelope import ACTION_REGISTRY
+
+    items: list[dict[str, Any]] = []
+    for row in result.fetchall():
+        m = row._mapping
+        spec = ACTION_REGISTRY.get(str(m["action_kind"]))
+        label = spec.label if spec else str(m["action_kind"])
+        asset_name = m["asset_name"] or "the plant"
+        state = (
+            f" ({m['device_label']} is {m['device_state']})"
+            if m["device_label"]
+            else ""
+        )
+        items.append(
+            {
+                "item_type": "response_action",
+                "review_id": m["review_id"],
+                "asset_id": m["asset_id"],
+                "asset_name": m["asset_name"],
+                "task_id": None,
+                "title": f"{asset_name} — {label} still in effect",
+                "detail": (
+                    f"The system applied this automatically and it has not been "
+                    f"revoked{state}. It stays in effect until someone undoes it."
+                ),
+                "risk_level": "elevated" if m["tier"] == 1 else "blocking",
+                "hazard_dimensions": [],
+                "requires_ack": True,
+                "source": "auto",
+            }
+        )
+    return items
+
+
 async def _active_facts(
-    session: AsyncSession, *, since: datetime
+    session: AsyncSession, *, since: datetime, seeded_mode: bool
 ) -> list[dict[str, Any]]:
     """
     Derived facts still true at the end of the shift.
@@ -124,6 +215,10 @@ async def _active_facts(
     that fired and then cleared during the shift does not carry. Acknowledgement
     is required when the fact supplies a hazard dimension — that is `risk/policy`
     deciding what is dangerous, not this module.
+
+    `derived_facts` has no review_id and no is_seeded column of its own, so mock
+    rows are identified the same way scripts/quick_mock_seed.py's own cleanup
+    does: by provider='quick_mock' on the context_entries that produced them.
     """
     result = await session.execute(
         text(
@@ -133,10 +228,14 @@ async def _active_facts(
             FROM derived_facts d
             JOIN assets a ON a.id = d.asset_id
             WHERE d.computed_at >= :since
+              AND (:seeded_mode OR NOT (d.source_context_ids && (
+                  SELECT COALESCE(array_agg(id), '{}') FROM context_entries
+                  WHERE provider = 'quick_mock'
+              )))
             ORDER BY d.asset_id, d.fact_type, d.computed_at DESC
             """
         ),
-        {"since": since},
+        {"since": since, "seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
@@ -170,7 +269,9 @@ async def _active_facts(
     return items
 
 
-async def _open_tasks(session: AsyncSession) -> list[dict[str, Any]]:
+async def _open_tasks(
+    session: AsyncSession, *, seeded_mode: bool
+) -> list[dict[str, Any]]:
     """
     Follow-through work a decision spawned that nobody has completed.
 
@@ -187,9 +288,11 @@ async def _open_tasks(session: AsyncSession) -> list[dict[str, Any]]:
             JOIN assets a ON a.id = r.asset_id
             LEFT JOIN workers w ON w.id = t.assigned_worker_id
             WHERE t.status IN ('open', 'acknowledged')
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY t.created_at DESC
             """
-        )
+        ),
+        {"seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():
@@ -218,7 +321,7 @@ async def _open_tasks(session: AsyncSession) -> list[dict[str, Any]]:
 
 
 async def _decision_conditions(
-    session: AsyncSession, *, since: datetime
+    session: AsyncSession, *, since: datetime, seeded_mode: bool
 ) -> list[dict[str, Any]]:
     """
     Conditions attached to work approved during the shift.
@@ -240,10 +343,11 @@ async def _decision_conditions(
               AND d.submitted_at >= :since
               AND d.conditions IS NOT NULL
               AND btrim(d.conditions) <> ''
+              AND (:seeded_mode OR NOT r.is_seeded)
             ORDER BY d.submitted_at DESC
             """
         ),
-        {"since": since},
+        {"since": since, "seeded_mode": seeded_mode},
     )
     items: list[dict[str, Any]] = []
     for row in result.fetchall():

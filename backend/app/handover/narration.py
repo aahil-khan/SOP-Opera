@@ -121,6 +121,6 @@ async def narrate(
         if text:
             return text, "llm", provider, model
         logger.warning("handover narration returned empty content; using template")
-    except Exception:  # noqa: BLE001 - any provider failure degrades to template
+    except Exception:
         logger.warning("handover narration failed; using template", exc_info=True)
     return fallback, "fallback", provider, model

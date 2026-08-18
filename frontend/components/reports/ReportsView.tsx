@@ -31,6 +31,26 @@ function outcomeRisk(outcome: string | null): string {
   return "halted";
 }
 
+function SortIcon({ dir }: { dir: "asc" | "desc" }) {
+  return (
+    <svg
+      className={styles.sortIcon}
+      data-dir={dir}
+      width="12"
+      height="12"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M8 13.5 V2.5 M4.5 10 L8 13.5 L11.5 10" />
+    </svg>
+  );
+}
+
 function SearchIcon() {
   return (
     <svg
@@ -77,12 +97,17 @@ export function ReportsView() {
   const [risks, setRisks] = useState<string[]>([]);
   const [query, setQuery] = useState("");
   const [includeSuperseded, setIncludeSuperseded] = useState(false);
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const load = useCallback(
     (showSpinner: boolean) => {
       let cancelled = false;
       if (showSpinner) setLoading(true);
-      void fetchReports({ include_superseded: includeSuperseded })
+      // Explicit limit: the endpoint defaults to 200, which silently truncated
+      // the register (and every headline stat computed from it) once the corpus
+      // grew past that. 1000 is the endpoint's own ceiling — see
+      // reports/routes.py::get_reports.
+      void fetchReports({ include_superseded: includeSuperseded, limit: 1000 })
         .then((data) => {
           if (cancelled) return;
           setReports(data);
@@ -118,7 +143,7 @@ export function ReportsView() {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    return reports.filter((r) => {
+    const filtered = reports.filter((r) => {
       if (outcome && r.outcome !== outcome) return false;
       if (risks.length > 0 && !risks.includes(r.risk_level ?? "")) return false;
       if (!q) return true;
@@ -129,7 +154,13 @@ export function ReportsView() {
         (r.decided_by_name ?? "").toLowerCase().includes(q)
       );
     });
-  }, [reports, outcome, risks, query]);
+    const sorted = [...filtered].sort((a, b) => {
+      const at = new Date(a.frozen_at ?? a.generated_at).getTime();
+      const bt = new Date(b.frozen_at ?? b.generated_at).getTime();
+      return sortDir === "desc" ? bt - at : at - bt;
+    });
+    return sorted;
+  }, [reports, outcome, risks, query, sortDir]);
 
   const kpis = useMemo(() => {
     const current = reports.filter((r) => r.is_current);
@@ -154,9 +185,9 @@ export function ReportsView() {
         <div className={styles.headerText}>
           <h1 className={styles.title}>Closure reports</h1>
           <p className={styles.subtitle}>
-            Closing a decided review freezes an immutable audit packet — the
-            decision of record, the evidence it rested on, the regulations
-            cited, and the hash-chained trail behind it.
+            Closing a review freezes a permanent packet: the decision, the
+            evidence it rested on, and the regulations cited, sealed under a
+            hash-chained audit trail.
           </p>
         </div>
         <div className={styles.headerActions}>
@@ -177,7 +208,13 @@ export function ReportsView() {
         </div>
         <div
           className={styles.hero}
-          data-tone={kpis.blockedPct >= 50 ? "bad" : "warn"}
+          data-tone={
+            kpis.blockedPct >= 50
+              ? "bad"
+              : kpis.blockedPct >= 20
+                ? "warn"
+                : "good"
+          }
         >
           <span className={styles.heroValue}>{kpis.blockedPct}%</span>
           <span className={styles.heroLabel}>Blocked share</span>
@@ -235,6 +272,8 @@ export function ReportsView() {
           ))}
         </div>
 
+        <div className={styles.toolbarDivider} aria-hidden="true" />
+
         <div className={styles.searchWrap}>
           <SearchIcon />
           <input
@@ -256,6 +295,20 @@ export function ReportsView() {
             </button>
           )}
         </div>
+
+        <button
+          type="button"
+          className={styles.sortBtn}
+          aria-label={
+            sortDir === "desc" ? "Sorted newest first" : "Sorted oldest first"
+          }
+          onClick={() =>
+            setSortDir((prev) => (prev === "desc" ? "asc" : "desc"))
+          }
+        >
+          Date
+          <SortIcon dir={sortDir} />
+        </button>
 
         <label className={styles.toggle}>
           <input

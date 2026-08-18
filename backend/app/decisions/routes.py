@@ -5,16 +5,16 @@ from __future__ import annotations
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from shared.python.schemas import Decision
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.auth.routes import get_current_actor_from_request
 from app.auth.schemas import ActorMeOut
 from app.core.config import get_settings
+from app.db.session import get_session
 from app.decisions.schemas import DecisionIn
 from app.decisions.service import DecisionError, submit_decision
-from app.db.session import get_session
 from app.reviews.repository import get_review
-from shared.python.schemas import Decision
 
 router = APIRouter(prefix="/reviews", tags=["decisions"])
 

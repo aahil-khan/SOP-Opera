@@ -1,0 +1,85 @@
+/*
+ * Compact read-out of what the system already did, shown above the decision
+ * controls. Same grammar as the Auto response sidebar: tier is a colour edge,
+ * state is one mono word, no badges.
+ */
+
+.block {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding: var(--space-3);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-md);
+  background: var(--surface-card);
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.title {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.none {
+  margin: 0;
+  font-size: var(--text-xs);
+  color: var(--text-muted);
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) 0 var(--space-1) var(--space-2);
+  border-left: 2px solid transparent;
+  font-size: var(--text-xs);
+}
+
+.row[data-tier="0"] {
+  border-left-color: var(--domain-response);
+}
+.row[data-tier="1"] {
+  border-left-color: var(--status-elevated);
+}
+.row[data-tier="2"] {
+  border-left-color: var(--status-blocking);
+}
+
+.label {
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.state {
+  font-family: var(--font-mono);
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+.declined {
+  margin: 0;
+  font-size: var(--text-2xs);
+  line-height: var(--leading-relaxed);
+  color: var(--text-muted);
+}
+
+/* Synthetic-data disclosure moved to the app-shell badge. */

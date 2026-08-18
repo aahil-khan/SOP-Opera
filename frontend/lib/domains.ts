@@ -7,13 +7,19 @@ export type DomainId =
   | "permits"
   | "people"
   | "evidence"
+  | "response"
   | "spatial";
 
+/**
+ * `response` sits next to `evidence` on purpose: the two faces read as a pair,
+ * what we knew and what we did about it.
+ */
 export const DOMAINS: DomainId[] = [
   "sensors",
   "permits",
   "people",
   "evidence",
+  "response",
   "spatial",
 ];
 
@@ -50,6 +56,12 @@ export const DOMAIN_META: Record<DomainId, DomainMeta> = {
     short: "Facts & refs",
     colorVar: "--domain-evidence",
   },
+  response: {
+    id: "response",
+    label: "Response",
+    short: "What the system did",
+    colorVar: "--domain-response",
+  },
   spatial: {
     id: "spatial",
     label: "Spatial",
@@ -85,6 +97,16 @@ export interface DomainScoreExtras {
   spatialPending?: boolean;
   /** Zone area owner when review detail is not loaded (nominal assets). */
   areaOwner?: AreaOwner | null;
+  /**
+   * Auto-response counts for this review.
+   *
+   * Passed in rather than read from the store: `liveStore` imports this module,
+   * so importing it back would close the cycle that `liveStore.ts:81` already
+   * works around. Same shape as `neighborCount` above.
+   */
+  responseLiveCount?: number;
+  responseRefusedCount?: number;
+  responseProtectCount?: number;
 }
 
 function clampScore(n: number): number {
@@ -235,6 +257,32 @@ export function computeDomainScore(
               : ["Awaiting retrieval"]),
         ].slice(0, 2),
         warn: facts.length > 0,
+        empty,
+      };
+    }
+    case "response": {
+      const live = extras.responseLiveCount ?? 0;
+      const refused = extras.responseRefusedCount ?? 0;
+      const protect = extras.responseProtectCount ?? 0;
+      // Refusals alone are not activity: a review where the system only
+      // declined things has done nothing to the plant and should read empty.
+      const empty = live === 0;
+      let score = 0;
+      if (!empty) {
+        score = 30 + Math.min(live, 8) * 7;
+        if (protect > 0) score = Math.max(score, 70 + protect * 5);
+      }
+      const facts: string[] = [];
+      if (protect > 0) facts.push(`${protect} made it safer`);
+      if (refused > 0) facts.push(`${refused} need a person`);
+      return {
+        domain,
+        score: clampScore(score),
+        headline: empty
+          ? "Nothing automatic yet"
+          : `${live} action${live === 1 ? "" : "s"} taken`,
+        facts: facts.slice(0, 2),
+        warn: protect > 0,
         empty,
       };
     }
