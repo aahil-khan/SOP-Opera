@@ -296,6 +296,20 @@ export function TourOverlay() {
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [anchorReady, setAnchorReady] = useState(false);
 
+  // Leaving the tour puts the desk back. Curtain Call's onEnter already clears
+  // the selection, but Finish/Skip/Esc bypass it, so the app was left sitting
+  // in the expanded Vessel A view the tour had opened (tour-defects.md 15).
+  // Watching `active` covers every exit path in one place. Deliberately does
+  // not touch demo data — the scenario the tour started stays on the twin so
+  // the case can be walked again after the tour ends.
+  const wasActiveRef = useRef(false);
+  useEffect(() => {
+    if (wasActiveRef.current && !active) {
+      useLiveStore.getState().selectAsset(null);
+    }
+    wasActiveRef.current = active;
+  }, [active]);
+
   const targetElRef = useRef<Element | null>(null);
   const scrollportRef = useRef<HTMLElement | null>(null);
   const enterRanForStep = useRef<number>(-1);
