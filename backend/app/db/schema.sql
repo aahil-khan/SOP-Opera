@@ -105,23 +105,6 @@ CREATE TABLE IF NOT EXISTS reviews (
 -- Dead table removed: tagging uses reviews.tagged_worker_ids.
 DROP TABLE IF EXISTS review_participants;
 
--- HITL backlog items created by decisions (and optionally supervisor actions).
-CREATE TABLE IF NOT EXISTS review_tasks (
-    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-    review_id UUID NOT NULL REFERENCES reviews(id),
-    decision_id UUID REFERENCES decisions(id),
-    assigned_worker_id UUID NOT NULL REFERENCES workers(id),
-    task_type TEXT NOT NULL DEFAULT 'follow_up', -- follow_up | unblock
-    title TEXT NOT NULL,
-    detail TEXT,
-    status TEXT NOT NULL DEFAULT 'open', -- open | acknowledged | done | cancelled
-    created_by TEXT NOT NULL,
-    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-    acknowledged_at TIMESTAMPTZ,
-    done_at TIMESTAMPTZ,
-    done_note TEXT
-);
-
 -- Chronological discussion thread per review.
 CREATE TABLE IF NOT EXISTS review_comments (
     id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
@@ -218,6 +201,27 @@ CREATE TABLE IF NOT EXISTS decisions (
     conditions TEXT,
     comments TEXT,
     submitted_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+-- HITL backlog items created by decisions (and optionally supervisor actions).
+-- Positioned after `decisions` (not next to `reviews`, where it conceptually
+-- belongs) because decision_id REFERENCES decisions(id) — schema.sql is applied
+-- as one atomic multi-statement execute (db/session.py:apply_schema), so a
+-- forward reference here fails the entire boot on a fresh database.
+CREATE TABLE IF NOT EXISTS review_tasks (
+    id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    review_id UUID NOT NULL REFERENCES reviews(id),
+    decision_id UUID REFERENCES decisions(id),
+    assigned_worker_id UUID NOT NULL REFERENCES workers(id),
+    task_type TEXT NOT NULL DEFAULT 'follow_up', -- follow_up | unblock
+    title TEXT NOT NULL,
+    detail TEXT,
+    status TEXT NOT NULL DEFAULT 'open', -- open | acknowledged | done | cancelled
+    created_by TEXT NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    acknowledged_at TIMESTAMPTZ,
+    done_at TIMESTAMPTZ,
+    done_note TEXT
 );
 
 CREATE TABLE IF NOT EXISTS evidence (
@@ -324,6 +328,12 @@ ALTER TABLE reviews ADD COLUMN IF NOT EXISTS raised_by_worker_id UUID REFERENCES
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS tagged_worker_ids UUID[] NOT NULL DEFAULT '{}';
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_description TEXT;
 ALTER TABLE reviews ADD COLUMN IF NOT EXISTS report_concern_type TEXT;
+-- Mock/demonstration data (scripts/quick_mock_seed.py), tagged so it can live
+-- alongside real reviews in the same database and be shown/hidden by the
+-- "seeded mode" toggle (GET/POST /demo/seeded-mode) rather than requiring a
+-- second database connection. Everything else (decisions, assessments,
+-- reports, tasks) inherits visibility by joining back to reviews.id.
+ALTER TABLE reviews ADD COLUMN IF NOT EXISTS is_seeded BOOLEAN NOT NULL DEFAULT FALSE;
 
 -- Escalation state removed; map leftover rows to pending_decision.
 UPDATE reviews SET state = 'pending_decision' WHERE state = 'escalated';

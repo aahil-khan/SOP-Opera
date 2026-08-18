@@ -286,11 +286,14 @@ async def load_assets(
 
 
 async def count_open_reviews(session: AsyncSession) -> int:
+    # `AND NOT is_seeded` is defense-in-depth: mock reviews are always written
+    # closed, so this is a no-op today, but it stops a stray non-closed mock
+    # row from suppressing real random-engine activity for that asset.
     result = await session.execute(
         text(
             """
             SELECT COUNT(*) AS n FROM reviews
-            WHERE state NOT IN ('closed')
+            WHERE state NOT IN ('closed') AND NOT is_seeded
             """
         )
     )
@@ -303,7 +306,7 @@ async def list_assets_with_open_reviews(session: AsyncSession) -> list[str]:
         text(
             """
             SELECT DISTINCT asset_id::text AS asset_id FROM reviews
-            WHERE state NOT IN ('closed')
+            WHERE state NOT IN ('closed') AND NOT is_seeded
             """
         )
     )

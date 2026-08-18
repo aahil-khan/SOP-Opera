@@ -57,6 +57,21 @@ async def get_ambient_status() -> dict:
     return ambient_loop.status()
 
 
+@router.get("/seeded-mode")
+async def get_seeded_mode_route() -> dict:
+    """Which database GET/POST requests currently read/write — see db/session.py."""
+    from app.db.session import get_seeded_mode
+
+    return {"enabled": get_seeded_mode()}
+
+
+@router.post("/seeded-mode/toggle")
+async def toggle_seeded_mode_route() -> dict:
+    from app.db.session import get_seeded_mode, set_seeded_mode
+
+    return {"enabled": set_seeded_mode(not get_seeded_mode())}
+
+
 @router.get("/telemetry/recent")
 async def get_recent_telemetry(
     per_asset: int = 30,

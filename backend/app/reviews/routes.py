@@ -40,6 +40,7 @@ from app.reviews.service import (
     find_active_review_for_asset,
     find_latest_review_for_asset,
     get_review_detail,
+    is_seeded_review,
     list_raised_reviews_for_worker,
     list_reviews,
     list_shared_reviews_for_worker,
@@ -438,6 +439,14 @@ async def reopen_review(
     review = await get_review(session, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="Review not found")
+    if await is_seeded_review(session, review_id):
+        # A mock/demo review is not real work — reopening it would drive it
+        # through the live pipeline and glue real state onto a fabricated
+        # row that the seeded-mode display filter then hides. See PR #17.
+        raise HTTPException(
+            status_code=409,
+            detail="This review is part of the demonstration corpus and cannot be reopened.",
+        )
     try:
         await transition_review(
             session,

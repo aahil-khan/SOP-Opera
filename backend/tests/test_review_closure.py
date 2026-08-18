@@ -7,6 +7,7 @@ from uuid import UUID
 import pytest
 from httpx import AsyncClient
 
+from app.reports.packet import PACKET_VERSION
 from tests.test_decisions import _bring_to_pending_decision, client  # noqa: F401
 
 VESSEL_A = UUID("11111111-1111-1111-1111-111111111111")
@@ -67,7 +68,13 @@ async def test_close_generates_one_report_and_increments_seq(client: AsyncClient
 
     v1_id = body[0]["id"]
     v1 = (await client.get(f"/reports/{v1_id}")).json()
-    assert v1["packet_version"] == 2
+    # Compare against the constant, not a literal: this asserted `== 2` and went
+    # red when W1 bumped PACKET_VERSION to 3, which is a stale test rather than a
+    # real defect. test_report_packet.py already uses the constant for the same
+    # reason. A freshly generated packet is always written at the current version;
+    # the literal `1` in test_report_exports.py is deliberate, since that one
+    # exercises legacy hydration.
+    assert v1["packet_version"] == PACKET_VERSION
     content = v1["content"]
     assert content["header"]["title"]
     assert content["decision"]["outcome"] == "blocked"

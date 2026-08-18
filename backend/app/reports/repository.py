@@ -170,16 +170,21 @@ async def select_reports(
     not of the row. Asset scope joins through `reviews` (reports have no
     asset_id column).
     """
+    from app.db.session import get_seeded_mode
+
+    # Always join reviews now — the seeded-mode filter below needs it
+    # regardless of whether an asset_id filter was requested.
+    join = "JOIN reviews rev ON rev.id = r.review_id"
     clauses: list[str] = []
     params: dict[str, Any] = {}
-    join = ""
     if review_id is not None:
         clauses.append("r.review_id = CAST(:review_id AS uuid)")
         params["review_id"] = str(review_id)
     if asset_id is not None:
-        join = "JOIN reviews rev ON rev.id = r.review_id"
         clauses.append("rev.asset_id = CAST(:asset_id AS uuid)")
         params["asset_id"] = str(asset_id)
+    if not get_seeded_mode():
+        clauses.append("rev.is_seeded = FALSE")
 
     where = ("WHERE " + " AND ".join(clauses)) if clauses else ""
     # `is_current` filters in SQL via the window; outcome/risk read JSONB and are
@@ -197,7 +202,7 @@ async def select_reports(
                 {where}
             ) ranked
             {current_clause}
-            ORDER BY generated_at DESC
+            ORDER BY COALESCE(frozen_at, generated_at) DESC
             """
         ),
         params,
