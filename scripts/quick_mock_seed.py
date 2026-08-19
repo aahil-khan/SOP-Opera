@@ -598,7 +598,13 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
     )
 
     citations = [
-        {"source": "regulations", "id": str(r["id"]), "code": r["code"], "title": r["title"], "snippet": r["body_summary"][:180], "cited_in_summary": True}
+        # cited_in_summary=False, not True. The real builder derives this by
+        # extracting citation tokens from the prose and intersecting them with the
+        # supported set (reports/packet.py:959-962). This seeder's summary is the
+        # template "{asset} is {risk} due to {headline}." — it contains no citation
+        # token at all, so claiming the clause was cited in the summary put a badge
+        # on every reference for something that never happened.
+        {"source": "regulations", "id": str(r["id"]), "code": r["code"], "title": r["title"], "snippet": r["body_summary"][:180], "cited_in_summary": False}
         for r in regulations if r["id"] in cited_reg_ids
     ]
     await session.execute(
@@ -606,8 +612,14 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             """
             INSERT INTO assessment_metadata (assessment_id, provider, model, prompt_version, confidence,
                 retrieved_references, retrieval_mode, retrieval_quality, reasoning_factors)
+            -- retrieval_quality is NULL, not 'strong'. The deterministic path is
+            -- taken *because* the quality gate failed, so 'deterministic' + 'strong'
+            -- is a pair the real pipeline never emits (a live run at gate 0.59 gave
+            -- deterministic + weak). NULL says "not measured", which is the truth
+            -- here, and keeps 329 mock rows out of the retrieval-quality figure on
+            -- AI Ops.
             VALUES (:aid, 'mock', 'deterministic', 'quick-mock-v1', :confidence,
-                CAST(:refs AS jsonb), 'deterministic', 'strong', CAST(:factors AS jsonb))
+                CAST(:refs AS jsonb), 'deterministic', NULL, CAST(:factors AS jsonb))
             """
         ),
         {
@@ -687,8 +699,15 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "created_at": _iso(assessment_created),
             "provider": "mock",
             "model": "deterministic",
+            # retrieval_mode is accurate: no vector search happened here. But
+            # "deterministic" + "strong" is a pair the real pipeline never
+            # produces — the deterministic path is taken *because* the quality
+            # gate failed, so a real deterministic row reads "weak" (verified
+            # against a live run at gate 0.59). Leaving quality null says "not
+            # measured", which is the truth, and keeps this row out of the
+            # retrieval-quality average on AI Ops.
             "retrieval_mode": "deterministic",
-            "retrieval_quality": "strong",
+            "retrieval_quality": None,
         },
         "reasoning_factors": reasoning_factors,
         "recommendations": [{"recommendation_id": str(rec_id), "text": rec_text, "rationale": reasoning_factors[0]["detail"], "disposition": "accepted"}],

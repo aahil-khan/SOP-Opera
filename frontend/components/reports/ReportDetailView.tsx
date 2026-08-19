@@ -747,13 +747,31 @@ export function ReportDetailView({ reportId }: { reportId: string }) {
               anchor="audit-chain"
               expanded={tourVault}
             >
+              {/* The chip says "plant chain" because that is what it verifies.
+                  audit/service.py:109-111 is explicit that verification always
+                  runs over the FULL chain — a subset cannot be verified in
+                  isolation, since each hash depends on entries that may belong
+                  to other entities. So chain_entries_checked is a plant-wide
+                  count, while this panel's own count is the packet's. Labelled
+                  "Chain intact · N entries" it read as an attestation of *this
+                  packet*, which put a green tick directly above "No audit
+                  entries were frozen" on every seeded report — and quietly
+                  overstated real ones too (a packet with 4 entries showed 36).
+                  When the packet froze nothing the chip also drops to neutral,
+                  so a green tick never sits over an empty table. */}
               <span
                 className={styles.chainChip}
-                data-intact={integrity.chain_intact}
+                data-chain={
+                  !integrity.chain_intact
+                    ? "broken"
+                    : auditTrail.length === 0
+                      ? "empty"
+                      : "intact"
+                }
               >
-                {integrity.chain_intact
-                  ? `Chain intact · ${integrity.chain_entries_checked} entries`
-                  : "Chain broken"}
+                {!integrity.chain_intact
+                  ? "Plant chain broken"
+                  : `Plant chain verified · ${integrity.chain_entries_checked} entries`}
               </span>
               {auditTrail.length > 0 ? (
                 <div className={styles.tableScroll}>
