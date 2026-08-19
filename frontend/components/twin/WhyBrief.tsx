@@ -38,6 +38,8 @@ interface WhyItem {
   id: string;
   title: string;
   body: string | null;
+  /** The SOP this fact departs from. Null where the corpus seeds none. */
+  deviation: ReasoningFactor["deviation"] | null;
 }
 
 function itemsFrom(
@@ -56,6 +58,7 @@ function itemsFrom(
         body: f.detail?.trim()
           ? humanizeDetail(f.detail.trim(), title)
           : null,
+        deviation: f.deviation ?? null,
       };
     });
   }
@@ -75,6 +78,11 @@ function itemsFrom(
       id: String(f.fact_type),
       title,
       body,
+      // This branch renders raw derived facts when no assessment exists yet.
+      // The SOP link is resolved during retrieval, so there is nothing to show
+      // here — and guessing one from fact_type alone would be a second mapping
+      // that could drift from the retriever's.
+      deviation: null,
     };
   });
 }
@@ -226,6 +234,21 @@ export function WhyBrief({ view, assessment }: WhyBriefProps) {
               <strong className={styles.detailTitle}>{item.title}</strong>
               {item.body ? (
                 <span className={styles.detailBody}> — {item.body}</span>
+              ) : null}
+              {item.deviation ? (
+                <span
+                  className={styles.deviation}
+                  title={item.deviation.requirement || undefined}
+                >
+                  Deviates from {item.deviation.sop_title}
+                  {item.deviation.clause ? ` ${item.deviation.clause}` : ""}
+                  {item.deviation.basis === "same_hazard" ? (
+                    <span className={styles.deviationBasis}>
+                      {" "}
+                      · governs this hazard at its elevated level
+                    </span>
+                  ) : null}
+                </span>
               ) : null}
             </li>
           ))}
