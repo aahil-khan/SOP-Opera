@@ -139,7 +139,7 @@
 
 /* Matches ReviewSidebar / OverviewPanel green "new" pip. */
 .freshDot {
-  fill: var(--accent-ok, #2f9e6a);
+  fill: var(--accent-ok);
   stroke: var(--surface-panel);
   stroke-width: 1.75;
   pointer-events: none;
@@ -147,7 +147,7 @@
 
 .freshRing {
   fill: none;
-  stroke: var(--accent-ok, #2f9e6a);
+  stroke: var(--accent-ok);
   stroke-width: 1.5;
   pointer-events: none;
   /* Base opacity 0 so the ring does not stick after the ping ends. */

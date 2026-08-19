@@ -137,7 +137,7 @@
 .resizeHandle:hover,
 .resizeHandle:focus-visible,
 .sidebar[data-resizing="true"] .resizeHandle {
-  background: color-mix(in srgb, var(--accent-selection, #2f9e6a) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-selection) 28%, transparent);
 }
 
 .resizeHandle:focus-visible {
@@ -888,7 +888,7 @@
   height: 0.35rem;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--accent-ok, #2f9e6a);
+  background: var(--accent-ok);
 }
 
 .itemMeta {

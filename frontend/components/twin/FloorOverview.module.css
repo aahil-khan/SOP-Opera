@@ -203,7 +203,7 @@
   height: 0.4rem;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--accent-ok, #2f9e6a);
+  background: var(--accent-ok);
 }
 
 .livePip {
@@ -211,8 +211,8 @@
   height: 0.4rem;
   border-radius: 50%;
   flex-shrink: 0;
-  background: var(--accent-ok, #2f9e6a);
-  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok, #2f9e6a) 28%, transparent);
+  background: var(--accent-ok);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok) 28%, transparent);
 }
 
 .metaRight {
@@ -284,7 +284,7 @@
 
 @keyframes live-pulse {
   0% {
-    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ok, #2f9e6a) 50%, transparent);
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ok) 50%, transparent);
   }
   70% {
     box-shadow: 0 0 0 5px transparent;
@@ -326,7 +326,7 @@
   }
 
   .livePip {
-    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok, #2f9e6a) 28%, transparent);
+    box-shadow: 0 0 0 2px color-mix(in srgb, var(--accent-ok) 28%, transparent);
   }
 }
 

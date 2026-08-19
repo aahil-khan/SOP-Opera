@@ -39,7 +39,7 @@
 .resizeHandle:hover,
 .resizeHandle:focus-visible,
 .drawer[data-resizing="true"] .resizeHandle {
-  background: color-mix(in srgb, var(--accent-selection, #2f9e6a) 28%, transparent);
+  background: color-mix(in srgb, var(--accent-selection) 28%, transparent);
 }
 
 .resizeHandle:focus-visible {
