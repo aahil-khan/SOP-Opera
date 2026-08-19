@@ -24,6 +24,7 @@ export function TopNav() {
   const onReports = pathname.startsWith("/reports");
   const onAiOps = pathname.startsWith("/ai-ops");
   const onEval = pathname.startsWith("/eval");
+  const onHistory = pathname.startsWith("/history");
   const onHandover = pathname.startsWith("/handover");
   const selectAsset = useLiveStore((s) => s.selectAsset);
   const handoverId = useLiveStore((s) => {
@@ -94,6 +95,9 @@ export function TopNav() {
           </Link>
           <Link href="/eval" className={styles.tab} data-active={onEval}>
             Eval
+          </Link>
+          <Link href="/history" className={styles.tab} data-active={onHistory}>
+            History
           </Link>
           <Link href="/ai-ops" className={styles.tab} data-active={onAiOps}>
             AI Ops

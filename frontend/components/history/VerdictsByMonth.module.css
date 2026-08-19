@@ -1,0 +1,145 @@
+/* Stacked monthly verdicts. Colours come only from the reserved status tokens —
+   no literal hex, so the chart holds in all six themes. */
+
+.figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-4);
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  font-size: var(--text-xs);
+  color: var(--text-secondary);
+}
+
+.legendCount {
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+}
+
+.swatch {
+  width: 10px;
+  height: 10px;
+  border-radius: var(--radius-sm);
+  flex: none;
+}
+
+.plot {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+  height: 210px;
+  padding-top: var(--space-4);
+}
+
+.column {
+  position: relative;
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  height: 100%;
+}
+
+.stack {
+  /* Column-reverse so the first band sits on the baseline. */
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+  width: 100%;
+  max-width: 34px;
+  height: 100%;
+  /* 2px surface gap between segments, per the mark spec. */
+  gap: 2px;
+  border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+  overflow: hidden;
+}
+
+.segment {
+  width: 100%;
+  min-height: 2px;
+  flex: none;
+  transition: filter var(--duration-fast) var(--ease-out);
+}
+
+.column:hover .segment {
+  filter: brightness(1.15);
+}
+
+.nominal {
+  background: var(--status-nominal);
+}
+
+.elevated {
+  background: var(--status-elevated);
+}
+
+.blocking {
+  background: var(--status-blocking);
+}
+
+.tick {
+  font-size: var(--text-2xs);
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tooltip {
+  position: absolute;
+  bottom: calc(100% + var(--space-2));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: var(--space-2) var(--space-3);
+  background: var(--surface-overlay);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-md);
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.tooltip strong {
+  color: var(--text-primary);
+  font-family: var(--font-mono);
+}
+
+.caption {
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+.empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .segment {
+    transition: none;
+  }
+}
+
+.tickYear {
+  margin-left: 3px;
+  color: var(--text-secondary);
+}
