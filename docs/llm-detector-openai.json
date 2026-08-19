@@ -1,0 +1,44 @@
+{
+  "n": 150,
+  "full_case_count": 593,
+  "seed": 20260825,
+  "provider": "openai_compatible",
+  "model": "gpt-4o-mini",
+  "openai": "NOT RUN \u2014 no API key",
+  "disagreement_rate": 0.013333333333333334,
+  "subsample_positive_rate": 0.66,
+  "runs": [
+    {
+      "alarm_rate": 0.9866666666666667,
+      "recall": 1.0,
+      "precision": 0.668918918918919,
+      "fn": 0,
+      "fp": 49,
+      "tp": 99,
+      "tn": 2,
+      "unparseable": 0,
+      "latency_ms": {
+        "count": 150,
+        "mean_ms": 1011.01,
+        "p50_ms": 973.34,
+        "p95_ms": 1304.53
+      }
+    },
+    {
+      "alarm_rate": 0.9733333333333334,
+      "recall": 1.0,
+      "precision": 0.678082191780822,
+      "fn": 0,
+      "fp": 47,
+      "tp": 99,
+      "tn": 4,
+      "unparseable": 0,
+      "latency_ms": {
+        "count": 150,
+        "mean_ms": 1054.7,
+        "p50_ms": 984.74,
+        "p95_ms": 1368.73
+      }
+    }
+  ]
+}
