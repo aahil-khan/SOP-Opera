@@ -789,10 +789,18 @@
   text-transform: uppercase;
 }
 
-.chainChip[data-intact="false"] {
+.chainChip[data-chain="broken"] {
   border-color: color-mix(in srgb, var(--status-blocking) 40%, transparent);
   background: var(--status-blocking-muted);
   color: var(--status-blocking);
+}
+
+/* Nothing was recorded, so nothing is being attested. Deliberately neutral —
+   not green, which would read as a passed check over an empty set. */
+.chainChip[data-chain="empty"] {
+  border-color: var(--border-muted);
+  background: transparent;
+  color: var(--text-muted);
 }
 
 /* Loading ----------------------------------------------------------------- */
