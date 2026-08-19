@@ -393,11 +393,23 @@ async def _main() -> None:
         runs.append(await run_llm_detector(args.provider, cases))
 
     report = run_evaluation(all_cases)
-    openai_note = (
-        "**OpenAI baseline: NOT RUN — no API key available.** The harness takes "
-        "`--provider openai_compatible`; it needs only the key to produce the "
-        "hosted row. No hosted numbers are estimated in its place."
-    )
+    # The note has to follow what actually ran. It used to be hardcoded to
+    # "NOT RUN", which was honest while there was no key but became a false
+    # statement the moment a hosted run produced the very table it sits under.
+    if args.provider == "openai_compatible":
+        openai_note = (
+            "**OpenAI baseline: RUN — the rows above are the hosted model.** "
+            "Cross-check against the local-model run in "
+            "`docs/llm-detector-baseline.md`: both land in the same place, so "
+            "the finding is a property of asking an LLM to judge safety "
+            "directly, not an artefact of one model's size."
+        )
+    else:
+        openai_note = (
+            "**OpenAI baseline: NOT RUN in this invocation.** The harness takes "
+            "`--provider openai_compatible`; see `docs/llm-detector-openai.md` "
+            "for the hosted row. No hosted numbers are estimated in its place."
+        )
     md = build_markdown(
         runs,
         compound=report.compound,
@@ -418,7 +430,11 @@ async def _main() -> None:
                 "seed": SUBSAMPLE_SEED,
                 "provider": runs[0].provider,
                 "model": runs[0].model,
-                "openai": "NOT RUN — no API key",
+                "openai": (
+                    "RUN — see provider/model fields"
+                    if args.provider == "openai_compatible"
+                    else "NOT RUN in this invocation — see docs/llm-detector-openai.md"
+                ),
                 "disagreement_rate": disagreement_rate(runs),
                 "subsample_positive_rate": (positives / len(cases) if cases else 0.0),
                 "runs": [

@@ -96,7 +96,21 @@ class Settings(BaseSettings):
     embedding_model: str = "text-embedding-3-small"
     embedding_dim: int = 1536
     rag_top_k: int = 5
-    rag_score_threshold: float = 0.72
+    # Measured, not guessed — `python -m app.eval.rag_calibration` embeds the
+    # hero query and scores it against the whole seeded corpus:
+    #   openai_compatible (text-embedding-3-small), measured over
+    #     rag_vector_source_types (historical_incidents — the ONLY population the
+    #     gate ever sees): relevant 0.604 / distractor 0.435 -> 0.52.
+    #     Measuring over the whole corpus instead suggests 0.59, but its top rows
+    #     are SOPs that are never vector-searched; 0.59 rejects every incident and
+    #     the live pipeline drops to retrieval_mode=deterministic.
+    #   ollama (nomic-embed-text): relevant 0.66-0.77 / distractor 0.50 -> 0.62.
+    # The old 0.72 was inherited from the hash-embedding era, where every score
+    # is noise so the value never mattered. Against real OpenAI vectors it sits
+    # ABOVE the best possible relevant hit (0.676), so the gate could never pass
+    # and every retrieval silently fell through to deterministic SQL.
+    # Re-run rag_calibration after changing EMBEDDING_PROVIDER or the model.
+    rag_score_threshold: float = 0.52
     rag_timeout_ms: int = 3000
 
     # LangGraph / LangSmith

@@ -483,10 +483,17 @@ class BenchReport:
                 "**excludes** retrieval, DB persistence and time queued — so it is "
                 "not end-to-end assessment latency and should not be quoted as "
                 "\"time to a verdict on screen\".",
-                "- *Cost* is $0 for every provider here **by construction**: "
-                "`estimate_cost_usd()` prices OpenAI-compatible models only "
-                "(`agents/llm.py:149-154`). It is not evidence that inference is "
-                "free.",
+                (
+                    "- *Cost* is priced by `estimate_cost_usd()`, which covers "
+                    "OpenAI-compatible models only (`agents/llm.py:149-154`). A $0 "
+                    "row for `mock` or `ollama` means unpriced, not free — for "
+                    "`ollama` the real cost is the machine it runs on."
+                    if any(p.mean_cost_usd for p in measured)
+                    else "- *Cost* is $0 for every provider here **by "
+                    "construction**: `estimate_cost_usd()` prices "
+                    "OpenAI-compatible models only (`agents/llm.py:149-154`). It "
+                    "is not evidence that inference is free."
+                ),
                 "",
                 "`mock` makes no network call at all — its narration is a",
                 "deterministic template (`agents/llm.py` returns `None`), so its",
