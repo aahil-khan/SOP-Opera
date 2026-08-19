@@ -36,6 +36,9 @@ export interface HandoverLedgerProps {
   onRemove?: (itemId: string) => void;
   onSelectAsset?: (assetId: string) => void;
   busyItemId?: string | null;
+  /** Clears every still-pending required item in one call. */
+  onAcknowledgeAll?: () => void;
+  bulkBusy?: boolean;
 }
 
 export function HandoverLedger({
@@ -47,9 +50,12 @@ export function HandoverLedger({
   onRemove,
   onSelectAsset,
   busyItemId,
+  onAcknowledgeAll,
+  bulkBusy = false,
 }: HandoverLedgerProps) {
   const required = items.filter((i) => i.requires_ack);
   const awareness = items.filter((i) => !i.requires_ack);
+  const pendingRequired = required.filter((i) => i.ack_state === "pending");
 
   if (items.length === 0) {
     return (
@@ -67,10 +73,24 @@ export function HandoverLedger({
     <div className={compact ? styles.ledgerCompact : styles.ledger}>
       {required.length > 0 && (
         <section className={styles.group}>
-          <h2 className={styles.groupLabel}>
-            Must acknowledge
-            <span className={styles.count}>{required.length}</span>
-          </h2>
+          <div className={styles.groupHead}>
+            <h2 className={styles.groupLabel}>
+              Must acknowledge
+              <span className={styles.count}>{required.length}</span>
+            </h2>
+            {canAcknowledge && onAcknowledgeAll && pendingRequired.length > 1 && (
+              <button
+                type="button"
+                className={styles.linkAction}
+                onClick={onAcknowledgeAll}
+                disabled={bulkBusy}
+              >
+                {bulkBusy
+                  ? "Acknowledging…"
+                  : `Acknowledge all (${pendingRequired.length})`}
+              </button>
+            )}
+          </div>
           <ul className={styles.itemList}>
             {required.map((item) => (
               <HandoverItemCard

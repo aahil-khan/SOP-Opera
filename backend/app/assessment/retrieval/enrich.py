@@ -32,7 +32,10 @@ def _parse_ref(raw: dict | RetrievedReference) -> RetrievedReference:
     return RetrievedReference(
         source=raw["source"],
         id=UUID(str(raw["id"])),
-        retrieval_path=raw["retrieval_path"],
+        # Older seed rows were written before retrieval_path was tracked —
+        # default to the path this codebase actually uses (see CLAUDE.md:
+        # deterministic always wins under the default mock embedding provider).
+        retrieval_path=raw.get("retrieval_path", "deterministic"),
         score=raw.get("score"),
         chunk_id=UUID(str(chunk)) if chunk else None,
         title=raw.get("title"),

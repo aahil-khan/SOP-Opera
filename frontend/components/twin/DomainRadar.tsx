@@ -8,6 +8,11 @@ import {
   fetchGraphNeighbors,
   peekGraphNeighborCount,
 } from "@/lib/graphNeighborsCache";
+import {
+  fetchAssetHistory,
+  peekAssetHistory,
+  type AssetHistoryResult,
+} from "@/lib/assetHistoryCache";
 import type { AreaOwner } from "@/shared/schemas";
 import {
   DOMAINS,
@@ -112,6 +117,8 @@ export function DomainRadar({ view }: DomainRadarProps) {
   const [neighborCount, setNeighborCount] = useState<number | null>(() =>
     peekGraphNeighborCount(assetId),
   );
+  const [historyResult, setHistoryResult] =
+    useState<AssetHistoryResult | null>(() => peekAssetHistory(assetId));
   const [fetchedOwner, setFetchedOwner] = useState<AreaOwner | null>(null);
 
   /**
@@ -159,6 +166,23 @@ export function DomainRadar({ view }: DomainRadarProps) {
       })
       .catch(() => {
         if (!cancelled) setNeighborCount(0);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [assetId]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const cached = peekAssetHistory(assetId);
+    if (cached) setHistoryResult(cached);
+    else setHistoryResult(null);
+    void fetchAssetHistory(assetId)
+      .then((result) => {
+        if (!cancelled) setHistoryResult(result);
+      })
+      .catch(() => {
+        if (!cancelled) setHistoryResult({ reports: [], count: 0 });
       });
     return () => {
       cancelled = true;
@@ -216,6 +240,9 @@ export function DomainRadar({ view }: DomainRadarProps) {
       neighborCount: neighborCount ?? 0,
       spatialPending: neighborCount === null,
       areaOwner,
+      historyCount: historyResult?.count ?? 0,
+      historyPending: historyResult === null,
+      historyLastOutcome: historyResult?.reports[0]?.outcome ?? null,
       ...responseCounts,
     };
   }, [
@@ -227,6 +254,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
     wind,
     latest,
     neighborCount,
+    historyResult,
     areaOwner,
     responseCounts,
   ]);

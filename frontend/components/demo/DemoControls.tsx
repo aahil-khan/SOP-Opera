@@ -36,6 +36,7 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
   const [mode, setMode] = useState<DemoModeKind>("scripted");
   const [scenarios, setScenarios] = useState<ScenarioInfo[]>([]);
   const [scenario, setScenario] = useState("compound_risk");
+  const [descExpanded, setDescExpanded] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [ambientBusy, setAmbientBusy] = useState(false);
@@ -308,7 +309,10 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
               aria-label="Scenario"
               value={scenario}
               disabled={sessionOpen || busy || scenarios.length === 0}
-              onChange={(e) => setScenario(e.target.value)}
+              onChange={(e) => {
+                setScenario(e.target.value);
+                setDescExpanded(false);
+              }}
             >
               {scenarios.length === 0 ? (
                 <option value={scenario}>Loading…</option>
@@ -322,9 +326,22 @@ export function DemoControls({ variant = "panel" }: DemoControlsProps) {
             </select>
           </label>
           {scenarios.find((s) => s.name === scenario)?.description ? (
-            <p className={styles.fieldHint}>
-              {scenarios.find((s) => s.name === scenario)?.description}
-            </p>
+            <div className={styles.descWrap}>
+              <p
+                className={styles.fieldHint}
+                data-clamped={descExpanded ? undefined : "true"}
+              >
+                {scenarios.find((s) => s.name === scenario)?.description}
+              </p>
+              <button
+                type="button"
+                className={styles.descToggle}
+                onClick={() => setDescExpanded((v) => !v)}
+                aria-expanded={descExpanded}
+              >
+                {descExpanded ? "Show less" : "Show more"}
+              </button>
+            </div>
           ) : null}
         </section>
       ) : (

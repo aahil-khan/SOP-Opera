@@ -263,6 +263,13 @@ async def list_assessments(session: AsyncSession, review_id: UUID) -> list[dict]
                 factor["evidence"] = [
                     serialize_ref(r) for r in await enrich_references(session, ev)
                 ]
+            else:
+                # Already-enriched evidence is passed through as-is, but older
+                # seed rows were written before retrieval_path was tracked —
+                # same default enrich_references applies via _parse_ref.
+                for e in ev:
+                    if isinstance(e, dict):
+                        e.setdefault("retrieval_path", "deterministic")
         raw_trace = m.get("agent_trace") or []
         if isinstance(raw_trace, str):
             raw_trace = json.loads(raw_trace)

@@ -235,7 +235,12 @@ async def handle_context_change(
             )
         if not should_reassess(None, changed_fact_types, current_true_facts):
             return latest
-        triggered = ",".join(sorted(changed_fact_types))
+        # changed_fact_types includes both directions (a stale fact expiring
+        # counts as "changed" too) — triggered_by should read as the cause,
+        # so keep only the ones that are actually true now.
+        triggered = ",".join(
+            sorted(_newly_true_facts(changed_fact_types, current_true_facts))
+        )
         owner = UUID(get_settings().default_owner_user_id)
         review = await create_review(
             session,

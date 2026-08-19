@@ -6,11 +6,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.ai_ops.schemas import (
     AiOpsEventOut,
     AiOpsSummary,
+    CostProjectionOut,
     ProviderConnectionOut,
     ProviderStateIn,
     ProviderStateOut,
 )
-from app.ai_ops.service import get_summary, list_recent_events
+from app.ai_ops.service import get_cost_projection, get_summary, list_recent_events
 from app.assessment.provider_state import (
     VALID_PROVIDERS,
     check_provider,
@@ -85,6 +86,14 @@ async def ai_ops_events(
 ) -> list[AiOpsEventOut]:
     """Recent per-assessment outcomes — provider/model stamped on every run."""
     return await list_recent_events(session, limit=limit)
+
+
+@router.get("/cost-projection", response_model=CostProjectionOut)
+async def ai_ops_cost_projection(
+    session: AsyncSession = Depends(get_session),
+) -> CostProjectionOut:
+    """Spend forward-projected from the trailing 30-day rate, at 3/6/12 months."""
+    return await get_cost_projection(session)
 
 
 @router.get("/summary", response_model=AiOpsSummary)

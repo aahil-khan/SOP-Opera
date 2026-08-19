@@ -8,6 +8,7 @@ import { fetchRoster } from "@/lib/authApi";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import {
   acceptHandover,
+  acknowledgeAllHandoverItems,
   acknowledgeHandoverItem,
   addHandoverNote,
   draftHandover,
@@ -154,24 +155,13 @@ export function HandoverView() {
                 onRemove={(itemId) =>
                   run(() => removeHandoverItem(handover.id, itemId), itemId)
                 }
+                onAcknowledgeAll={() =>
+                  run(() => acknowledgeAllHandoverItems(handover.id))
+                }
+                bulkBusy={busy}
               />
             </div>
           </section>
-
-          {canEdit && (
-            <AddNote
-              busy={busy}
-              onAdd={(title, detail, requiresAck) =>
-                run(() =>
-                  addHandoverNote(handover.id, {
-                    title,
-                    detail,
-                    requires_ack: requiresAck,
-                  }),
-                )
-              }
-            />
-          )}
         </main>
 
         <aside className={styles.rail}>
@@ -187,6 +177,21 @@ export function HandoverView() {
               cleared={handover.required_cleared}
             />
           </div>
+
+          {canEdit && (
+            <AddNote
+              busy={busy}
+              onAdd={(title, detail, requiresAck) =>
+                run(() =>
+                  addHandoverNote(handover.id, {
+                    title,
+                    detail,
+                    requires_ack: requiresAck,
+                  }),
+                )
+              }
+            />
+          )}
 
           {canEdit && (
             <button
@@ -281,13 +286,18 @@ function HeroStat({
 }
 
 function IdleHero({ loading }: { loading: boolean }) {
-  const dash = loading ? "…" : "—";
   return (
-    <div className={styles.heroRow} aria-label="Key metrics">
-      <HeroStat value={dash} label="State" hint="No active custody transfer" />
-      <HeroStat value={dash} label="Required" hint="Items that must be acknowledged" />
-      <HeroStat value={dash} label="Cleared" hint="Acknowledgements already signed" />
-      <HeroStat value={dash} label="Outstanding" hint="Still blocking acceptance" />
+    <div className={styles.idle} role="status">
+      <span className={styles.idleDot} data-loading={loading || undefined} aria-hidden />
+      <p className={styles.idleTitle}>
+        {loading ? "Checking for an active handover…" : "No active handover"}
+      </p>
+      {!loading && (
+        <p className={styles.idleCopy}>
+          Nothing is mid-transfer right now. Compose one below when you end
+          your shift, or it will appear here the moment one is issued to you.
+        </p>
+      )}
     </div>
   );
 }

@@ -13,6 +13,22 @@ class ProviderConnectionOut(BaseModel):
     reason: str | None = None
 
 
+class CostProjectionPoint(BaseModel):
+    months: int
+    days: int
+    projected_usd: float
+
+
+class CostProjectionOut(BaseModel):
+    provider: str
+    is_paid_provider: bool
+    """False for mock/ollama — no per-token pricing, so projections are always $0."""
+    trailing_window_days: int
+    trailing_cost_usd: float
+    daily_rate_usd: float
+    projections: list[CostProjectionPoint]
+
+
 class ProviderComparisonRow(BaseModel):
     provider: str
     model: str | None = None

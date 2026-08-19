@@ -8,6 +8,9 @@ interface TopNavMenuProps {
   children: React.ReactNode;
   panelClassName?: string;
   onOpenChange?: (open: boolean) => void;
+  /** Small pulsing dot on the trigger — e.g. "ambient telemetry is live". */
+  indicator?: boolean;
+  indicatorLabel?: string;
 }
 
 export function TopNavMenu({
@@ -15,6 +18,8 @@ export function TopNavMenu({
   children,
   panelClassName,
   onOpenChange,
+  indicator = false,
+  indicatorLabel,
 }: TopNavMenuProps) {
   const [open, setOpen] = useState(false);
   const panelId = useId();
@@ -54,6 +59,13 @@ export function TopNavMenu({
         onClick={() => setOpen((prev) => !prev)}
         data-open={open ? "true" : undefined}
       >
+        {indicator && (
+          <span
+            className={styles.indicatorDot}
+            aria-hidden="true"
+            title={indicatorLabel}
+          />
+        )}
         <span>{label}</span>
         <svg
           className={styles.chevron}

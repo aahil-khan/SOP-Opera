@@ -7,7 +7,6 @@ import { useLiveStore } from "@/lib/liveStore";
 import { useTourStepId } from "@/lib/tourStore";
 import { AgentBrainPanel } from "./AgentBrainPanel";
 import { WhyBrief } from "./WhyBrief";
-import { AssetHistory } from "./AssetHistory";
 import { IncidentEcho } from "./IncidentEcho";
 import { DecisionPanel } from "@/components/decision/DecisionPanel";
 import { DecisionCard } from "@/components/decision/DecisionCard";
@@ -309,8 +308,6 @@ export function AssetPanel({
     !assessmentInProgress &&
     !openReview &&
     (!review || (closedLooksClear && assetPanelIntent !== "closure"));
-  /** No open work — show prior closure reports under History. */
-  const isCalm = !openReview && !assessmentInProgress;
   const headerStatus = isHappy
     ? { label: "All clear", badgeRisk: "nominal" as const }
     : workStatus;
@@ -649,12 +646,6 @@ export function AssetPanel({
               </section>
             )}
 
-            {isCalm ? (
-              <AssetHistory
-                assetId={asset.id}
-                activeReviewId={isHappy ? null : review?.id ?? null}
-              />
-            ) : null}
           </>
         )}
 

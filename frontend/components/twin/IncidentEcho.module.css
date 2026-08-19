@@ -2,11 +2,15 @@
   border: 1px solid color-mix(in srgb, var(--status-critical) 45%, var(--border-default));
   background: color-mix(in srgb, var(--status-critical) 10%, var(--surface-overlay));
   border-radius: 10px;
-  padding: 12px 14px;
-  margin-bottom: 12px;
+  padding: 10px 12px;
+  margin-bottom: 10px;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 4px;
+}
+
+.echo p {
+  margin: 0;
 }
 
 .head {

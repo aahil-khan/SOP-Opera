@@ -266,6 +266,41 @@ async def acknowledge_item(
     return dict(row._mapping) if row else None
 
 
+async def acknowledge_all_pending(
+    session: AsyncSession,
+    *,
+    handover_id: UUID,
+    ack_state: str,
+    actor_id: UUID,
+    actor_name: str,
+) -> list[dict[str, Any]]:
+    """Clear every still-pending required item in one statement — bulk sibling
+    of acknowledge_item, so 'acknowledge all' is one round trip, not N."""
+    result = await session.execute(
+        text(
+            """
+            UPDATE handover_items
+            SET ack_state = :ack_state,
+                acknowledged_by = CAST(:actor_id AS uuid),
+                acknowledged_by_name = :actor_name,
+                acknowledged_at = :now
+            WHERE handover_id = CAST(:hid AS uuid)
+              AND requires_ack = TRUE
+              AND ack_state = 'pending'
+            RETURNING *
+            """
+        ),
+        {
+            "ack_state": ack_state,
+            "actor_id": str(actor_id),
+            "actor_name": actor_name,
+            "now": datetime.now(timezone.utc),
+            "hid": str(handover_id),
+        },
+    )
+    return [dict(row._mapping) for row in result.fetchall()]
+
+
 async def fetch_unacknowledged_for_asset(
     session: AsyncSession, *, asset_id: UUID
 ) -> list[dict[str, Any]]:

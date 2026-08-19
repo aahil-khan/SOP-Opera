@@ -4,11 +4,13 @@ import { useCallback, useEffect, useState } from "react";
 import {
   fetchAiOpsEvents,
   fetchAiOpsSummary,
+  fetchCostProjection,
   fetchProviderState,
   putProviderState,
   testProviderConnection,
   type AiOpsEvent,
   type AiOpsSummary,
+  type CostProjection,
   type ProviderConnection,
   type ProviderState,
 } from "@/lib/liveApi";
@@ -127,6 +129,10 @@ function StatPair({
 
 export function AIOpsDashboard() {
   const [summary, setSummary] = useState<AiOpsSummary | null>(null);
+  const [costProjection, setCostProjection] = useState<CostProjection | null>(
+    null,
+  );
+  const [projectionMonths, setProjectionMonths] = useState<3 | 6 | 12>(3);
   const [events, setEvents] = useState<AiOpsEvent[] | null>(null);
   const [provider, setProvider] = useState<ProviderState | null>(null);
   const [providerSelectValue, setProviderSelectValue] =
@@ -146,14 +152,16 @@ export function AIOpsDashboard() {
   const refresh = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     try {
-      const [data, recent, prov] = await Promise.all([
+      const [data, recent, prov, projection] = await Promise.all([
         fetchAiOpsSummary(),
         fetchAiOpsEvents(12),
         fetchProviderState(),
+        fetchCostProjection(),
       ]);
       setSummary(data);
       setEvents(recent);
       setProvider(prov);
+      setCostProjection(projection);
       setProviderSelectValue(
         prov.source === "runtime_override" ? prov.active_provider : "__default__",
       );
@@ -601,6 +609,71 @@ export function AIOpsDashboard() {
           </div>
         </section>
       </div>
+
+      <section className={styles.panel}>
+        <header className={styles.panelHeader}>
+          <h2 className={styles.panelTitle}>Projected cost</h2>
+          <p className={styles.panelSubtitle}>
+            Forward-projected from the trailing 30-day spend rate
+          </p>
+        </header>
+        <div className={styles.panelBody}>
+          <div className={styles.horizonToggle} role="group" aria-label="Projection horizon">
+            {([3, 6, 12] as const).map((m) => (
+              <button
+                key={m}
+                type="button"
+                className={styles.horizonBtn}
+                data-active={projectionMonths === m}
+                onClick={() => setProjectionMonths(m)}
+              >
+                {m}mo
+              </button>
+            ))}
+          </div>
+          <HeroStat
+            value={
+              costProjection
+                ? fmtCost(
+                    costProjection.projections.find(
+                      (p) => p.months === projectionMonths,
+                    )?.projected_usd ?? 0,
+                  )
+                : "—"
+            }
+            label={`Projected ${projectionMonths}-month spend`}
+            hint={
+              costProjection?.is_paid_provider
+                ? `Linear projection: $${costProjection.daily_rate_usd.toFixed(4)}/day × ${
+                    costProjection.projections.find(
+                      (p) => p.months === projectionMonths,
+                    )?.days ?? 0
+                  } days`
+                : "No per-token price for this provider — nothing to project"
+            }
+            tone={costProjection?.is_paid_provider ? "warn" : "neutral"}
+          />
+          <div className={styles.statGrid}>
+            <StatPair
+              label="Trailing 30-day spend"
+              value={costProjection ? fmtCost(costProjection.trailing_cost_usd) : "—"}
+              hint="Actual estimated cost over the last 30 days — the basis for the projection"
+            />
+            <StatPair
+              label="Daily rate"
+              value={
+                costProjection ? `$${costProjection.daily_rate_usd.toFixed(4)}` : "—"
+              }
+              hint="Trailing 30-day spend divided by 30"
+            />
+          </div>
+          <p className={styles.note}>
+            {costProjection && !costProjection.is_paid_provider
+              ? `Active provider is "${costProjection.provider}" — Ollama and mock carry no per-token price, so cost_usd is always 0 and there is nothing to extrapolate.`
+              : "A straight-line projection from the last 30 days, not a forecast — it does not account for demo resets, seasonal load, or pricing changes."}
+          </p>
+        </div>
+      </section>
 
       <section className={styles.panel}>
         <header className={styles.panelHeader}>

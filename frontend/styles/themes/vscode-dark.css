@@ -55,6 +55,8 @@
   --domain-spatial: #4ec9b0;
   --domain-response: #ce9178;
 
+  /* Archive tone — History looks backwards, so it stays recessive. */
+  --domain-history: #9aa0a6;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.35);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-drawer: -4px 0 24px rgba(0, 0, 0, 0.45);

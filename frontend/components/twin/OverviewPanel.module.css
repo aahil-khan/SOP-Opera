@@ -14,7 +14,7 @@
   align-items: flex-start;
   justify-content: space-between;
   gap: var(--space-3);
-  padding: var(--space-3) var(--space-4);
+  padding: var(--space-2) var(--space-4);
   border-bottom: 1px solid var(--border-muted);
   flex-shrink: 0;
 }
@@ -135,10 +135,10 @@
 }
 
 .embeddedBody {
-  padding: var(--space-3) var(--space-4) var(--space-4);
+  padding: var(--space-2) var(--space-4) var(--space-3);
   display: flex;
   flex-direction: column;
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .sectionHeader {
@@ -169,15 +169,15 @@
 .kpis {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: var(--space-2);
+  gap: var(--space-1);
 }
 
 .kpi {
   display: flex;
   flex-direction: column;
-  gap: var(--space-1);
+  gap: 2px;
   min-width: 0;
-  padding: var(--space-3);
+  padding: var(--space-1) var(--space-2);
   border-radius: var(--radius-md);
   border: 1px solid var(--border-default);
   background: var(--surface-panel);
@@ -192,7 +192,7 @@
 }
 
 .kpiValue {
-  font-size: var(--text-xl, 1.35rem);
+  font-size: var(--text-md, 0.9375rem);
   font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
@@ -318,7 +318,10 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-5);
-  overflow: hidden;
+  /* One continuous scroll for KPIs + feed, not a pinned header over an
+     independently-scrolling feed — the KPI strip used to eat fixed space
+     up top no matter how tall the feed content was. */
+  overflow-y: auto;
 }
 
 .section {
@@ -329,8 +332,7 @@
 }
 
 .liveSection {
-  flex: 1;
-  min-height: 0;
+  flex-shrink: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -341,7 +343,6 @@
 }
 
 .liveSection > .feedStage {
-  flex: 1;
   min-height: 12rem;
 }
 
@@ -369,22 +370,14 @@
 }
 
 .feedScroll {
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-}
-
-.feedStage {
-  position: relative;
-  flex: 1;
-  min-height: 0;
   display: flex;
   flex-direction: column;
 }
 
-.feedStage > .feedScroll {
-  position: absolute;
-  inset: 0;
+.feedStage {
+  position: relative;
+  display: flex;
+  flex-direction: column;
 }
 
 /* ── Category panels ─────────────────────────────────────────────────────── */

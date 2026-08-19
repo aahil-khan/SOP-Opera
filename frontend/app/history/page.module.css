@@ -1,8 +1,6 @@
 /* Scroll shell for /history — matches /eval. */
 
 .shell {
-  height: calc(100vh - var(--nav-height));
-  min-height: 480px;
-  overflow: auto;
+  min-height: calc(100vh - var(--nav-height));
   background: var(--surface-canvas);
 }

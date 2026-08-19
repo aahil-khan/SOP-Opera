@@ -5,13 +5,28 @@ from __future__ import annotations
 from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.ai_ops.schemas import AiOpsEventOut, AiOpsSummary, ProviderComparisonRow
-from app.assessment.provider_state import VALID_PROVIDERS, check_provider
+from app.ai_ops.schemas import (
+    AiOpsEventOut,
+    AiOpsSummary,
+    CostProjectionOut,
+    CostProjectionPoint,
+    ProviderComparisonRow,
+)
+from app.assessment.provider_state import (
+    VALID_PROVIDERS,
+    check_provider,
+    effective_provider_check,
+)
 from app.core.config import get_settings
 from app.core.stats import LatencySummary
 
 LATENCY_SAMPLE_WINDOW = 500
 """Most recent completed assessments the latency percentiles are computed over."""
+
+COST_PROJECTION_TRAILING_DAYS = 30
+"""Window the daily spend rate is averaged over before projecting forward."""
+
+COST_PROJECTION_HORIZONS_MONTHS = (3, 6, 12)
 
 
 async def list_recent_events(
@@ -377,4 +392,62 @@ async def get_summary(session: AsyncSession) -> AiOpsSummary:
         langsmith_enabled=langsmith_enabled,
         langsmith_project=langsmith_project,
         langsmith_url=langsmith_url,
+    )
+
+
+async def get_cost_projection(session: AsyncSession) -> CostProjectionOut:
+    """
+    Project spend forward from the trailing daily rate.
+
+    Mock/Ollama carry no per-token price (see agents/llm.py::estimate_cost_usd),
+    so every event's cost_usd is already 0 for those providers. We still short-
+    circuit before touching ai_ops_events: the append-only log also carries
+    seeded model-bench rows tagged with a paid provider for eval purposes, and
+    those must not leak into a projection for a plant that is not spending.
+    """
+    check, _source, _configured_default = effective_provider_check()
+    provider = check.provider
+    is_paid = provider in ("openai_compatible", "openai")
+
+    horizon_days = {3: 91, 6: 182, 12: 365}
+
+    if not is_paid:
+        return CostProjectionOut(
+            provider=provider,
+            is_paid_provider=False,
+            trailing_window_days=COST_PROJECTION_TRAILING_DAYS,
+            trailing_cost_usd=0.0,
+            daily_rate_usd=0.0,
+            projections=[
+                CostProjectionPoint(months=m, days=d, projected_usd=0.0)
+                for m, d in horizon_days.items()
+            ],
+        )
+
+    result = await session.execute(
+        text(
+            """
+            SELECT COALESCE(SUM(cost_usd), 0) AS trailing_cost
+            FROM ai_ops_events
+            WHERE recorded_at >= now() - make_interval(days => :window_days)
+              AND status = 'complete'
+            """
+        ),
+        {"window_days": COST_PROJECTION_TRAILING_DAYS},
+    )
+    trailing_cost = float(result.scalar_one() or 0.0)
+    daily_rate = trailing_cost / COST_PROJECTION_TRAILING_DAYS
+
+    return CostProjectionOut(
+        provider=provider,
+        is_paid_provider=True,
+        trailing_window_days=COST_PROJECTION_TRAILING_DAYS,
+        trailing_cost_usd=round(trailing_cost, 8),
+        daily_rate_usd=round(daily_rate, 8),
+        projections=[
+            CostProjectionPoint(
+                months=m, days=d, projected_usd=round(daily_rate * d, 4)
+            )
+            for m, d in horizon_days.items()
+        ],
     )
