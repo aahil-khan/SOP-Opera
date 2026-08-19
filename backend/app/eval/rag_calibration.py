@@ -80,7 +80,21 @@ async def calibrate(source_filter: str | None = None) -> dict[str, float | None]
         asset_name="Coke Oven Battery 3",
         asset_zone="coke-oven-battery",
     )
-    rows = [r for r in corpus() if source_filter in (None, r[0])]
+    # Default to the source types the gate actually searches. Measuring over the
+    # whole corpus is misleading: regulations and SOPs are not in
+    # rag_vector_source_types, so their scores can never reach the gate, yet they
+    # dominated the top of the ranking and pulled the suggested threshold up to a
+    # value that rejected every incident.
+    if source_filter is None:
+        allowed = set(settings.rag_vector_source_types)
+        scope = f"rag_vector_source_types={sorted(allowed)}"
+    elif source_filter == "all":
+        allowed = None
+        scope = "ENTIRE CORPUS — includes source types the gate never searches"
+    else:
+        allowed = {source_filter}
+        scope = f"--source {source_filter}"
+    rows = [r for r in corpus() if allowed is None or r[0] in allowed]
     vectors = await embed_texts([query] + [r[2] for r in rows])
     qv, cvs = vectors[0], vectors[1:]
 
@@ -93,6 +107,7 @@ async def calibrate(source_filter: str | None = None) -> dict[str, float | None]
     print(f"provider      : {settings.embedding_provider}")
     print(f"model         : {active_embedding_model()}")
     print(f"current gate  : {settings.rag_score_threshold}")
+    print(f"scored over   : {scope}")
     print(f"query         : {query[:110]}...")
     print()
     print(f"{'score':>7}  {'rel?':<5} {'source':<22} label")
@@ -130,7 +145,12 @@ def main() -> None:
     parser.add_argument(
         "--source",
         default=None,
-        help="restrict to one source type (regulations | sops | historical_incidents)",
+        help=(
+            "source type to score over. Default: whatever RAG_VECTOR_SOURCE_TYPES "
+            "is set to, i.e. what the gate actually searches. Pass 'all' to score "
+            "the entire corpus (informational only — the suggestion it prints is "
+            "NOT a valid gate), or one of regulations | sops | historical_incidents."
+        ),
     )
     args = parser.parse_args()
     asyncio.run(calibrate(args.source))

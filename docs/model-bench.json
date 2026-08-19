@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-15T16:49:40+00:00",
+  "generated_at": "2026-08-19T06:39:53+00:00",
   "cases": [
     "nominal_safe",
     "elevated_gas_only",
@@ -13,27 +13,33 @@
   "invariance": {
     "nominal_safe": {
       "mock": "nominal",
-      "ollama": "nominal"
+      "ollama": "nominal",
+      "openai_compatible": "nominal"
     },
     "elevated_gas_only": {
       "mock": "elevated",
-      "ollama": "elevated"
+      "ollama": "elevated",
+      "openai_compatible": "elevated"
     },
     "critical_gas_only": {
       "mock": "blocking",
-      "ollama": "blocking"
+      "ollama": "blocking",
+      "openai_compatible": "blocking"
     },
     "vsp_pattern_subcritical": {
       "mock": "blocking",
-      "ollama": "blocking"
+      "ollama": null,
+      "openai_compatible": "blocking"
     },
     "permit_conflict_only": {
       "mock": "elevated",
-      "ollama": "elevated"
+      "ollama": null,
+      "openai_compatible": "elevated"
     },
     "vsp_coke_oven_step1": {
       "mock": "blocking",
-      "ollama": "blocking"
+      "ollama": "blocking",
+      "openai_compatible": "blocking"
     }
   },
   "providers": [
@@ -47,9 +53,9 @@
       "retry_rate": 0.0,
       "latency_ms": {
         "count": 12,
-        "mean_ms": 6.09,
-        "p50_ms": 3.51,
-        "p95_ms": 19.31
+        "mean_ms": 19.45,
+        "p50_ms": 15.16,
+        "p95_ms": 40.25
       },
       "citation_strip_rate": 0.0,
       "citation_token_strip_rate": 0.0,
@@ -64,38 +70,57 @@
     {
       "provider": "ollama",
       "status": "measured",
-      "model": "llama3.2",
+      "model": "phi3:mini",
       "runs": 12,
-      "successes": 12,
-      "failure_rate": 0.0,
-      "retry_rate": 0.0,
+      "successes": 7,
+      "failure_rate": 0.4167,
+      "retry_rate": 0.5,
       "latency_ms": {
-        "count": 12,
-        "mean_ms": 6596.65,
-        "p50_ms": 6513.55,
-        "p95_ms": 9243.77
+        "count": 7,
+        "mean_ms": 42464.66,
+        "p50_ms": 39274.72,
+        "p95_ms": 74006.1
       },
       "citation_strip_rate": 0.0,
       "citation_token_strip_rate": 0.0,
-      "citations_cited": 7,
+      "citations_cited": 6,
       "citations_stripped": 0,
-      "mean_tokens_in": 717.0,
-      "mean_tokens_out": 291.8,
+      "mean_tokens_in": 628.9,
+      "mean_tokens_out": 332.3,
       "mean_cost_usd_per_assessment": 0.0,
       "projected_cost_usd_per_day": 0.0,
       "projected_cost_usd_per_year": 0.0
     },
     {
       "provider": "openai_compatible",
-      "status": "NOT RUN",
-      "reason": "OPENAI_API_KEY is not set \u2014 no request was made"
+      "status": "measured",
+      "model": "gpt-4o-mini",
+      "runs": 12,
+      "successes": 12,
+      "failure_rate": 0.0,
+      "retry_rate": 0.0,
+      "latency_ms": {
+        "count": 12,
+        "mean_ms": 5061.26,
+        "p50_ms": 5195.73,
+        "p95_ms": 6094.12
+      },
+      "citation_strip_rate": 0.0,
+      "citation_token_strip_rate": 0.0,
+      "citations_cited": 10,
+      "citations_stripped": 0,
+      "mean_tokens_in": 626.5,
+      "mean_tokens_out": 268.9,
+      "mean_cost_usd_per_assessment": 0.00025532,
+      "projected_cost_usd_per_day": 0.1021,
+      "projected_cost_usd_per_year": 37.28
     }
   ],
   "hosted_cost_projection": {
     "basis": "PROJECTED \u2014 no OpenAI request was made",
-    "token_counts_measured_on": "ollama:llama3.2",
-    "mean_tokens_in": 717.0,
-    "mean_tokens_out": 291.8,
+    "token_counts_measured_on": "ollama:phi3:mini",
+    "mean_tokens_in": 628.9,
+    "mean_tokens_out": 332.3,
     "assessments_per_day_assumption": 400,
     "rows": [
       {
@@ -104,9 +129,9 @@
           0.15,
           0.6
         ],
-        "usd_per_assessment": 0.00028275,
-        "usd_per_day": 0.1131,
-        "usd_per_year": 41.28
+        "usd_per_assessment": 0.00029355,
+        "usd_per_day": 0.1174,
+        "usd_per_year": 42.86
       },
       {
         "model": "gpt-4o",
@@ -114,9 +139,9 @@
           2.5,
           10.0
         ],
-        "usd_per_assessment": 0.0047125,
-        "usd_per_day": 1.885,
-        "usd_per_year": 688.02
+        "usd_per_assessment": 0.0048925,
+        "usd_per_day": 1.957,
+        "usd_per_year": 714.31
       }
     ]
   }
