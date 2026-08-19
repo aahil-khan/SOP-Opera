@@ -116,7 +116,14 @@ SUPERVISORS = [
 # so a users-table UUID here would fail the constraint outright.
 OPERATOR_ACTORS = [{"id": wid, "name": name, "role": "field_operator"} for wid, name, _certs in WORKERS]
 
-RISK_WEIGHTS = {"elevated": 85, "blocking": 15}  # matches the validated Track A corpus mix
+# A real plant's record is overwhelmingly routine: most shifts, nothing happens.
+# This used to be {"elevated": 85, "blocking": 15} with no nominal branch at all,
+# so every review in the corpus was elevated or blocking. On its own that was a
+# footnote; the moment anything charts the corpus it stops being one — "verdicts
+# over time" becomes a flat wall of elevated, which anyone who has seen a plant
+# dashboard reads as generated data. The elevated:blocking ratio inside the
+# non-nominal remainder is unchanged at 85:15.
+RISK_WEIGHTS = {"nominal": 76, "elevated": 20, "blocking": 4}
 
 # --- Realism shaping -------------------------------------------------------
 # A real plant's incident record is not uniform. Three things shape it, and
@@ -173,6 +180,12 @@ _COMMENT_POOL = [
 ]
 
 _REC_BY_RISK = {
+    "nominal": [
+        "No action required; continue the normal monitoring round.",
+        "Conditions within limits — close with the routine check logged.",
+        "Nothing to action; record the round and carry on.",
+        "Routine round complete; no follow-up raised.",
+    ],
     "blocking": [
         "Halt work and re-verify isolation before resuming.",
         "Stop the activity, evacuate the immediate zone, and re-test the atmosphere.",
@@ -275,7 +288,49 @@ _BLOCKING_PAIRS = [
     ("ppe_noncompliance", "zone_occupied"),
 ]
 
+# Nominal reviews model the honest shape of a routine one: context arrived, the
+# rules ran over it, and nothing fired. So these carry a context entry and NO
+# derived fact — a nominal review with facts attached would be a contradiction,
+# and fact count is not what makes a verdict anyway (risk/policy.py blocks on a
+# pathway). Every payload sits well inside the bands in core/config.py
+# (gas_elevated 20 ppm, temp_elevated 80 C, vibration_anomaly 7.1,
+# tank_level 5-95%), so if the real rules were run over them none would fire.
+_NOMINAL_STORIES = {
+    "routine_gas_round": {
+        "headline": "Routine atmosphere check",
+        "detail": lambda a: f"Atmosphere check on {a} returned {random.randint(2, 11)} ppm, well inside the 20 ppm action threshold.",
+        "category": "sensor",
+        "payload": lambda: {"gas_reading": round(random.uniform(1.0, 11.0), 1), "unit": "ppm"},
+    },
+    "routine_temp_round": {
+        "headline": "Temperature within band",
+        "detail": lambda a: f"Temperature on {a} steady at {random.randint(38, 66)} C, inside the normal operating band.",
+        "category": "sensor",
+        "payload": lambda: {"temp_reading": round(random.uniform(38.0, 66.0), 1), "unit": "C"},
+    },
+    "permit_closed_clean": {
+        "headline": "Permit closed clean",
+        "detail": lambda a: f"Permit on {a} closed with all isolation steps verified and signed off.",
+        "category": "permit",
+        "payload": lambda: {"permit_id": f"PTW-{random.randint(1000,9999)}", "status": "closed", "isolation_verified": True},
+    },
+    "vibration_in_band": {
+        "headline": "Vibration in band",
+        "detail": lambda a: f"Vibration on {a} at {round(random.uniform(1.5, 4.0), 1)} mm/s, inside the ISO band-A envelope.",
+        "category": "sensor",
+        "payload": lambda: {"vibration_mm_s": round(random.uniform(1.5, 4.0), 1)},
+    },
+    "level_in_band": {
+        "headline": "Level in band",
+        "detail": lambda a: f"Level on {a} at {random.randint(35, 70)}%, comfortably between the low and high marks.",
+        "category": "sensor",
+        "payload": lambda: {"level_pct": round(random.uniform(35.0, 70.0), 1)},
+    },
+}
+_NOMINAL_TYPES = list(_NOMINAL_STORIES.keys())
+
 OUTCOME_BY_RISK = {
+    "nominal": [("approved", 100)],
     "blocking": [("blocked", 100)],
     "elevated": [("approved_with_conditions", 60), ("approved", 30), ("blocked", 10)],
 }
@@ -369,13 +424,54 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
     operator = random.choice(OPERATOR_ACTORS) if random.random() < 0.3 else None
 
     risk_level = _weighted(list(RISK_WEIGHTS.items()))
-    fact_types = list(_BLOCKING_PAIRS[random.randrange(len(_BLOCKING_PAIRS))]) if risk_level == "blocking" else [random.choice(_ELEVATED_TYPES)]
+    if risk_level == "blocking":
+        fact_types = list(_BLOCKING_PAIRS[random.randrange(len(_BLOCKING_PAIRS))])
+    elif risk_level == "elevated":
+        fact_types = [random.choice(_ELEVATED_TYPES)]
+    else:
+        fact_types = []  # nominal: context arrived, no rule fired
 
     review_id = uuid.uuid4()
     context_ids = []
     fact_rows = []
     reasoning_factors = []
     cited_reg_ids = set()
+
+    if risk_level == "nominal":
+        # One benign context entry and no derived fact. Nothing is cited either:
+        # nothing deviated, so there is no clause to cite — which keeps
+        # cited_reg_ids empty and the frozen packet's citation list honest.
+        nominal_story = _NOMINAL_STORIES[random.choice(_NOMINAL_TYPES)]
+        story = nominal_story
+        ctx_id = uuid.uuid4()
+        context_ids.append(ctx_id)
+        valid_from = sim_time - timedelta(minutes=random.randint(5, 40))
+        await session.execute(
+            text(
+                """
+                INSERT INTO context_entries (id, asset_id, category, payload, provider, valid_from, valid_until, confidence)
+                VALUES (:id, :asset_id, :category, CAST(:payload AS jsonb), 'quick_mock', :valid_from, :valid_until, :confidence)
+                """
+            ),
+            {
+                "id": ctx_id,
+                "asset_id": asset["id"],
+                "category": story["category"],
+                "payload": __import__("json").dumps(story["payload"]()),
+                "valid_from": valid_from,
+                "valid_until": valid_from + timedelta(hours=4),
+                "confidence": round(random.uniform(0.85, 1.0), 2),
+            },
+        )
+        reasoning_factors.append(
+            {
+                "fact_type": None,
+                "headline": story["headline"],
+                "detail": story["detail"](asset["name"]),
+                "evidence": [],
+                "context_ids": [str(ctx_id)],
+            }
+        )
 
     for i, ft in enumerate(fact_types):
         story = _STORIES[ft]
@@ -436,11 +532,26 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             }
         )
 
+    # reviews.triggered_by is a single label, and a nominal review has no fact to
+    # name. Fall back to the context category that opened it ("sensor", "permit"),
+    # which is what actually triggered the round.
+    trigger_label = fact_types[0] if fact_types else nominal_story["category"]
+
     outcome = _weighted(OUTCOME_BY_RISK[risk_level])
-    headline_story = _STORIES[fact_types[0]]
-    summary = f"{asset['name']} is {risk_level} due to {headline_story['headline'].lower()}."
-    if len(fact_types) > 1:
-        summary += f" Compounded by {_STORIES[fact_types[1]]['headline'].lower()}."
+    # _NOMINAL_STORIES entries carry the same headline/detail/category shape as
+    # _STORIES, so downstream titling works for both without a branch.
+    headline_story = _STORIES[fact_types[0]] if fact_types else nominal_story
+    if fact_types:
+        summary = f"{asset['name']} is {risk_level} due to {headline_story['headline'].lower()}."
+        if len(fact_types) > 1:
+            summary += f" Compounded by {_STORIES[fact_types[1]]['headline'].lower()}."
+    else:
+        # Nominal: say what was checked, not what was wrong. "due to <fact>"
+        # has no meaning when no rule fired.
+        summary = (
+            f"{asset['name']} is nominal — {reasoning_factors[0]['headline'].lower()}, "
+            "no derived facts and no hazard pathway."
+        )
 
     created_at = sim_time
     # Decision latency is long-tailed, not a flat band: most calls are quick, a
@@ -466,7 +577,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "id": review_id,
             "asset_id": asset["id"],
             "owner_id": supervisor["id"],
-            "triggered_by": fact_types[0],
+            "triggered_by": trigger_label,
             "origin": origin,
             "raised_by": operator["id"] if operator else None,
             "created_at": created_at,
@@ -544,7 +655,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
             "asset": {"id": asset["id"], "name": asset["name"], "zone": asset["zone"], "plant_id": "plant-1", "floor": asset["floor"]},
             "review_state": "closed",
             "origin": origin,
-            "triggered_by": fact_types[0],
+            "triggered_by": trigger_label,
             "opened_at": _iso(created_at),
             "closed_at": _iso(closed_at),
             "duration_seconds": (closed_at - created_at).total_seconds(),
@@ -604,7 +715,7 @@ async def seed_one_review(session, asset: dict, sim_time: datetime, regulations:
         "discussion": [],
         "audit_trail": [],
         "timeline": [
-            {"ts": _iso(created_at), "label": "Review opened", "detail": fact_types[0]},
+            {"ts": _iso(created_at), "label": "Review opened", "detail": trigger_label},
             {"ts": _iso(assessment_created), "label": "Assessment completed", "detail": risk_level},
             {"ts": _iso(submitted_at), "label": "Decision submitted", "detail": outcome},
             {"ts": _iso(closed_at), "label": "Review closed"},
