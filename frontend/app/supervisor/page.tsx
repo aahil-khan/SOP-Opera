@@ -96,7 +96,10 @@ export default function SupervisorPage() {
   const [sharedReviews, setSharedReviews] = useState<SharedReview[]>([]);
   const [raisedReviews, setRaisedReviews] = useState<SharedReview[]>([]);
   const [zoneReviews, setZoneReviews] = useState<SharedReview[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true: the board mounts empty and refreshBoard() is debounced 300ms
+  // (see the effect below), so a false start renders "All clear in your zones"
+  // before the first fetch has been made.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
 
