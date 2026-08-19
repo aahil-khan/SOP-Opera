@@ -1,0 +1,95 @@
+/* Ranked table with an inline magnitude cue. */
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-xs);
+}
+
+.table thead th {
+  text-align: left;
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-label);
+  text-transform: uppercase;
+  color: var(--text-muted);
+  padding: 0 var(--space-3) var(--space-2) 0;
+  border-bottom: 1px solid var(--border-muted);
+  white-space: nowrap;
+}
+
+.table tbody tr:not(:last-child) th,
+.table tbody tr:not(:last-child) td {
+  border-bottom: 1px solid color-mix(in srgb, var(--border-muted) 55%, transparent);
+}
+
+.table tbody th,
+.table tbody td {
+  padding: var(--space-2) var(--space-3) var(--space-2) 0;
+  vertical-align: middle;
+}
+
+.label {
+  font-family: var(--font-mono);
+  font-weight: var(--weight-medium);
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.kind {
+  font-size: var(--text-2xs);
+  color: var(--text-secondary);
+  padding: 1px var(--space-2);
+  border: 1px solid var(--border-muted);
+  border-radius: var(--radius-sm);
+  white-space: nowrap;
+}
+
+.num {
+  text-align: right;
+  font-family: var(--font-mono);
+  color: var(--text-primary);
+}
+
+.cell {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  justify-content: flex-end;
+  width: 100%;
+}
+
+.track {
+  width: 72px;
+  height: 8px;
+  background: color-mix(in srgb, var(--border-muted) 45%, transparent);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  flex: none;
+}
+
+.bar {
+  display: block;
+  height: 100%;
+  border-radius: 0 var(--radius-md) var(--radius-md) 0;
+  background: var(--accent-ai);
+  min-width: 2px;
+}
+
+.empty {
+  margin: 0;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+}
+
+@media (max-width: 640px) {
+  .track {
+    display: none;
+  }
+}
+
+/* Wide content scrolls in its own box so the page body never scrolls sideways. */
+.scroller {
+  overflow-x: auto;
+  max-width: 100%;
+}

@@ -869,3 +869,38 @@ export function putResponseConfig(
     body: JSON.stringify({ auto_enabled: autoEnabled }),
   });
 }
+
+// ── Operating history (W11b) ────────────────────────────────────────────────
+
+export interface HistoryFactCount {
+  fact_type: string;
+  count: number;
+}
+
+export interface HistoryVerdictMonth {
+  month: string; // YYYY-MM
+  nominal: number;
+  elevated: number;
+  blocking: number;
+}
+
+export interface HistoryCitedAuthority {
+  source: string; // "regulations" | "sops"
+  label: string;
+  citations: number;
+  reviews: number;
+}
+
+export interface HistoryOverview {
+  window_months: number;
+  review_count: number;
+  first_review_at: string | null;
+  last_review_at: string | null;
+  fact_distribution: HistoryFactCount[];
+  verdicts_by_month: HistoryVerdictMonth[];
+  top_authorities: HistoryCitedAuthority[];
+}
+
+export function fetchHistoryOverview(months = 12): Promise<HistoryOverview> {
+  return request<HistoryOverview>(`/history/overview?months=${months}`);
+}

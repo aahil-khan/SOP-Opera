@@ -102,6 +102,7 @@ from app.context.routes import router as context_router
 from app.decisions.routes import router as decisions_router
 from app.eval.routes import router as eval_router
 from app.graph.routes import router as graph_router
+from app.history.routes import router as history_router
 from app.handover.routes import router as handover_router
 from app.notifications.routes import router as notifications_router
 from app.reports.routes import router as reports_router
@@ -118,6 +119,7 @@ app.include_router(reports_router)
 app.include_router(notifications_router)
 app.include_router(ai_ops_router)
 app.include_router(graph_router)
+app.include_router(history_router)
 app.include_router(handover_router)
 app.include_router(config_router)
 app.include_router(eval_router)
