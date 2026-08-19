@@ -190,3 +190,51 @@
     display: none;
   }
 }
+
+.stepBarSlot {
+  display: contents;
+}
+
+/**
+ * Narrow viewports: the nav is one non-wrapping row whose rigid children
+ * (.toolbar at 351px, .account at 96px) gave it a 554px intrinsic floor, so the
+ * page body scrolled sideways on every route carrying this nav. It cannot be
+ * solved with overflow on .nav or .toolbar — both would clip the Demo/Settings
+ * dropdowns that position below the nav (see the note at the top of this file).
+ *
+ * So the nav wraps instead: brand + tabs on the first row, controls + account
+ * on the second, with --nav-height raised to match in styles/tokens.css. The
+ * step bar is the one control dropped — it is demo progress, no tour step
+ * anchors to it, and the Demo menu beside it still reaches everything.
+ */
+@media (max-width: 640px) {
+  .nav {
+    height: var(--nav-height);
+    flex-wrap: wrap;
+    align-content: center;
+    row-gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+  }
+
+  /* Full-basis spacer forces the row break rather than leaving it to widths. */
+  .spacer {
+    flex: 0 0 100%;
+    height: 0;
+  }
+
+  .stepBarSlot {
+    display: none;
+  }
+
+  /* Zero basis, not auto: at `auto` the basis is the tabs' 447px content width,
+     which cannot share row one with the brand, so the tabs wrapped to a row of
+     their own and pushed the nav to three rows inside an 88px box. */
+  .tabs {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .account {
+    margin-left: auto;
+  }
+}

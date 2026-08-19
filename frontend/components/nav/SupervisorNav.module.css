@@ -166,3 +166,25 @@
     display: none;
   }
 }
+
+/**
+ * Narrow viewports: this bar has no wrapping problem to solve (one tab, one
+ * bell), but .brandName and .identity are rigid and together pushed its
+ * intrinsic floor to 498px, so /supervisor scrolled sideways at 390px. Drop
+ * both — the avatar still identifies the actor and Logout stays reachable.
+ * TopNav already hides the same two, at 900px and 1100px respectively.
+ */
+@media (max-width: 640px) {
+  .brandName {
+    display: none;
+  }
+
+  .identity {
+    display: none;
+  }
+
+  .nav {
+    gap: var(--space-3);
+    padding: 0 var(--space-3);
+  }
+}

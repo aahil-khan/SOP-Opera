@@ -116,7 +116,12 @@ export function TopNav() {
         <LiveFeedPill />
 
         <div className={styles.toolbar}>
-          <DemoStepBar />
+          {/* display: contents — layout-neutral wrapper that exists only so the
+              narrow breakpoint can drop the step bar without reaching into
+              another module's hashed class. */}
+          <span className={styles.stepBarSlot}>
+            <DemoStepBar />
+          </span>
           <TourLaunchButton />
           <DemoMenu />
           <SettingsMenu />
