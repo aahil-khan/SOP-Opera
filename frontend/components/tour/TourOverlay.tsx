@@ -38,37 +38,21 @@ import styles from "./TourOverlay.module.css";
 
 /** Breathing room (px) around the spotlit element and between it and the card. */
 const ANCHOR_PAD = 8;
-/** Top pad is deliberately equal to ANCHOR_PAD. It used to be 22 as an "extra
- *  lift above the target so the ring clears page headings", but `topMin` in
- *  spotlightRect() already clamps to the nav floor, so the lift was redundant —
- *  it only made every ring sit 14px high, reading as misalignment on the steps
- *  that frame tall panels (tour-defects.md 5a/9/10). Keep these equal. */
-const ANCHOR_PAD_TOP = ANCHOR_PAD;
+/** Extra lift above the target so the ring clears page headings. */
+const ANCHOR_PAD_TOP = 22;
 /** Keep the ring fully on-screen — edge-flush targets used to clip the halo. */
 const VIEWPORT_MARGIN = 12;
 /** Halo box-shadow bleed that can paint outside the ring box into the nav. */
 const RING_BLEED = 10;
-/** Clearance the ring needs inside a scrollport to keep its pad + halo. */
-const RING_CLEARANCE = VIEWPORT_MARGIN + RING_BLEED + ANCHOR_PAD;
 const CARD_GAP = 16;
 const CARD_WIDTH = 360;
-/** Ceiling on a step's awaitEnter work before the tour moves on regardless. */
-const AWAIT_ENTER_MAX_MS = 6000;
-const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 /** rAF frames to hunt a missing anchor before degrading (~2s at 60fps). */
 const ANCHOR_RAF_MAX = 120;
-/** After waitUntil, retries for optional surfaces before skipping the step.
- *  80ms x 5 = 400ms was far under the real settle time and made Acts III-IX
- *  skip themselves in a cascade on a freshly reset demo. Measured against the
- *  compound_risk scenario: review appears ~2s after start, reaches
- *  pending_decision ~6s. 150ms x 80 = 12s leaves real headroom on stage
- *  hardware. Waiting is free while the narration is being read aloud; skipping
- *  five acts is not. */
-const AVAILABLE_TRIES = 80;
-const AVAILABLE_RETRY_MS = 150;
-/** Hard cap for waitUntil / availableWhen. Was 5s — under the ~6s the scenario
- *  needs, so the gate expired before the hero review existed. */
-const GATE_MS = 15_000;
+/** After waitUntil, brief retries for optional surfaces before skipping. */
+const AVAILABLE_TRIES = 5;
+const AVAILABLE_RETRY_MS = 80;
+/** Hard cap for waitUntil / availableWhen (~5s). */
+const GATE_MS = 5_000;
 
 let cachedNavHeight = 48;
 
@@ -306,20 +290,6 @@ export function TourOverlay() {
   const [rect, setRect] = useState<DOMRect | null>(null);
   const [anchorReady, setAnchorReady] = useState(false);
 
-  // Leaving the tour puts the desk back. Curtain Call's onEnter already clears
-  // the selection, but Finish/Skip/Esc bypass it, so the app was left sitting
-  // in the expanded Vessel A view the tour had opened (tour-defects.md 15).
-  // Watching `active` covers every exit path in one place. Deliberately does
-  // not touch demo data — the scenario the tour started stays on the twin so
-  // the case can be walked again after the tour ends.
-  const wasActiveRef = useRef(false);
-  useEffect(() => {
-    if (wasActiveRef.current && !active) {
-      useLiveStore.getState().selectAsset(null);
-    }
-    wasActiveRef.current = active;
-  }, [active]);
-
   const targetElRef = useRef<Element | null>(null);
   const scrollportRef = useRef<HTMLElement | null>(null);
   const enterRanForStep = useRef<number>(-1);
@@ -397,8 +367,7 @@ export function TourOverlay() {
 
     const revealOn = (el: Element) => {
       targetElRef.current = el;
-      const port = nearestScrollportEl(el);
-      scrollportRef.current = port;
+      scrollportRef.current = nearestScrollportEl(el);
       try {
         el.scrollIntoView({
           block: "nearest",
@@ -407,31 +376,6 @@ export function TourOverlay() {
         });
       } catch {
         /* measure in place */
-      }
-      // `block: "nearest"` is a no-op on a target that is already partly
-      // visible, so a panel sitting low in its scrollport kept getting its ring
-      // truncated by the bottomMax clamp — the ring ended mid-sentence with no
-      // bottom padding (tour-defects.md 5a, 11). Nudge the scrollport so the
-      // ring keeps ANCHOR_PAD clearance on the edge that would otherwise clip.
-      if (port) {
-        try {
-          const pr = port.getBoundingClientRect();
-          const er = el.getBoundingClientRect();
-          const fits = er.height <= pr.height - 2 * RING_CLEARANCE;
-          let delta = 0;
-          if (!fits) {
-            // Taller than its scrollport: pin the top so the clipped edge is the
-            // bottom, where the content visibly continues rather than looking cut.
-            delta = er.top - (pr.top + RING_CLEARANCE);
-          } else if (er.bottom > pr.bottom - RING_CLEARANCE) {
-            delta = er.bottom - (pr.bottom - RING_CLEARANCE);
-          } else if (er.top < pr.top + RING_CLEARANCE) {
-            delta = er.top - (pr.top + RING_CLEARANCE);
-          }
-          if (delta !== 0) port.scrollBy({ top: delta, behavior: "auto" });
-        } catch {
-          /* measure in place */
-        }
       }
       // Measure this frame; one rAF catch-up for post-scroll layout.
       setRect(el.getBoundingClientRect());
@@ -516,13 +460,7 @@ export function TourOverlay() {
             /* onEnter is best-effort */
           });
         if (step.awaitEnter) {
-          // Bounded. `await run` with no ceiling means one hung fetch inside an
-          // onEnter stops the tour dead and silently: Act VI's onEnter seals the
-          // hero review over the network, and when that never settled the step
-          // machine waited forever -- controls vanished, the route never
-          // changed, and Acts VI-IX plus the Curtain Call never played. A tour
-          // that degrades is recoverable on stage; one that stops is not.
-          await Promise.race([run, sleep(AWAIT_ENTER_MAX_MS)]);
+          await run;
           if (cancelled) return;
           await resolveAnchor();
           return;
@@ -566,7 +504,7 @@ export function TourOverlay() {
   }, []);
 
   useEffect(() => {
-    if (!active || !anchorReady) return;
+    if (!active || !rect) return;
     const el = targetElRef.current;
     const port = scrollportRef.current ?? nearestScrollportEl(el);
     scrollportRef.current = port;
@@ -577,43 +515,18 @@ export function TourOverlay() {
     if (el && "ResizeObserver" in window) {
       ro = new ResizeObserver(remeasure);
       ro.observe(el);
-      // Observing only the target catches it *resizing* but not it *moving*.
-      // The Brain panel streams agent steps, so siblings above the anchor grow
-      // and push it down at a constant size — no resize fires, the ring keeps
-      // its first measurement, and it ends up drawn hundreds of px above the
-      // element it frames (tour-defects.md 5a, and much of 5b's "different
-      // state on revisit"). Watch the scrollport too.
-      if (port) ro.observe(port);
-    }
-    // Content mutations move the anchor without resizing anything observable.
-    // remeasure is rAF-throttled and bails when the rect is unchanged, so this
-    // stays cheap even while the agent trace is streaming.
-    let mo: MutationObserver | undefined;
-    const moTarget = port ?? el?.parentElement ?? null;
-    if (moTarget && "MutationObserver" in window) {
-      mo = new MutationObserver(remeasure);
-      mo.observe(moTarget, {
-        childList: true,
-        subtree: true,
-        characterData: true,
-      });
     }
     return () => {
       window.removeEventListener("scroll", remeasure, true);
       window.removeEventListener("resize", remeasure);
       port?.removeEventListener("scroll", remeasure);
       ro?.disconnect();
-      mo?.disconnect();
       if (remeasureRaf.current != null) {
         cancelAnimationFrame(remeasureRaf.current);
         remeasureRaf.current = undefined;
       }
     };
-    // Deps deliberately exclude `rect`. Binding on rect meant every remeasure
-    // tore down and rebuilt both observers, which with a streaming agent trace
-    // is a tight disconnect/reconnect loop that starved the auto-advance timer
-    // and killed the tour at Act III. Bind once per step instead.
-  }, [active, anchorReady, stepIndex, remeasure]);
+  }, [active, rect, remeasure]);
 
   // holdNextUntil: subscribe only when the step needs it (avoids getLiveAssetViews
   // on every store tick for steps without a hold gate).
@@ -662,19 +575,23 @@ export function TourOverlay() {
   const step = TOUR_STEPS[stepIndex];
   if (!step) return null;
 
-  // While a step is still resolving its anchor this used to return an empty
-  // div — no card, no controls, no Skip. On a freshly reset demo the hero
-  // review takes ~6s to exist, so Act III sat completely blank and the tour
-  // looked dead with only Esc to escape it. Keep the narration and the
-  // controls on screen throughout; only the spotlight waits for the anchor.
-  // rect is deliberately dropped while waiting: it still holds the *previous*
-  // step's measurement, and drawing that would spotlight the wrong element.
-  const paddedRect =
-    anchorReady && rect ? spotlightRect(rect, targetElRef.current) : null;
+  if (!anchorReady) {
+    return (
+      <div
+        className={styles.root}
+        role="dialog"
+        aria-modal="true"
+        aria-label="SOP Opera guided tour"
+        aria-busy="true"
+      />
+    );
+  }
+
+  const paddedRect = rect ? spotlightRect(rect, targetElRef.current) : null;
   const scrollport = scrollportRef.current;
   const { style: cardStyle, placement } = computeCardPosition(
     paddedRect,
-    step.anchor && anchorReady ? step.placement ?? "bottom" : "center",
+    step.anchor ? step.placement ?? "bottom" : "center",
   );
 
   return (
@@ -683,7 +600,6 @@ export function TourOverlay() {
       role="dialog"
       aria-modal="true"
       aria-label="SOP Opera guided tour"
-      aria-busy={!anchorReady || undefined}
     >
       <Spotlight
         rect={paddedRect}

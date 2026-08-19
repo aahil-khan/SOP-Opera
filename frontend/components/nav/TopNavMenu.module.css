@@ -38,6 +38,33 @@
   transform: translateY(1px);
 }
 
+.indicatorDot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 50%;
+  background: var(--accent-ok);
+  flex-shrink: 0;
+  animation: nav-indicator-pulse 1.6s ease-out infinite;
+}
+
+@keyframes nav-indicator-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-ok) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 5px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .indicatorDot {
+    animation: none;
+  }
+}
+
 .chevron {
   opacity: 0.85;
   transition: transform var(--duration-fast) var(--ease-out);

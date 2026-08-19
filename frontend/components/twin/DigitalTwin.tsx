@@ -18,7 +18,7 @@ import {
 import { deviceShortLabel, plainState } from "@/lib/autoResponse";
 import { heroAssetId } from "@/lib/tourScript";
 import { useTourStepId } from "@/lib/tourStore";
-import { columnForView } from "@/lib/openWork";
+import { columnForView, isBlockedWork } from "@/lib/openWork";
 import floorPlanMap from "@/lib/floor_plan_map.json";
 import { buildFloorSpatialLinks } from "@/lib/riskHeatmap";
 import { useNewEntries } from "@/lib/useNewEntries";
@@ -277,10 +277,13 @@ export function DigitalTwin() {
       ) {
         resolved[v.asset.id] = true;
       }
+      // A closed review is done, not open work — except a blocked closure
+      // still parked on the map until the operator clears it.
+      const activeReview = v.review != null && v.review.state !== "closed";
       if (
-        !(v.map_cleared && v.review?.state === "closed") &&
-        (v.review != null ||
-          (v.risk_level !== "nominal" && v.detail?.derived_facts?.length))
+        activeReview ||
+        isBlockedWork(v) ||
+        (v.risk_level !== "nominal" && v.detail?.derived_facts?.length)
       ) {
         affected += 1;
       }

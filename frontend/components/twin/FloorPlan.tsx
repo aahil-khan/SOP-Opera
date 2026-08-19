@@ -693,12 +693,12 @@ export const FloorPlan = memo(function FloorPlan({
                 >
                   <rect
                     x={x + 2}
-                    y={y + h - 14}
-                    width={Math.min(150, 7 + text.length * 4.6)}
-                    height={12}
+                    y={y + h - 17}
+                    width={Math.min(220, 10 + text.length * 6)}
+                    height={15}
                     rx={3}
                   />
-                  <text x={x + 6} y={y + h - 5}>
+                  <text x={x + 6} y={y + h - 6}>
                     {text}
                   </text>
                 </g>

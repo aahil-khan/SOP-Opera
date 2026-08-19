@@ -2,15 +2,13 @@
    rate bars, and grouped panels instead of nested boxes. */
 
 .wrap {
-  height: calc(100vh - var(--nav-height));
-  min-height: 480px;
-  padding: var(--space-6) var(--space-8);
+  min-height: calc(100vh - var(--nav-height));
+  padding: var(--space-5) var(--space-8) var(--space-6);
   background: var(--surface-canvas);
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: var(--space-6);
-  overflow: auto;
+  gap: var(--space-4);
 }
 
 .header {
@@ -325,14 +323,14 @@
 .heroRow {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-2);
 }
 
 .hero {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  padding: var(--space-4) var(--space-4) var(--space-3);
   border-radius: var(--radius-lg, 10px);
   border: 1px solid var(--border-default);
   background: var(--surface-panel);
@@ -351,7 +349,7 @@
 }
 
 .heroValue {
-  font-size: var(--text-3xl, 2.19rem);
+  font-size: var(--text-2xl, 1.69rem);
   font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
@@ -390,7 +388,7 @@
 .grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: var(--space-3);
+  gap: var(--space-2);
   align-items: stretch;
 }
 
@@ -404,7 +402,7 @@
 }
 
 .panelHeader {
-  padding: var(--space-4) var(--space-5);
+  padding: var(--space-3) var(--space-4);
   border-bottom: 1px solid var(--border-muted);
 }
 
@@ -424,10 +422,10 @@
 }
 
 .panelBody {
-  padding: var(--space-5);
+  padding: var(--space-4);
   display: flex;
   flex-direction: column;
-  gap: var(--space-5);
+  gap: var(--space-3);
 }
 
 /* Rate bars */
@@ -609,6 +607,42 @@
 
 .legendDotOutput {
   background: var(--accent-ai);
+}
+
+.horizonToggle {
+  display: inline-flex;
+  align-self: flex-start;
+  gap: 2px;
+  padding: 3px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border-default);
+  background: var(--surface-canvas);
+}
+
+.horizonBtn {
+  appearance: none;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: var(--text-xs);
+  font-weight: var(--weight-medium);
+  padding: var(--space-1) var(--space-3);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  transition:
+    color var(--duration-fast) var(--ease-out),
+    background var(--duration-fast) var(--ease-out);
+}
+
+.horizonBtn:hover {
+  color: var(--text-primary);
+}
+
+.horizonBtn[data-active="true"] {
+  background: var(--surface-panel);
+  color: var(--text-primary);
+  box-shadow: var(--shadow-sm);
 }
 
 .note {

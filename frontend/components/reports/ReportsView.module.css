@@ -4,13 +4,13 @@
 .page {
   height: calc(100vh - var(--nav-height));
   min-height: 480px;
-  padding: var(--space-6) var(--space-8);
+  padding: var(--space-4) var(--space-8);
   background: var(--surface-canvas);
   overflow: auto;
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
-  gap: var(--space-6);
+  gap: var(--space-3);
 }
 
 /* Header ------------------------------------------------------------------ */
@@ -104,7 +104,7 @@
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  padding: var(--space-5) var(--space-5) var(--space-4);
+  padding: var(--space-3) var(--space-4);
   border-radius: var(--radius-lg, 10px);
   border: 1px solid var(--border-default);
   background: var(--surface-panel);
@@ -123,7 +123,7 @@
 }
 
 .heroValue {
-  font-size: var(--text-3xl, 2.19rem);
+  font-size: var(--text-2xl, 1.69rem);
   font-weight: var(--weight-semibold);
   font-variant-numeric: tabular-nums;
   font-family: var(--font-mono);
@@ -148,13 +148,6 @@
   text-transform: uppercase;
   letter-spacing: 0.04em;
   color: var(--text-muted);
-}
-
-.heroHint {
-  margin-top: var(--space-1);
-  font-size: var(--text-xs);
-  color: var(--text-muted);
-  line-height: var(--leading-normal);
 }
 
 /* Filter toolbar ---------------------------------------------------------- */
@@ -282,9 +275,9 @@
   position: relative;
   display: flex;
   align-items: center;
-  flex: 0 1 21rem;
-  max-width: 21rem;
-  min-width: 9rem;
+  flex: 0 1 15rem;
+  max-width: 15rem;
+  min-width: 8rem;
 }
 
 .searchIcon {

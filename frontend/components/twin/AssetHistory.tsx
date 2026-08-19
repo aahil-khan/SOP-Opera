@@ -1,10 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import {
-  fetchReports,
-  type ReportSummary,
-} from "@/lib/liveApi";
+import type { ReportSummary } from "@/lib/liveApi";
+import { fetchAssetHistory } from "@/lib/assetHistoryCache";
 import { formatDate } from "@/lib/humanize";
 import { useLiveStore } from "@/lib/liveStore";
 import styles from "./AssetHistory.module.css";
@@ -20,9 +18,26 @@ interface AssetHistoryProps {
   assetId: string;
   /** Review currently shown in the panel — highlights the matching history row. */
   activeReviewId?: string | null;
+  /**
+   * Rendered inside the domain flyout, which supplies its own heading and
+   * padding. Drops this component's section chrome so the title is not shown
+   * twice — same contract SpatialGraphPanel uses for the spatial face.
+   */
+  embedded?: boolean;
+  /**
+   * Called after a row opens its closure. The flyout sits on top of
+   * AssetPanel, so without this the panel underneath swaps to the requested
+   * report but stays hidden behind the still-pinned flyout.
+   */
+  onNavigate?: () => void;
 }
 
-export function AssetHistory({ assetId, activeReviewId = null }: AssetHistoryProps) {
+export function AssetHistory({
+  assetId,
+  activeReviewId = null,
+  embedded = false,
+  onNavigate,
+}: AssetHistoryProps) {
   const openAssetClosure = useLiveStore((s) => s.openAssetClosure);
   const [reports, setReports] = useState<ReportSummary[] | null>(null);
   const [failed, setFailed] = useState(false);
@@ -31,9 +46,9 @@ export function AssetHistory({ assetId, activeReviewId = null }: AssetHistoryPro
     let cancelled = false;
     setReports(null);
     setFailed(false);
-    void fetchReports({ asset_id: assetId, limit: 20 })
-      .then((rows) => {
-        if (!cancelled) setReports(rows);
+    void fetchAssetHistory(assetId)
+      .then((result) => {
+        if (!cancelled) setReports(result.reports);
       })
       .catch(() => {
         if (!cancelled) setFailed(true);
@@ -43,11 +58,8 @@ export function AssetHistory({ assetId, activeReviewId = null }: AssetHistoryPro
     };
   }, [assetId]);
 
-  return (
-    <section className={styles.root} aria-labelledby="asset-history-heading">
-      <h3 id="asset-history-heading" className={styles.title}>
-        History
-      </h3>
+  const body = (
+    <>
       {failed ? (
         <p className={styles.empty}>Could not load prior issues.</p>
       ) : reports == null ? (
@@ -70,7 +82,10 @@ export function AssetHistory({ assetId, activeReviewId = null }: AssetHistoryPro
                   className={styles.row}
                   data-active={active ? "true" : undefined}
                   aria-current={active ? "true" : undefined}
-                  onClick={() => openAssetClosure(assetId, r.review_id)}
+                  onClick={() => {
+                    openAssetClosure(assetId, r.review_id);
+                    onNavigate?.();
+                  }}
                 >
                   <span className={styles.meta}>
                     <time dateTime={r.frozen_at ?? r.generated_at}>
@@ -92,6 +107,17 @@ export function AssetHistory({ assetId, activeReviewId = null }: AssetHistoryPro
           })}
         </ul>
       )}
+    </>
+  );
+
+  if (embedded) return body;
+
+  return (
+    <section className={styles.root} aria-labelledby="asset-history-heading">
+      <h3 id="asset-history-heading" className={styles.title}>
+        History
+      </h3>
+      {body}
     </section>
   );
 }

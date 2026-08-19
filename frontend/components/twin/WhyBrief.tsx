@@ -193,10 +193,15 @@ function ClosureReportHint({ reviewId }: { reviewId: string }) {
 
 export function WhyBrief({ view, assessment }: WhyBriefProps) {
   const clearMapMarker = useLiveStore((s) => s.clearMapMarker);
+  const [summaryExpanded, setSummaryExpanded] = useState(false);
   const items = itemsFrom(view, assessment);
   const notice = residualNotice(view);
   const lead = summaryLead(assessment);
   const reviewId = view.review?.id;
+
+  useEffect(() => {
+    setSummaryExpanded(false);
+  }, [assessment?.id]);
 
   if (items.length === 0 && !notice && !lead) {
     return (
@@ -225,7 +230,24 @@ export function WhyBrief({ view, assessment }: WhyBriefProps) {
         </div>
       ) : null}
 
-      {lead ? <p className={styles.summary}>{lead}</p> : null}
+      {lead ? (
+        <div className={styles.summaryWrap}>
+          <p
+            className={styles.summary}
+            data-clamped={summaryExpanded ? undefined : "true"}
+          >
+            {lead}
+          </p>
+          <button
+            type="button"
+            className={styles.summaryToggle}
+            onClick={() => setSummaryExpanded((v) => !v)}
+            aria-expanded={summaryExpanded}
+          >
+            {summaryExpanded ? "Show less" : "Show full summary"}
+          </button>
+        </div>
+      ) : null}
 
       {items.length > 0 ? (
         <ul className={styles.detailList}>

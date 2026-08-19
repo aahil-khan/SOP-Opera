@@ -5,9 +5,6 @@ import { useLiveStore } from "@/lib/liveStore";
 import { demoRequest, useDemoStatus, type DemoStatus } from "@/lib/useDemoStatus";
 import styles from "./DemoStepBar.module.css";
 
-const HERO_SCENARIO = "compound_risk";
-const HERO_LABEL = "Compound Risk";
-
 /**
  * Always-visible demo pacing controls in the top nav.
  * Scripted scenarios arm without autoplay — you click Next for each beat.
@@ -36,39 +33,6 @@ export function DemoStepBar() {
     setStatus(st);
     void refreshOverview();
     void bootstrap();
-  }
-
-  async function onLoad() {
-    setBusy(true);
-    setError(null);
-    try {
-      clearAgentSteps();
-      clearTelemetry();
-      let st: DemoStatus;
-      try {
-        st = await demoRequest<DemoStatus>(
-          `/demo/scenarios/${HERO_SCENARIO}/arm`,
-          { method: "POST" },
-        );
-      } catch (err) {
-        // Session already open — reset once and arm again.
-        const msg = err instanceof Error ? err.message : String(err);
-        if (!msg.includes("409")) throw err;
-        await demoRequest("/demo/reset", { method: "POST" });
-        clearAgentSteps();
-        clearTelemetry();
-        st = await demoRequest<DemoStatus>(
-          `/demo/scenarios/${HERO_SCENARIO}/arm`,
-          { method: "POST" },
-        );
-      }
-      await afterMutate(st);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    } finally {
-      setBusy(false);
-      void refreshStatus();
-    }
   }
 
   async function onNext() {
@@ -107,18 +71,6 @@ export function DemoStepBar() {
 
   return (
     <div className={styles.bar} role="group" aria-label="Demo scenario steps">
-      {!manual && !autoRunning ? (
-        <button
-          type="button"
-          className={styles.loadBtn}
-          disabled={busy}
-          onClick={() => void onLoad()}
-          title="Load Compound Risk for manual step-through"
-        >
-          {busy ? "Loading…" : HERO_LABEL}
-        </button>
-      ) : null}
-
       {manual ? (
         <>
           <span className={styles.meta} title={status?.scenario ?? undefined}>

@@ -388,6 +388,59 @@ async def acknowledge_item(
     return out
 
 
+async def acknowledge_all(
+    session: AsyncSession,
+    *,
+    handover_id: UUID,
+    ack_state: str,
+    actor: ActorMeOut,
+) -> HandoverOut:
+    """Bulk sibling of acknowledge_item — clears every still-pending required
+    item in one statement rather than the frontend looping N requests."""
+    handover = await _require(session, handover_id=handover_id)
+    _require_state(handover, {"issued"}, "acknowledge items on")
+    _require_party(handover, actor, "incoming")
+
+    rows = await repo.acknowledge_all_pending(
+        session,
+        handover_id=handover_id,
+        ack_state=ack_state,
+        actor_id=actor.id,
+        actor_name=actor.name,
+    )
+
+    if rows:
+        await record_audit(
+            session,
+            entity_type="handover",
+            entity_id=handover_id,
+            event_type="handover.item_acknowledged",
+            actor=actor.name,
+            payload={
+                "item_ids": [str(r["id"]) for r in rows],
+                "item_count": len(rows),
+                "ack_state": ack_state,
+                "bulk": True,
+            },
+        )
+    await session.commit()
+
+    out = await _assemble(session, handover=handover, actor=actor)
+    if rows:
+        await manager.broadcast(
+            "handover.item_acknowledged",
+            {
+                "handover_id": str(handover_id),
+                "item_ids": [str(r["id"]) for r in rows],
+                "ack_state": ack_state,
+                "actor_name": actor.name,
+                "required_total": out.required_total,
+                "required_cleared": out.required_cleared,
+            },
+        )
+    return out
+
+
 async def accept(
     session: AsyncSession, *, handover_id: UUID, actor: ActorMeOut
 ) -> HandoverOut:

@@ -8,11 +8,17 @@ export type DomainId =
   | "people"
   | "evidence"
   | "response"
-  | "spatial";
+  | "spatial"
+  | "history";
 
 /**
  * `response` sits next to `evidence` on purpose: the two faces read as a pair,
  * what we knew and what we did about it.
+ *
+ * `history` is last because it is the only face that looks backwards — every
+ * other domain describes the asset now. It became a face rather than a section
+ * of its own because the inline list ran to 20 closures and 1578px, which was
+ * 72% of the panel's scroll height and buried the six live faces above it.
  */
 export const DOMAINS: DomainId[] = [
   "sensors",
@@ -21,6 +27,7 @@ export const DOMAINS: DomainId[] = [
   "evidence",
   "response",
   "spatial",
+  "history",
 ];
 
 export interface DomainMeta {
@@ -68,6 +75,12 @@ export const DOMAIN_META: Record<DomainId, DomainMeta> = {
     short: "Nearby links",
     colorVar: "--domain-spatial",
   },
+  history: {
+    id: "history",
+    label: "History",
+    short: "Prior closures",
+    colorVar: "--domain-history",
+  },
 };
 
 export interface DomainScore {
@@ -107,6 +120,16 @@ export interface DomainScoreExtras {
   responseLiveCount?: number;
   responseRefusedCount?: number;
   responseProtectCount?: number;
+  /**
+   * Closed report count for this asset. Same shape as `neighborCount` above:
+   * fetched by the radar, `undefined` until it lands so the face is not marked
+   * empty before we know.
+   */
+  historyCount?: number;
+  /** True while the closure-report fetch is in flight. */
+  historyPending?: boolean;
+  /** Risk level of the most recent closure, for the face headline. */
+  historyLastOutcome?: string | null;
 }
 
 function clampScore(n: number): number {
@@ -325,6 +348,44 @@ export function computeDomainScore(
                 : ["Isolated"]),
         ].slice(0, 2),
         warn: spatialLinks.length > 0,
+        empty,
+      };
+    }
+    case "history": {
+      const count = extras.historyCount ?? 0;
+      const pending = extras.historyPending === true;
+      // Don't grey out while the fetch is in flight — same treatment spatial
+      // gives neighbours, so the face doesn't flicker empty then fill.
+      const empty = !pending && count === 0;
+      const last = extras.historyLastOutcome ?? null;
+      let score = 0;
+      if (pending && count === 0) {
+        score = 18;
+      } else if (!empty) {
+        // Depth of record, not severity: a long clean history is a well-run
+        // asset, so this face must never read as a live hazard.
+        score = clampScore(25 + Math.min(count, 12) * 6);
+      }
+      return {
+        domain,
+        score,
+        headline: pending && count === 0
+          ? "Checking prior closures…"
+          : empty
+            ? "No prior issues on file"
+            : `${count} prior closure${count === 1 ? "" : "s"}`,
+        facts: [
+          ...(count > 0 ? [`${count} on file`] : []),
+          ...(last
+            ? [`Last: ${last.replace(/_/g, " ")}`]
+            : pending
+              ? ["Loading…"]
+              : []),
+        ].slice(0, 2),
+        // Always false: this face reports what already closed. A past blocking
+        // decision is a resolved event, and amber here would compete with the
+        // six live faces for the supervisor's attention.
+        warn: false,
         empty,
       };
     }

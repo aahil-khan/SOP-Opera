@@ -7,7 +7,6 @@ import { Logo } from "@/components/brand/Logo";
 import { ShiftGate } from "@/components/twin/ShiftGate";
 import { DemoMenu } from "./DemoMenu";
 import { DemoStepBar } from "@/components/demo/DemoStepBar";
-import { LiveFeedPill } from "./LiveFeedPill";
 import { SettingsMenu } from "./SettingsMenu";
 import { TourLaunchButton } from "@/components/tour/TourLaunchButton";
 import styles from "./TopNav.module.css";
@@ -112,8 +111,6 @@ export function TopNav() {
         </div>
 
         <span className={styles.spacer} />
-
-        <LiveFeedPill />
 
         <div className={styles.toolbar}>
           {/* display: contents — layout-neutral wrapper that exists only so the

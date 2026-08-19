@@ -8,6 +8,7 @@ import { DOMAIN_META } from "@/lib/domains";
 import type { ReferenceSource } from "@/shared/enums";
 import type { AreaOwner, RetrievedReference } from "@/shared/schemas";
 import { AssetTelemetry } from "./AssetTelemetry";
+import { AssetHistory } from "./AssetHistory";
 import { SpatialGraphPanel } from "./SpatialGraphPanel";
 import { AutoResponsePanel } from "@/components/response/AutoResponsePanel";
 import styles from "./DomainDetailFlyout.module.css";
@@ -94,10 +95,12 @@ function DomainBody({
   domain,
   view,
   areaOwner: areaOwnerProp,
+  onClose,
 }: {
   domain: DomainId;
   view: LiveAssetView;
   areaOwner?: AreaOwner | null;
+  onClose: () => void;
 }) {
   const context = view.detail?.context ?? [];
   const derivedFacts = view.detail?.derived_facts ?? [];
@@ -224,6 +227,19 @@ function DomainBody({
     );
   }
 
+  if (domain === "history") {
+    // Only fetched once the face is opened. As an always-rendered section this
+    // list pulled 20 closures on every panel open and stood 1578px tall.
+    return (
+      <AssetHistory
+        assetId={view.asset.id}
+        activeReviewId={view.review?.id ?? null}
+        embedded
+        onNavigate={onClose}
+      />
+    );
+  }
+
   /**
    * Explicit, not a fallthrough. This used to end with an unguarded return of
    * the spatial panel, so adding a domain rendered the wrong body with no type
@@ -323,7 +339,12 @@ export function DomainDetailFlyout({
       </header>
 
       <div key={slideKey} className={styles.body}>
-        <DomainBody domain={rendered} view={view} areaOwner={areaOwner} />
+        <DomainBody
+          domain={rendered}
+          view={view}
+          areaOwner={areaOwner}
+          onClose={onClose}
+        />
       </div>
     </div>
   );

@@ -7,15 +7,13 @@
  */
 
 .page {
-  height: calc(100vh - var(--nav-height));
-  min-height: 480px;
+  min-height: calc(100vh - var(--nav-height));
   padding: var(--space-6) var(--space-8);
   background: var(--surface-canvas);
   display: flex;
   flex-direction: column;
   justify-content: flex-start;
   gap: var(--space-6);
-  overflow: auto;
   box-sizing: border-box;
 }
 
@@ -130,6 +128,62 @@
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: var(--space-3);
+}
+
+.idle {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-6) var(--space-5);
+  border: 1px dashed var(--border-muted);
+  border-radius: var(--radius-lg, 10px);
+  text-align: center;
+}
+
+.idleDot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.idleDot[data-loading="true"] {
+  background: var(--accent-selection);
+  animation: idle-pulse 1.2s ease-out infinite;
+}
+
+@keyframes idle-pulse {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent-selection) 50%, transparent);
+  }
+  70% {
+    box-shadow: 0 0 0 6px transparent;
+  }
+  100% {
+    box-shadow: 0 0 0 0 transparent;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .idleDot[data-loading="true"] {
+    animation: none;
+  }
+}
+
+.idleTitle {
+  margin: 0;
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  color: var(--text-primary);
+}
+
+.idleCopy {
+  margin: 0;
+  max-width: 28rem;
+  font-size: var(--text-sm);
+  color: var(--text-muted);
+  line-height: var(--leading-normal);
 }
 
 .hero {
@@ -453,6 +507,13 @@
   gap: var(--space-2);
 }
 
+.groupHead {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
 .groupLabel {
   display: flex;
   align-items: center;
@@ -732,8 +793,7 @@
 /* Start / settled --------------------------------------------------------- */
 
 .start,
-.settled,
-.addNote {
+.settled {
   display: flex;
   flex-direction: column;
   gap: var(--space-3);
@@ -741,6 +801,16 @@
   border: 1px solid var(--border-default);
   border-radius: var(--radius-md);
   background: var(--surface-panel);
+}
+
+/* Lives inside .rail now, which already supplies the card chrome —
+   own box would double up border/background around it. */
+.addNote {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  padding-top: var(--space-4);
+  border-top: 1px solid var(--border-muted);
 }
 
 .settled {

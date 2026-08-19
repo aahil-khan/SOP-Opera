@@ -492,7 +492,7 @@
 }
 
 .responseBadge text {
-  font-size: 7px;
+  font-size: 10px;
   font-weight: 600;
   letter-spacing: 0.02em;
   fill: var(--text-primary);

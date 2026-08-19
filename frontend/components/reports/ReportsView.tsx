@@ -201,13 +201,13 @@ export function ReportsView() {
       </header>
 
       <div className={styles.heroRow}>
-        <div className={styles.hero}>
+        <div className={styles.hero} title="Current versions only">
           <span className={styles.heroValue}>{kpis.total}</span>
           <span className={styles.heroLabel}>Frozen packets</span>
-          <span className={styles.heroHint}>Current versions only</span>
         </div>
         <div
           className={styles.hero}
+          title="Work stopped by a supervisor"
           data-tone={
             kpis.blockedPct >= 50
               ? "bad"
@@ -218,25 +218,22 @@ export function ReportsView() {
         >
           <span className={styles.heroValue}>{kpis.blockedPct}%</span>
           <span className={styles.heroLabel}>Blocked share</span>
-          <span className={styles.heroHint}>Work stopped by a supervisor</span>
         </div>
         <div
           className={styles.hero}
+          title="Packets naming an OISD / Factories Act clause"
           data-tone={kpis.citationPct >= 80 ? "good" : "warn"}
         >
           <span className={styles.heroValue}>{kpis.citationPct}%</span>
           <span className={styles.heroLabel}>Carry citations</span>
-          <span className={styles.heroHint}>
-            Packets naming an OISD / Factories Act clause
-          </span>
         </div>
         <div
           className={styles.hero}
+          title="Tasks still outstanding"
           data-tone={kpis.openTasks > 0 ? "warn" : "good"}
         >
           <span className={styles.heroValue}>{kpis.openTasks}</span>
           <span className={styles.heroLabel}>Open follow-through</span>
-          <span className={styles.heroHint}>Tasks still outstanding</span>
         </div>
       </div>
 

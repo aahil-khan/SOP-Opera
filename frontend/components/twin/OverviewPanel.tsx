@@ -729,6 +729,7 @@ export function OverviewPanel() {
           key={k.key}
           className={styles.kpi}
           data-tone={k.warn ? "warn" : k.value === 0 ? "good" : undefined}
+          title={k.label}
         >
           <span className={styles.kpiValue}>{k.value}</span>
           <span className={styles.kpiLabel}>{k.label}</span>

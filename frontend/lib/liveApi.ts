@@ -219,6 +219,22 @@ export interface ProviderConnection {
   reason: string | null;
 }
 
+export interface CostProjectionPoint {
+  months: number;
+  days: number;
+  projected_usd: number;
+}
+
+export interface CostProjection {
+  provider: string;
+  /** False for mock/ollama — no per-token pricing, so projections are always $0. */
+  is_paid_provider: boolean;
+  trailing_window_days: number;
+  trailing_cost_usd: number;
+  daily_rate_usd: number;
+  projections: CostProjectionPoint[];
+}
+
 export interface ProviderComparisonRow {
   provider: string;
   model: string | null;
@@ -549,6 +565,10 @@ export function fetchAiOpsSummary(): Promise<AiOpsSummary> {
   return request<AiOpsSummary>("/ai-ops/summary");
 }
 
+export function fetchCostProjection(): Promise<CostProjection> {
+  return request<CostProjection>("/ai-ops/cost-projection");
+}
+
 export interface ProviderState {
   active_provider: string;
   active_model: string | null;
@@ -735,6 +755,14 @@ export function acknowledgeHandoverItem(
   return request<Handover>(`/handover/${handoverId}/items/${itemId}/ack`, {
     method: "POST",
     body: JSON.stringify({ ack_state: ackState, note: note ?? null }),
+  });
+}
+
+export function acknowledgeAllHandoverItems(
+  handoverId: string,
+): Promise<Handover> {
+  return request<Handover>(`/handover/${handoverId}/items/ack-all`, {
+    method: "POST",
   });
 }
 

@@ -125,6 +125,23 @@ async def post_ack(
     )
 
 
+@router.post("/{handover_id}/items/ack-all", response_model=HandoverOut)
+async def post_ack_all(
+    handover_id: UUID,
+    actor: ActorMeOut = Depends(get_current_actor),
+    session: AsyncSession = Depends(get_session),
+) -> HandoverOut:
+    """Clear every still-pending required item in one call."""
+    return await _guard(
+        service.acknowledge_all(
+            session,
+            handover_id=handover_id,
+            ack_state="acknowledged",
+            actor=actor,
+        )
+    )
+
+
 @router.post("/{handover_id}/accept", response_model=HandoverOut)
 async def post_accept(
     handover_id: UUID,

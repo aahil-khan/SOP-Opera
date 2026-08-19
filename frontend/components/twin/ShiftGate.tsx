@@ -2,7 +2,11 @@
 
 import { useCallback, useEffect, useState } from "react";
 import type { Handover } from "@/shared/schemas";
-import { acceptHandover, acknowledgeHandoverItem } from "@/lib/liveApi";
+import {
+  acceptHandover,
+  acknowledgeAllHandoverItems,
+  acknowledgeHandoverItem,
+} from "@/lib/liveApi";
 import { useLiveStore } from "@/lib/liveStore";
 import { HandoverLedger } from "@/components/handover/HandoverLedger";
 import styles from "./ShiftGate.module.css";
@@ -104,6 +108,10 @@ export function ShiftGate({ onStartShift, onClose }: ShiftGateProps) {
                   )
                 }
                 onSelectAsset={(assetId) => onStartShift(assetId)}
+                onAcknowledgeAll={() =>
+                  run(() => acknowledgeAllHandoverItems(handover.id))
+                }
+                bulkBusy={busy}
               />
             </>
           ) : (

@@ -7,7 +7,6 @@
   flex: 1 1 auto;
 }
 
-.loadBtn,
 .nextBtn,
 .resetBtn {
   appearance: none;
@@ -44,15 +43,18 @@
   cursor: not-allowed;
 }
 
-.loadBtn,
 .nextBtn {
-  border-color: color-mix(in srgb, var(--accent-selection) 40%, var(--border-muted));
-  background: color-mix(in srgb, var(--accent-selection) 12%, var(--surface-panel));
-  color: var(--accent-selection);
   min-width: 0;
   max-width: 9.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+/* Active state only — mid-playback, something is genuinely armed. */
+.nextBtn {
+  border-color: color-mix(in srgb, var(--accent-selection) 40%, var(--border-muted));
+  background: color-mix(in srgb, var(--accent-selection) 12%, var(--surface-panel));
+  color: var(--accent-selection);
 }
 
 .meta {

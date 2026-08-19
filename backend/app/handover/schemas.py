@@ -10,7 +10,12 @@ from pydantic import BaseModel, Field
 
 HandoverState = Literal["draft", "issued", "accepted", "expired"]
 HandoverItemType = Literal[
-    "open_review", "active_fact", "open_task", "decision_condition", "note"
+    "open_review",
+    "active_fact",
+    "open_task",
+    "decision_condition",
+    "response_action",
+    "note",
 ]
 AckState = Literal["pending", "acknowledged", "queried"]
 NarrationMode = Literal["llm", "deterministic", "fallback"]
