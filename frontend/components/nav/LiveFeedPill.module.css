@@ -6,9 +6,9 @@
   height: 1.75rem;
   padding: 0 var(--space-3);
   border-radius: var(--radius-md);
-  border: 1px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 40%, var(--border-muted));
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 10%, var(--surface-panel));
-  color: var(--accent-ok, #2f9e6a);
+  border: 1px solid color-mix(in srgb, var(--accent-ok) 40%, var(--border-muted));
+  background: color-mix(in srgb, var(--accent-ok) 10%, var(--surface-panel));
+  color: var(--accent-ok);
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
   white-space: nowrap;

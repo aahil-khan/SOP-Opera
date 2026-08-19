@@ -53,9 +53,9 @@
 }
 
 .statusBadge[data-tone="live"] {
-  color: var(--accent-ok, #2f9e6a);
-  border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 40%, var(--border-muted));
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 10%, var(--surface-canvas));
+  color: var(--accent-ok);
+  border-color: color-mix(in srgb, var(--accent-ok) 40%, var(--border-muted));
+  background: color-mix(in srgb, var(--accent-ok) 10%, var(--surface-canvas));
 }
 
 .statusBadge[data-tone="error"] {
@@ -106,9 +106,9 @@
 }
 
 .liveToggle[data-on="true"] {
-  border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 50%, var(--border-muted));
-  color: var(--accent-ok, #2f9e6a);
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 10%, var(--surface-canvas));
+  border-color: color-mix(in srgb, var(--accent-ok) 50%, var(--border-muted));
+  color: var(--accent-ok);
+  background: color-mix(in srgb, var(--accent-ok) 10%, var(--surface-canvas));
 }
 
 .liveToggle:disabled {

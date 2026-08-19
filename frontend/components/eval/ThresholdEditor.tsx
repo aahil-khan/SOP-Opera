@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { putThresholds } from "@/lib/liveApi";
+import { RefreshAck, useRefreshAck } from "@/components/common/RefreshAck";
 import { useLiveStore } from "@/lib/liveStore";
 import {
   DEFAULT_THRESHOLDS,
@@ -152,6 +153,7 @@ export function ThresholdEditor({ embedded = false }: ThresholdEditorProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [saved, setSaved] = useState(false);
+  const reloadAck = useRefreshAck();
 
   useEffect(() => {
     setDraft(draftFromConfig(thresholdsConfig));
@@ -388,6 +390,9 @@ export function ThresholdEditor({ embedded = false }: ThresholdEditorProps) {
               const next = await refreshThresholds();
               setDraft(draftFromConfig(next));
               setSaved(false);
+              // Reloading identical thresholds changes nothing on screen, so
+              // acknowledge the fetch itself or the button reads as dead.
+              reloadAck.ack();
             } catch (err) {
               setError(err instanceof Error ? err.message : String(err));
             } finally {
@@ -400,6 +405,7 @@ export function ThresholdEditor({ embedded = false }: ThresholdEditorProps) {
         {saved && !error ? (
           <span className={styles.ok}>Applied</span>
         ) : null}
+        <RefreshAck shown={reloadAck.acked && !error} label="Reloaded" />
       </div>
       {error ? <p className={styles.error}>{error}</p> : null}
     </section>

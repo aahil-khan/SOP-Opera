@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { toast } from "react-toastify";
 import { fetchRoster } from "@/lib/authApi";
-import type { RosterEntry } from "@/lib/authTypes";
+import type { Actor, RosterEntry } from "@/lib/authTypes";
 import { getActorFromCookie } from "@/lib/actorCookie";
 import { useLiveStore } from "@/lib/liveStore";
 import {
@@ -75,7 +75,20 @@ function ListeningOrbit({ compact = false }: { compact?: boolean }) {
 
 export default function SupervisorPage() {
   const router = useRouter();
-  const actor = getActorFromCookie();
+  // The cookie is browser-only, so reading it during render made the server
+  // render the identity gate and the client render the board — React threw a
+  // hydration mismatch and re-rendered the whole tree. Hydrate after mount
+  // instead, the way TopNav.tsx:37-38 already does. `actorReady` distinguishes
+  // "not read yet" from "read, and there is no supervisor", so the gate is not
+  // flashed at someone who is signed in.
+  const [actor, setActor] = useState<Actor | null>(null);
+  const [actorReady, setActorReady] = useState(false);
+
+  useEffect(() => {
+    setActor(getActorFromCookie());
+    setActorReady(true);
+  }, []);
+
   const zones = useMemo(() => {
     if (!actor || actor.kind !== "worker") return [];
     return actor.owned_zones;
@@ -96,7 +109,10 @@ export default function SupervisorPage() {
   const [sharedReviews, setSharedReviews] = useState<SharedReview[]>([]);
   const [raisedReviews, setRaisedReviews] = useState<SharedReview[]>([]);
   const [zoneReviews, setZoneReviews] = useState<SharedReview[]>([]);
-  const [loading, setLoading] = useState(false);
+  // Starts true: the board mounts empty and refreshBoard() is debounced 300ms
+  // (see the effect below), so a false start renders "All clear in your zones"
+  // before the first fetch has been made.
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [selectedReviewId, setSelectedReviewId] = useState<string | null>(null);
 
@@ -372,6 +388,12 @@ export default function SupervisorPage() {
       done: tasks.filter((t) => t.status === "done"),
     };
   }, [tasks]);
+
+  // Cookie not read yet — say nothing rather than accuse a signed-in
+  // supervisor of having no identity.
+  if (!actorReady) {
+    return <div className={styles.gate} aria-busy="true" />;
+  }
 
   if (!actor || actor.kind !== "worker") {
     return (

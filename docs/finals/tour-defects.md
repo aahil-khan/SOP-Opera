@@ -92,3 +92,50 @@ Manual 15-step walk-through of the in-app guided tour. Steps include both PASS o
 *Code-level causes and `file:line` references were added during PR review; the observations themselves are unchanged.
 Step 13 was reported as a defect and downgraded to PASS on review.*
 *Source of truth for W12 (Tour + legibility fixes).*
+
+---
+
+## Resolution — Product Walkthrough half (19 Aug 2026)
+
+Branch `ui/finals-polish`. The observations above are unchanged; this section
+records what was done about them. Every entry was verified against the running
+app with before/after screenshots in mission-control and light.
+
+| # | outcome | commit | where |
+|---|---|---|---|
+| 6, 8, 9 | fixed as one change, as the log predicted | `94a53f6` | new `components/common/RefreshAck.tsx`; wired at `ThresholdEditor.tsx:398`, `CompoundScorecard.tsx:120`, `AIOpsDashboard.tsx:283` |
+| 11 | fixed | `6e4ef9d` | `HandoverView.tsx:463` — "Window (hours)" → "Look back (hours)" |
+| 16 | fixed | `5ea77eb` | `app/supervisor/page.tsx:99` — `loading` started `false` against a 300ms-debounced fetch |
+| 18 | fixed | `5f15060` | `lib/notificationSeen.ts:66-71` — watermark now seeds to the 12h shift boundary, not the newest item |
+
+### Corrections to the log
+
+- **#16 copy.** The string is "All clear in **your zones**" (`app/supervisor/page.tsx:536`), not
+  "All clear in this zone" as recorded.
+
+### Found while fixing, not in the log above
+
+| finding | outcome | commit |
+|---|---|---|
+| TopNav overflowed below ~640px on **all nine** chrome-carrying routes (body scrollWidth 554; `/supervisor` 498), not the two originally reported | fixed — nav wraps, `--nav-height` 48→96px at that breakpoint | `c9b8745` |
+| `/supervisor` read the actor cookie during render: React hydration mismatch on every load, **and** a signed-in Area Supervisor was shown "Supervisor view requires a supervisor identity" before their own board | fixed | `c341f3c` |
+| `--accent-ok` referenced 40× across 11 modules but defined in no theme, so every "nominal" affordance — including the twin's markers and status dots — rendered a hardcoded `#2f9e6a`, which is the light theme's green baked into the five dark themes | fixed — aliased to `--status-nominal` per theme, dead fallbacks removed | `0643e0b`, `55657b4` |
+| `/history` "Most-cited authorities" printed citations and reviews as adjacent identical columns, because they only diverge when an assessment cites one clause twice | fixed — one column, second figure appended only when it differs | `98b7f2b` |
+
+### Did not reproduce
+
+- **Act VI · The Vault spotlight.** Reported as "audit-chain never resolves, so the step shows a card
+  with no highlight." On a clean `POST /demo/reset` the step navigates to `/reports/{id}` at +2250ms and
+  the spotlight resolves at **+2500ms**, well inside `AWAIT_ENTER_MAX_MS` (`TourOverlay.tsx:56`, 6000ms)
+  and leaving ~5.5s of the 8000ms step highlighted. The `autotour.py` harness samples every 2000ms, so it
+  lands inside the step's pre-navigation window and records `ring=None`. Sampling the same step at 250ms
+  shows the ring appear. No change made.
+
+### Considered and deliberately not done
+
+- **Twin floor-card dead space.** Each card is 805px tall while the drawn plan is 359px, so ~52% is
+  empty. It is not slack that can be reclaimed: `FloorOverview.tsx:105` renders a fixed 2600×2000
+  viewBox at `width:100%`, so three cards across a 1525px row fix each plan at 467px wide → 359px tall.
+  The content already fills its viewBox (measured bbox 2479×1831), so tightening it buys ~5%. Shortening
+  the cards moves the dead space outside the card border rather than removing it; only a wider slot per
+  floor makes the plan bigger, which is a redesign of the overview rather than a polish pass.

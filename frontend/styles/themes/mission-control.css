@@ -32,6 +32,10 @@
   --interactive-disabled: #16191e;
 
   --status-nominal: #4caf7a;
+  /* Success/health accent. Aliases the nominal status colour so the two
+     never drift; 40 call sites across 11 modules referenced --accent-ok
+     while no theme defined it, silently falling back to a literal. */
+  --accent-ok: var(--status-nominal);
   --status-elevated: #c9a227;
   --status-blocking: #d45d67;
   --status-critical: #ef4444;

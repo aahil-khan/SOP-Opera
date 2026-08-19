@@ -78,3 +78,20 @@
   --logo-ink: var(--text-primary);
   --logo-face: var(--text-primary);
 }
+
+/**
+ * Below 640px the primary nav wraps to a second row (see
+ * components/nav/TopNav.module.css). --nav-height is the single source every
+ * full-height surface sizes against — `height: calc(100vh - var(--nav-height))`
+ * on the twin, reports, eval, history, handover, ai-ops and the supervisor
+ * board, plus TourOverlay.tsx:75 which re-reads it from computed style. Raising
+ * the token here keeps all of them correct instead of each guessing.
+ */
+@media (max-width: 640px) {
+  :root {
+    /* Two 34px control rows + 8px row-gap + 2x8px block padding = 92px, plus
+       4px slack. At 88px the rows centred 2px outside the box and the tab pill
+       sat above the nav's top edge. */
+    --nav-height: 96px;
+  }
+}

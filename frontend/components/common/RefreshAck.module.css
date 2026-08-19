@@ -1,0 +1,43 @@
+/* Reserves the chip's row so the toolbar does not reflow when it appears. */
+.slot {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.25rem;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-sm);
+  font-size: var(--text-xs);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--status-nominal);
+  background: var(--status-nominal-muted);
+  border: 1px solid color-mix(in srgb, var(--status-nominal) 32%, transparent);
+  animation: ackIn var(--duration-normal) var(--ease-out);
+}
+
+.chip::before {
+  content: "✓";
+  font-size: var(--text-2xs);
+}
+
+@keyframes ackIn {
+  from {
+    opacity: 0;
+    transform: translateY(-2px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chip {
+    animation: none;
+  }
+}

@@ -77,7 +77,7 @@
 .done {
   font-size: var(--text-xs);
   font-weight: var(--weight-medium);
-  color: var(--accent-ok, #2f9e6a);
+  color: var(--accent-ok);
   flex-shrink: 0;
 }
 

@@ -460,13 +460,14 @@ function StartHandover({
           </select>
         </label>
         <label className={styles.field}>
-          <span className={styles.fieldLabel}>Window (hours)</span>
+          <span className={styles.fieldLabel}>Look back (hours)</span>
           <input
             className={styles.input}
             type="number"
             min={1}
             max={72}
             value={hours}
+            title="How far back to scan for open items to carry forward. It is not the length of the shift you worked, nor how long the handover stays open."
             onChange={(e) => setHours(Number(e.target.value) || 12)}
           />
         </label>

@@ -15,7 +15,7 @@
 .rhS:hover, .rhS:active,
 .rhE:hover, .rhE:active,
 .rhW:hover, .rhW:active {
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 25%, transparent);
+  background: color-mix(in srgb, var(--accent-ok) 25%, transparent);
 }
 
 /* Corners — 14×14 hit area, bigger than edges for easy grabbing */
@@ -43,15 +43,15 @@
 .rhNE:hover::after, .rhNW:hover::after,
 .rhSE:hover::after, .rhSW:hover::after {
   opacity: 1;
-  border-color: var(--accent-ok, #2f9e6a);
+  border-color: var(--accent-ok);
 }
 
 /* Snap-back-to-default control, shown only while a panel is floating */
 .snapBack {
   appearance: none;
-  border: 1px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 45%, transparent);
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 14%, transparent);
-  color: var(--accent-ok, #2f9e6a);
+  border: 1px solid color-mix(in srgb, var(--accent-ok) 45%, transparent);
+  background: color-mix(in srgb, var(--accent-ok) 14%, transparent);
+  color: var(--accent-ok);
   font-size: var(--text-sm);
   font-family: inherit;
   width: 1.4rem;
@@ -67,7 +67,7 @@
 }
 
 .snapBack:hover {
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 26%, transparent);
+  background: color-mix(in srgb, var(--accent-ok) 26%, transparent);
   transform: scale(1.06);
 }
 
@@ -87,9 +87,9 @@
 .homeGhost {
   pointer-events: none !important;
   user-select: none;
-  background: color-mix(in srgb, var(--accent-ok, #2f9e6a) 7%, transparent) !important;
-  border: 1.5px solid color-mix(in srgb, var(--accent-ok, #2f9e6a) 45%, transparent) !important;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-ok, #2f9e6a) 12%, transparent) !important;
+  background: color-mix(in srgb, var(--accent-ok) 7%, transparent) !important;
+  border: 1.5px solid color-mix(in srgb, var(--accent-ok) 45%, transparent) !important;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent-ok) 12%, transparent) !important;
   backdrop-filter: none !important;
   z-index: 4;
   animation:
@@ -103,6 +103,6 @@
 }
 
 @keyframes home-ghost-pulse {
-  0%, 100% { border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 35%, transparent); }
-  50%      { border-color: color-mix(in srgb, var(--accent-ok, #2f9e6a) 70%, transparent); }
+  0%, 100% { border-color: color-mix(in srgb, var(--accent-ok) 35%, transparent); }
+  50%      { border-color: color-mix(in srgb, var(--accent-ok) 70%, transparent); }
 }

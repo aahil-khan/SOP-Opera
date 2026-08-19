@@ -17,6 +17,7 @@ import {
   providerTitle,
   type Tone,
 } from "@/lib/aiOpsProviderPresentation";
+import { RefreshAck, useRefreshAck } from "@/components/common/RefreshAck";
 import styles from "./AIOpsDashboard.module.css";
 
 function pct(rate: number): string {
@@ -139,8 +140,10 @@ export function AIOpsDashboard() {
   );
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const refreshAck = useRefreshAck();
 
-  const refresh = useCallback(async () => {
+  /** Resolves true when the fetch completed, so the caller can acknowledge it. */
+  const refresh = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     try {
       const [data, recent, prov] = await Promise.all([
@@ -155,8 +158,10 @@ export function AIOpsDashboard() {
         prov.source === "runtime_override" ? prov.active_provider : "__default__",
       );
       setError(null);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -280,10 +285,17 @@ export function AIOpsDashboard() {
             type="button"
             className={styles.ctrl}
             disabled={loading}
-            onClick={() => void refresh()}
+            // Acknowledge only user-initiated refreshes; refresh() also fires
+            // on mount, where a chip would be noise rather than feedback.
+            onClick={() => {
+              void refresh().then((ok) => {
+                if (ok) refreshAck.ack();
+              });
+            }}
           >
             {loading ? "…" : "Refresh"}
           </button>
+          <RefreshAck shown={refreshAck.acked} label="Refreshed" />
           {tracingOn && summary?.langsmith_url ? (
             <a
               className={styles.primaryCtrl}
