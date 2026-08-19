@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { fetchEvalSummary, type EvalSummary } from "@/lib/liveApi";
+import { RefreshAck, useRefreshAck } from "@/components/common/RefreshAck";
 import styles from "./CompoundScorecard.module.css";
 
 function pct(rate: number): string {
@@ -56,15 +57,19 @@ export function EvalScorecardView() {
   const [summary, setSummary] = useState<EvalSummary | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const runAck = useRefreshAck();
 
-  const refresh = useCallback(async () => {
+  /** Resolves true when the run completed, so the caller can acknowledge it. */
+  const refresh = useCallback(async (): Promise<boolean> => {
     setLoading(true);
     try {
       const data = await fetchEvalSummary();
       setSummary(data);
       setError(null);
+      return true;
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+      return false;
     } finally {
       setLoading(false);
     }
@@ -115,10 +120,17 @@ export function EvalScorecardView() {
             type="button"
             className={styles.refresh}
             disabled={loading}
-            onClick={() => void refresh()}
+            // Acknowledge only user-initiated runs; refresh() also fires on
+            // mount, where a chip would be noise rather than feedback.
+            onClick={() => {
+              void refresh().then((ok) => {
+                if (ok) runAck.ack();
+              });
+            }}
           >
             {loading ? "Running…" : "Run now"}
           </button>
+          <RefreshAck shown={runAck.acked} label="Re-ran" />
         </div>
       </header>
 
