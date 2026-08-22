@@ -479,7 +479,7 @@ export function AIOpsDashboard() {
               label="RAG hit rate"
               value={summary?.rag_hit_rate ?? 0}
               displayValue={summary ? pct(summary.rag_hit_rate) : "—"}
-              hint="Share of retrievals where vector search over historical incidents cleared the relevance quality gate"
+              hint="Share of retrievals where vector search (incidents, regulations and SOPs) cleared the relevance quality gate"
               tone={
                 summary ? rateTone(summary.rag_hit_rate, 0.8, 0.5) : "neutral"
               }

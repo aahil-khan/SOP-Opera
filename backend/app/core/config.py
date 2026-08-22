@@ -82,11 +82,12 @@ class Settings(BaseSettings):
     random_compound_probability: float = 0.25
 
     rag_enabled: bool = True
-    # Source types eligible for vector search. Regulations/SOPs stay on the
-    # deterministic SQL path until real embeddings land (W5) — extending this
-    # list is the switch. Env override is JSON, e.g.
+    # Source types eligible for vector search. Real embeddings landed (W5), so
+    # this is the whole seeded corpus — regulations and SOPs are vector-searched
+    # same as incidents; the deterministic SQL path only covers a source type
+    # the vector search didn't reach. Env override is JSON, e.g.
     # RAG_VECTOR_SOURCE_TYPES='["historical_incidents","regulations"]'
-    rag_vector_source_types: list[str] = ["historical_incidents"]
+    rag_vector_source_types: list[str] = ["historical_incidents", "regulations", "sops"]
     # mock | local (both hash-based, no semantics) · openai_compatible (hosted,
     # needs OPENAI_API_KEY) · ollama (local semantic vectors, no key)
     embedding_provider: str = "mock"
@@ -97,20 +98,20 @@ class Settings(BaseSettings):
     embedding_dim: int = 1536
     rag_top_k: int = 5
     # Measured, not guessed — `python -m app.eval.rag_calibration` embeds the
-    # hero query and scores it against the whole seeded corpus:
-    #   openai_compatible (text-embedding-3-small), measured over
-    #     rag_vector_source_types (historical_incidents — the ONLY population the
-    #     gate ever sees): relevant 0.604 / distractor 0.435 -> 0.52.
-    #     Measuring over the whole corpus instead suggests 0.59, but its top rows
-    #     are SOPs that are never vector-searched; 0.59 rejects every incident and
-    #     the live pipeline drops to retrieval_mode=deterministic.
-    #   ollama (nomic-embed-text): relevant 0.66-0.77 / distractor 0.50 -> 0.62.
+    # hero query and scores it against rag_vector_source_types, which (W5) is
+    # now the whole seeded corpus — incidents, regulations and SOPs together:
+    #   openai_compatible (text-embedding-3-small), measured 22 Aug 2026:
+    #     relevant 0.675 / distractor 0.495 -> 0.58.
+    #   ollama (nomic-embed-text), measured 22 Aug 2026: relevant 0.788 /
+    #     distractor 0.674 -> 0.73.
+    # Both numbers moved when the source-type scope widened from incidents-only
+    # to all three (W5) — a threshold measured over one scope does not transfer
+    # to another, any more than it transfers between embedding models.
     # The old 0.72 was inherited from the hash-embedding era, where every score
-    # is noise so the value never mattered. Against real OpenAI vectors it sits
-    # ABOVE the best possible relevant hit (0.676), so the gate could never pass
-    # and every retrieval silently fell through to deterministic SQL.
-    # Re-run rag_calibration after changing EMBEDDING_PROVIDER or the model.
-    rag_score_threshold: float = 0.52
+    # is noise so the value never mattered.
+    # Re-run rag_calibration after changing EMBEDDING_PROVIDER, the model, or
+    # rag_vector_source_types.
+    rag_score_threshold: float = 0.58
     rag_timeout_ms: int = 3000
 
     # LangGraph / LangSmith

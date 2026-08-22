@@ -1,7 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import type { AssessmentHistoryItem } from "@/lib/liveApi";
+import { useEffect, useState } from "react";
+import {
+  fetchProviderState,
+  type AssessmentHistoryItem,
+  type ProviderState,
+} from "@/lib/liveApi";
+import { providerTitle } from "@/lib/aiOpsProviderPresentation";
 import { useLiveStore } from "@/lib/liveStore";
 import type { RiskLevel } from "@/shared/enums";
 import styles from "./AssessmentPanel.module.css";
@@ -31,6 +36,22 @@ export function AssessmentPanel({
   const [riskLevel, setRiskLevel] = useState<RiskLevel>("blocking");
   const [recText, setRecText] = useState("");
   const [recRationale, setRecRationale] = useState("");
+  const [providerState, setProviderState] = useState<ProviderState | null>(null);
+  const [retryProvider, setRetryProvider] = useState<string>("__default__");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchProviderState()
+      .then((state) => {
+        if (!cancelled) setProviderState(state);
+      })
+      .catch(() => {
+        // Retry still works with the effective default if this fails.
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   if (!assessment || inProgress) {
     return (
@@ -63,7 +84,11 @@ export function AssessmentPanel({
     setBusy(true);
     setError(null);
     try {
-      await retryAssessment(reviewId, "mock");
+      const provider =
+        retryProvider === "__default__"
+          ? undefined
+          : (retryProvider as "openai_compatible" | "ollama" | "mock");
+      await retryAssessment(reviewId, provider);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -171,6 +196,24 @@ export function AssessmentPanel({
             continue.
           </p>
           <div className={styles.actions}>
+            <label className={styles.retryProviderLabel}>
+              Provider
+              <select
+                className={styles.retryProviderSelect}
+                value={retryProvider}
+                disabled={busy}
+                onChange={(e) => setRetryProvider(e.target.value)}
+              >
+                <option value="__default__">
+                  default ({providerTitle(providerState?.env_default)})
+                </option>
+                {(providerState?.available ?? []).map((p) => (
+                  <option key={p} value={p}>
+                    {providerTitle(p)}
+                  </option>
+                ))}
+              </select>
+            </label>
             <button
               type="button"
               className="btn btn-primary"
