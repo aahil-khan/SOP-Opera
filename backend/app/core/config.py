@@ -129,6 +129,12 @@ class Settings(BaseSettings):
     predictive_trend_min_r2: float = 0.55
     predictive_trend_min_samples: int = 2
 
+    # Seeded mode — startup default for the process-wide query filter in
+    # db/session.py. On means list views show real + mock rows together. A demo
+    # reset still forces it off (simulator/engine.py), so this is the boot state,
+    # not a permanent one.
+    seeded_mode_default: bool = True
+
     # Live feed (ambient plant telemetry) — startup default; Demo UI can toggle
     ambient_enabled: bool = True
     ambient_tick_seconds: float = 3.0

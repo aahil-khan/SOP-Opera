@@ -33,7 +33,9 @@ SessionLocal = async_sessionmaker(engine, expire_on_commit=False, class_=AsyncSe
 # (real data), on shows everything (real + mock together, per explicit
 # request — this replaced an earlier dual-database-switch design that showed
 # mock data *instead of* real data rather than alongside it).
-_seeded_mode = False
+# Boot state comes from SEEDED_MODE_DEFAULT; a demo reset still forces it off
+# (simulator/engine.py) so a reset lands on a clean live plant either way.
+_seeded_mode = settings.seeded_mode_default
 
 
 def get_seeded_mode() -> bool:
