@@ -11,6 +11,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { fetchHistoryOverview, type HistoryOverview } from "@/lib/liveApi";
 import { FactDistribution } from "./FactDistribution";
+import { PatternDiscovery } from "./PatternDiscovery";
 import { TopAuthorities } from "./TopAuthorities";
 import { VerdictsByMonth } from "./VerdictsByMonth";
 import styles from "./HistoryDashboard.module.css";
@@ -134,6 +135,11 @@ export function HistoryDashboard() {
               <TopAuthorities data={data.top_authorities} />
             </section>
           </div>
+
+          {/* Last, and full width: the three panels above describe the corpus,
+              this one is what reading it produced. It carries its own heading
+              and provenance chip, so it is not wrapped in styles.panel. */}
+          <PatternDiscovery months={months} />
         </>
       )}
 
