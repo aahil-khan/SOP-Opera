@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 
-from uuid import UUID
+from uuid import UUID, uuid4
 from types import SimpleNamespace
 
 import pytest
@@ -58,6 +58,32 @@ def _settings(*, provider="mock", fields=frozenset(), key=""):
         ollama_model=_configured_ollama_model(),
         model_fields_set=set(fields),
     )
+
+
+def test_canonical_provider_folds_run_path_and_legacy_spelling():
+    """
+    Stored labels carry the path that produced the run, not just the vendor.
+
+    `agents/graph.py` stamps `langgraph:<provider>`, so a fold that only knows
+    the bare names strands every real agent run in a bucket the AI Ops
+    comparison table never looks up — it reports "not run" while the runs sit
+    in the table.
+    """
+    from app.assessment.provider_state import (
+        VALID_PROVIDERS,
+        canonical_provider,
+    )
+
+    assert canonical_provider("langgraph:openai_compatible") == "openai_compatible"
+    assert canonical_provider("langgraph:mock") == "mock"
+    assert canonical_provider("langgraph:ollama") == "ollama"
+    assert canonical_provider("openai") == "openai_compatible"
+    assert canonical_provider("OpenAI_Compatible") == "openai_compatible"
+    assert canonical_provider(None) == "mock"
+
+    for name in VALID_PROVIDERS:
+        assert canonical_provider(name) == name
+        assert canonical_provider(f"langgraph:{name}") == name
 
 
 def test_auto_provider_prefers_ollama_when_available(monkeypatch):
@@ -317,3 +343,89 @@ async def test_summary_includes_provider_comparison_rows(client: AsyncClient):
     assert rows["ollama"]["status"] in {"not_run", "unavailable"}
     if rows["openai_compatible"]["status"] != "measured":
         assert rows["openai_compatible"]["mean_latency_ms"] is None
+
+
+@pytest.mark.asyncio
+async def test_provider_comparison_folds_langgraph_stamped_runs(
+    client: AsyncClient,
+):
+    """
+    Real agent runs land under `langgraph:<provider>` and must still be counted.
+
+    Regression guard: `_seed_mixed_assessments` only ever wrote the bare `mock`
+    label, so the comparison table could group by the raw provider column and
+    still look correct in tests while reporting "not run" for every live
+    provider in the product.
+    """
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as session:
+        review_id = (
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO reviews (asset_id, state, owner_id, triggered_by)
+                    VALUES (
+                        CAST(:asset AS uuid), 'closed',
+                        CAST(:owner AS uuid), 'test'
+                    )
+                    RETURNING id
+                    """
+                ),
+                {
+                    "asset": str(VESSEL_A),
+                    "owner": "aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa",
+                },
+            )
+        ).scalar_one()
+
+        # Same vendor, two stored labels — one prefixed, one bare.
+        rows = [
+            ("langgraph:openai_compatible", "gpt-4o-mini", "complete", 100, 200),
+            ("langgraph:openai_compatible", "gpt-4o-mini", "complete", 100, 400),
+            ("openai_compatible", "gpt-4o-mini", "failed", None, None),
+        ]
+        for provider, model, status, tokens, latency in rows:
+            await session.execute(
+                text(
+                    """
+                    INSERT INTO ai_ops_events (
+                        assessment_id, review_id, status, provider, model,
+                        tokens_in, tokens_out, cost_usd, latency_ms
+                    )
+                    VALUES (
+                        CAST(:id AS uuid), CAST(:review_id AS uuid),
+                        :status, :provider, :model,
+                        :tokens, :tokens, 0.001, :latency
+                    )
+                    """
+                ),
+                {
+                    "id": str(uuid4()),
+                    "review_id": str(review_id),
+                    "status": status,
+                    "provider": provider,
+                    "model": model,
+                    "tokens": tokens,
+                    "latency": latency,
+                },
+            )
+        await session.commit()
+
+    resp = await client.get("/ai-ops/summary")
+    assert resp.status_code == 200, resp.text
+    rows_by_provider = {r["provider"]: r for r in resp.json()["providers"]}
+
+    # No prefixed label leaks out as its own row.
+    assert set(rows_by_provider) == {"mock", "ollama", "openai_compatible"}
+
+    row = rows_by_provider["openai_compatible"]
+    assert row["status"] == "measured"
+    assert row["assessment_count"] == 3
+    assert row["complete_count"] == 2
+    assert row["failed_count"] == 1
+    assert row["model"] == "gpt-4o-mini"
+    # Mean is recomputed from the combined totals, not averaged twice.
+    assert row["mean_latency_ms"] == 300.0
+    assert row["total_tokens"] == 400
+    assert row["failure_rate"] == round(1 / 3, 4)

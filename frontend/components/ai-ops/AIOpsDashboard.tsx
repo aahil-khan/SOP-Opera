@@ -797,7 +797,7 @@ export function AIOpsDashboard() {
                           {e.degraded ? " · degraded" : ""}
                         </span>
                       </td>
-                      <td>{e.provider}</td>
+                      <td>{providerTitle(e.provider)}</td>
                       <td>{e.model ?? "—"}</td>
                       <td>{fmtLatency(e.latency_ms)}</td>
                       <td>{fmtTokens(e.tokens_in + e.tokens_out)}</td>
