@@ -424,9 +424,57 @@ async def _wait_for_terminal_assessment(review_id, timeout_s: float) -> dict | N
     return None
 
 
+async def retire_stale_context(asset_id: str) -> None:
+    """
+    Age off the asset's previous readings before taking new ones.
+
+    THE PROBLEM THIS SOLVES. Context validity is set in *real* time
+    (--context-validity-minutes, default +4 real hours) while this script
+    compresses a simulated year into a few real minutes. Nothing ever expires
+    mid-run, so every asset accumulates facts monotonically: measured at 365
+    days, average facts per closure climbed 1.7 -> 7.4 over five months and
+    plateaued near 7, the corpus came out 362 blocking / 22 elevated / 0 nominal,
+    and *every* fact type showed recurrence — including ones no regularity
+    touches — because once a fact fired it stayed true forever. "The condition
+    is back at the next inspection" was tautological rather than a statement
+    about the plant.
+
+    Roughly five simulated days pass between events on one asset (the cooldown).
+    A reading valid for four hours is long dead by then, so the honest thing is
+    to retire it. Same shape as the DELETE in simulator/engine.py:73, which
+    matches facts through the context entries that produced them.
+
+    This is what makes recurrence meaningful: the condition has to be produced
+    again by the plant (R4's degradation model), not merely left lying around.
+    """
+    from sqlalchemy import text
+
+    async with SessionLocal() as session:
+        await session.execute(
+            text(
+                """
+                UPDATE context_entries
+                   SET valid_until = now() - interval '1 second'
+                 WHERE asset_id = CAST(:aid AS uuid)
+                   AND valid_until > now()
+                """
+            ),
+            {"aid": asset_id},
+        )
+        # Facts outlive their context otherwise: the assessment path reads
+        # DISTINCT ON (fact_type) ... ORDER BY computed_at DESC with no validity
+        # filter, so a stale row would keep being read as current.
+        await session.execute(
+            text("DELETE FROM derived_facts WHERE asset_id = CAST(:aid AS uuid)"),
+            {"aid": asset_id},
+        )
+        await session.commit()
+
+
 async def seed_one_review(
     asset_id: str, tally: Tally, sim_time: datetime, c: Conditions
 ) -> "UUID | None":
+    await retire_stale_context(asset_id)
     category, payload = random_context_payload(c)
 
     async with SessionLocal() as session:

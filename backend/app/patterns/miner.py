@@ -35,7 +35,7 @@ of the plant rather than an echo of the policy.
 There are far more candidate asset pairs than fact types, so a plain
 support-and-ratio bar would let chance findings through on the widest family.
 Every candidate must therefore also hold in **both halves of the corpus**
-independently (`split_half_stable`). It is a cheap guard and it survives being
+independently (`stable_keys`). It is a cheap guard and it survives being
 explained in one sentence, which the alternatives — corrected p-values, FDR —
 do not.
 
@@ -196,30 +196,33 @@ def _by_asset(events: Sequence[Event]) -> dict[str, list[Event]]:
     return out
 
 
-def split_half_stable(
+def stable_keys(
     events: Sequence[Event],
     refit: Callable[[Sequence[Event]], list["Candidate"]],
-    key: str,
-) -> bool:
+) -> set[str]:
     """
-    Does this candidate survive on each half of the corpus independently?
+    Keys this family finds independently in BOTH halves of the corpus.
 
-    The guard against mining noise out of the widest families. A pattern that
+    The guard against mining noise out of the widest families: a pattern that
     only appears when both halves are pooled is a pattern that did not happen
     twice.
+
+    Returns the whole surviving set rather than answering per candidate, because
+    per-candidate was quadratic — it re-mined the entire family twice for every
+    candidate the family produced. On 835 events the asset-pair family alone
+    yields ~100 candidates over 702 ordered pairs, so the endpoint spent minutes
+    recomputing the same two halves two hundred times.
     """
     ordered = sorted(events, key=lambda e: e.at)
     mid = len(ordered) // 2
     if mid < MIN_SUPPORT:
-        return False
+        return set()
     halves = (ordered[:mid], ordered[mid:])
-    return all(
-        any(
-            c.key == key and survives_multiple_testing(c)
-            for c in refit(half)
-        )
+    per_half = [
+        {c.key for c in refit(half) if survives_multiple_testing(c)}
         for half in halves
-    )
+    ]
+    return per_half[0] & per_half[1]
 
 
 # --- Family 1 · across events on one asset ----------------------------------
@@ -373,7 +376,16 @@ def _band_label(band: int, start_hour: int = 6) -> str:
 
 
 def mine_shift_bands(events: Sequence[Event], start_hour: int = 6) -> list[Candidate]:
-    """Is one shift worse than the plant's own average?"""
+    """
+    Is one shift worse than the plant's own average?
+
+    Measured on the **blocking** rate, not on non-nominal. A review only opens
+    when a rule fires, so in a corpus built from closures every event is
+    non-nominal by construction — measured at 835/835 — and a non-nominal
+    consequent is degenerate: every band scores 1.00x and the family can never
+    report anything, whatever the plant is doing. Blocking is also the outcome
+    that matters operationally.
+    """
     if not events:
         return []
     buckets: dict[int, list[Event]] = defaultdict(list)
@@ -385,8 +397,8 @@ def mine_shift_bands(events: Sequence[Event], start_hour: int = 6) -> list[Candi
         others = [e for e in events if _band(e.at, start_hour) != band]
         if not others:
             continue
-        base = smoothed(sum(1 for e in others if e.non_nominal), len(others))
-        hits = sum(1 for e in in_band if e.non_nominal)
+        base = smoothed(sum(1 for e in others if e.verdict == "blocking"), len(others))
+        hits = sum(1 for e in in_band if e.verdict == "blocking")
         if not _passes(hits, len(in_band), base):
             continue
         out.append(
@@ -395,8 +407,7 @@ def mine_shift_bands(events: Sequence[Event], start_hour: int = 6) -> list[Candi
                 family="shift_band",
                 claim=(
                     f"Work on the {_band_label(band, start_hour)} shift reaches "
-                    f"an elevated or blocking verdict more often than on the "
-                    f"other two."
+                    f"a blocking verdict more often than on the other two."
                 ),
                 hits=hits,
                 trials=len(in_band),
@@ -406,7 +417,9 @@ def mine_shift_bands(events: Sequence[Event], start_hour: int = 6) -> list[Candi
                     "The rule set has no concept of a shift. This compares two "
                     "populations of reviews, not one event's facts."
                 ),
-                review_ids=tuple(e.review_id for e in in_band if e.non_nominal),
+                review_ids=tuple(
+                    e.review_id for e in in_band if e.verdict == "blocking"
+                ),
                 chance_p=chance_probability(hits, len(in_band), base),
                 tests=max(len(buckets), 1),
             )
@@ -526,15 +539,15 @@ def mine(events: Sequence[Event], start_hour: int = 6) -> list[Candidate]:
 
     found: list[Candidate] = []
     for run in families:
-        for cand in run(events):
-            # Two independent guards, and both are needed. Significance stops a
-            # fluke on any one of many comparisons; split-half stops a pattern
-            # that is real in one stretch of the year and absent in the other.
-            if not survives_multiple_testing(cand):
-                continue
-            if not split_half_stable(events, run, cand.key):
-                continue
-            found.append(cand)
+        candidates = [c for c in run(events) if survives_multiple_testing(c)]
+        if not candidates:
+            continue
+        # Two independent guards, and both are needed. Significance stops a
+        # fluke on any one of many comparisons; split-half stops a pattern that
+        # is real in one stretch of the year and absent in the other. Computed
+        # once per family, not once per candidate.
+        stable = stable_keys(events, run)
+        found.extend(c for c in candidates if c.key in stable)
 
     found = annotate_coverage(found)
     return sorted(found, key=lambda c: (-c.ratio, -c.trials, c.key))

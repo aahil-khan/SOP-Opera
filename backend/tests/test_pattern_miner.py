@@ -142,21 +142,57 @@ def test_asset_pair_found_when_two_assets_move_together():
 
 
 def test_shift_band_found_when_one_shift_is_worse():
+    """
+    Measured on the blocking rate. Non-nominal is degenerate here: a review only
+    opens when a rule fires, so in a real closure corpus every event is
+    non-nominal and every band would score 1.00x.
+    """
     events = []
     i = 0
     for day in range(40):
-        # 06:00 and 14:00 shifts clean, 22:00 shift bad.
-        events.append(ev(i, "a", (), "nominal", hours=day * 24))
+        # 06:00 and 14:00 shifts settle at elevated, 22:00 shift blocks.
+        events.append(ev(i, "a", ("elevated_gas",), "elevated", hours=day * 24))
         i += 1
-        events.append(ev(i, "b", (), "nominal", hours=day * 24 + 8))
+        events.append(ev(i, "b", ("elevated_gas",), "elevated", hours=day * 24 + 8))
         i += 1
-        events.append(ev(i, "c", ("ppe_noncompliance",), "elevated", hours=day * 24 + 16))
+        events.append(
+            ev(i, "c", ("elevated_gas", "incomplete_isolation"), "blocking",
+               hours=day * 24 + 16)
+        )
         i += 1
     found = mine_shift_bands(events)
     assert found, "expected the night band to stand out"
     hit = found[0]
     assert "22:00" in hit.claim
+    assert "blocking verdict" in hit.claim
     assert "no concept of a shift" in hit.why_no_rule
+
+
+def test_shift_band_is_not_degenerate_when_every_event_is_non_nominal():
+    """
+    The defect this metric was changed to fix. A corpus of closures has no
+    nominal events at all — measured 835/835 on the seeded year — so a
+    non-nominal consequent scores every band at 1.00x and the family can never
+    say anything, whatever the plant is doing.
+    """
+    events = []
+    for i in range(120):
+        band = i % 3
+        blocking = band == 2 and i % 6 == 2
+        events.append(
+            ev(
+                i,
+                f"a{i % 5}",
+                ("elevated_gas",),
+                "blocking" if blocking else "elevated",
+                hours=(i // 3) * 24 + band * 8,
+            )
+        )
+    assert all(e.non_nominal for e in events), "fixture must have no nominal events"
+    # Nothing is asserted about what it finds — only that a degenerate
+    # consequent is not what decides it.
+    for c in mine_shift_bands(events):
+        assert c.base_rate < 1.0, "base rate saturated; the consequent is degenerate"
 
 
 # --- Family 4: within-event, and coverage ------------------------------------
