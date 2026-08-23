@@ -141,26 +141,154 @@ from app.reviews.state_machine import IllegalTransitionError, ReviewEvent  # noq
 random.seed(ARGS.seed)
 
 ASSET_IDS = [a[0] for a in ASSETS]
+# Which metrics each asset actually instruments — ASSETS carries this already.
+ASSET_SENSORS = {a[0]: list(a[4]) for a in ASSETS}
 OPERATOR_ACTORS = [
     ActorMeOut(id=oid, kind="user", name=name, role=role, owned_zones=[])
     for oid, name, role in OPERATORS
 ]
 
 
+# --- Injected plant regularities (W13) ---------------------------------------
+"""
+Three operational regularities, so the simulated plant is a plant rather than a
+coin flip.
+
+WHY THEY EXIST. Without them every reading is drawn independently from a fixed
+distribution — `random_context_payload()` used to take no arguments at all — so
+consecutive events on an asset, and events on different assets, are statistically
+unrelated by construction. A miner looking for cross-event or cross-asset
+structure in that corpus can only find sampling noise. These three give it
+something real to recover, and let W13 be reported as *injected-signal
+validation*: inject a known regularity, show the miner recovers it, quote the
+recovery rate. That is a stronger claim than an unverifiable discovery.
+
+THE DISCIPLINE, and it is the whole ballgame. Each regularity is a statement
+about **who, when and where** — expressed only in raw sensor values, permit
+paperwork, crew presence and PPE. None of them references a derived-fact name, a
+hazard dimension, or a threshold. Plausible plant behaviour goes in;
+`derived_facts.py` decides which facts fire and `risk/policy.py` decides the
+verdict. Nothing here is tuned to produce a particular verdict, and no regularity
+deliberately co-occurs facts across complementary hazard dimensions — that would
+be engineering a pathway, which is exactly the circularity this is meant to
+avoid.
+
+DISCLOSURE, rather than hiding it. The author of this section had previously read
+`risk/policy.py` in full, so unlike the distribution ranges below this block
+cannot claim to be written blind to the rule set. Two mitigations, both visible
+here: every regularity moves exactly ONE operational axis (crew behaviour, or
+equipment condition, or which assets get inspected together), and none of them
+was checked against the resulting verdict mix while being written. Before the
+finals run it is worth having someone who has not read `risk/policy.py`
+sanity-check that these read as plant behaviour rather than as rule bait.
+"""
+
+# Coke oven gas from the battery is cleaned downstream — a real process coupling,
+# and the only asset pair here that shares a stream.
+COKE_BATTERY_B = "66666666-6666-6666-6666-666666666662"
+GAS_CLEANING_PLANT = "77777777-7777-7777-7777-777777777701"
+
+# R3: when the battery is worked, how often the downstream plant is inspected in
+# the same shift.
+COUPLED_INSPECTION_P = 0.65
+
+# First shift of the plant day. With 3 shifts that gives 06:00 / 14:00 / 22:00,
+# so "the night shift" is a clock band anything reading the corpus can name.
+SHIFT_START_HOUR = 6
+
+
+@dataclass
+class PlantState:
+    """
+    Equipment condition, carried across shifts — a plant has a memory, a coin
+    flip does not.
+
+    Deliberately independent of anything the platform concluded: an asset begins
+    drifting on its own schedule and is repaired on its own schedule. Nothing
+    here reads a review, a fact or a verdict, so the persistence the miner
+    recovers is a property of the simulated plant rather than an echo of the
+    rules.
+    """
+
+    # asset_id -> shift when this asset began drifting.
+    degraded_since: dict = field(default_factory=dict)
+    # asset_id -> which metric the degradation shows on. A failing bearing reads
+    # on vibration every time; it does not wander to pH between inspections.
+    degraded_metric: dict = field(default_factory=dict)
+    # R3 — assets pulled into this shift as a downstream inspection.
+    coupled_this_shift: set = field(default_factory=set)
+
+    def degraded(self, asset_id: str, shift_num: int) -> bool:
+        since = self.degraded_since.get(asset_id)
+        return since is not None and shift_num - since <= DEGRADED_FOR_SHIFTS
+
+    def tick(self, asset_id: str, shift_num: int) -> None:
+        """Onset, or repair once the degradation has run its course."""
+        since = self.degraded_since.get(asset_id)
+        if since is None:
+            if random.random() < DEGRADATION_ONSET_P:
+                self.degraded_since[asset_id] = shift_num
+                # Which subsystem is going. Drawn from what this asset actually
+                # instruments, so the story stays physical.
+                metrics = ASSET_SENSORS.get(asset_id) or ["temp"]
+                self.degraded_metric[asset_id] = random.choice(metrics)
+        elif shift_num - since > DEGRADED_FOR_SHIFTS:
+            self.degraded_since.pop(asset_id, None)
+            self.degraded_metric.pop(asset_id, None)
+
+
+@dataclass(frozen=True)
+class Conditions:
+    """What is true of the plant when a reading is taken."""
+
+    asset_id: str
+    night: bool
+    degraded: bool
+    coupled: bool
+    degraded_metric: str | None = None
+
+
+# R4 — an asset with an unrepaired excursion is far likelier to show another one.
+# Only ~55% of readings are sensor readings, so the observable effect on outcomes
+# is roughly half whatever is set here.
+DEGRADED_EXCURSION_P = 0.62
+BASE_EXCURSION_P = 0.16
+# How long a degradation persists before maintenance is assumed to have caught it.
+# The asset cooldown puts ~15 shifts between events on one asset, so this has to
+# span several of them or the condition is repaired before it is ever seen twice
+# and the persistence is invisible. 75 shifts is ~25 simulated days — a plausible
+# time-to-repair for a bad actor waiting on a shutdown window.
+DEGRADED_FOR_SHIFTS = 75
+# Chance a healthy asset begins drifting on any shift it is worked.
+DEGRADATION_ONSET_P = 0.10
+
+
 # --- Plausible-signal generator -------------------------------------------
 # Wide/log-spread on purpose (see DISTRIBUTION NOTE above). Weighted so most
 # readings read as unremarkable and a minority carry a real excursion.
 
-def _sensor_reading() -> tuple[str, dict]:
+def _sensor_reading(c: Conditions) -> tuple[str, dict]:
     kind = random.choices(
         ["gas", "temp", "vibration", "ph", "level"],
         weights=[35, 30, 15, 10, 10],
     )[0]
+    # R4 — a degrading subsystem is what the round is checking, so the reading
+    # usually lands on the metric that is going.
+    if c.degraded and c.degraded_metric and random.random() < 0.75:
+        kind = c.degraded_metric
     # Severity is deliberately mild-skewed: on a real plant the large majority of
     # "off-normal" readings are minor drifts an operator glances at and moves on
     # from, not emergencies. The first spike run made every excursion severe and
     # produced a corpus with zero low-severity reviews, which read as implausible.
-    excursion = random.random() < 0.16  # reading drifts off its usual band
+    # R4 — equipment condition. An asset that has already drifted and has not been
+    # repaired keeps drifting; that is the whole reason plants run maintenance
+    # rounds. This is the only axis this regularity touches.
+    p_excursion = DEGRADED_EXCURSION_P if c.degraded else BASE_EXCURSION_P
+    # R3 — this reading is a downstream inspection prompted by work on the
+    # battery upstream, so it is being taken *because* something looked off.
+    if c.coupled:
+        p_excursion = max(p_excursion, 0.50)
+    excursion = random.random() < p_excursion
     spike = excursion and random.random() < 0.15  # a minority of those go badly wrong
 
     if kind == "gas":
@@ -179,7 +307,7 @@ def _sensor_reading() -> tuple[str, dict]:
     return "sensor", {"level_pct": round(value, 1)}
 
 
-def _permit_reading() -> tuple[str, dict]:
+def _permit_reading(c: Conditions) -> tuple[str, dict]:
     # Same gating discipline as _sensor_reading(): most permit activity is
     # routine paperwork, not a live hot-work/confined-space permit. The first
     # 150-day run at scale had NO severity gate here at all — 45% of every
@@ -196,8 +324,13 @@ def _permit_reading() -> tuple[str, dict]:
     return "permit", {"permit_id": f"PTW-{random.randint(1000, 9999)}", "status": status, "work_type": work_type}
 
 
-def _worker_location_reading() -> tuple[str, dict]:
-    zone = random.choices(["safe", "hazardous"], weights=[85, 15])[0]
+def _worker_location_reading(c: Conditions) -> tuple[str, dict]:
+    # R1 — crew behaviour on the night shift. Thinner supervision and fatigue put
+    # people in hazardous zones more often. Deliberately the only axis R1 moves:
+    # spreading a night effect across unrelated axes would be assembling a hazard
+    # pathway by hand rather than describing a shift.
+    hazardous_w = 38 if c.night else 15
+    zone = random.choices(["safe", "hazardous"], weights=[100 - hazardous_w, hazardous_w])[0]
     worker_id = random.choice(
         [
             "55555555-5555-5555-5555-555555555551",
@@ -210,15 +343,16 @@ def _worker_location_reading() -> tuple[str, dict]:
     return "worker_location", {"worker_id": worker_id, "zone": zone}
 
 
-def _ppe_reading() -> tuple[str, dict]:
-    compliant = random.random() < 0.85
+def _ppe_reading(c: Conditions) -> tuple[str, dict]:
+    # R1, same shift story: PPE discipline slips on nights.
+    compliant = random.random() < (0.60 if c.night else 0.85)
     payload = {"worker_id": "55555555-5555-5555-5555-555555555551", "compliant": compliant}
     if not compliant:
         payload["missing"] = random.choice(["helmet", "gas_mask", "gloves"])
     return "ppe_status", payload
 
 
-def _weather_reading() -> tuple[str, dict]:
+def _weather_reading(c: Conditions) -> tuple[str, dict]:
     wind = random.uniform(1, 12) if random.random() > 0.1 else random.uniform(12, 22)
     return "weather", {"wind_ms": round(wind, 1), "lightning": random.random() < 0.03}
 
@@ -232,9 +366,9 @@ _GENERATORS = [
 ]
 
 
-def random_context_payload() -> tuple[str, dict]:
+def random_context_payload(c: Conditions) -> tuple[str, dict]:
     gens, weights = zip(*_GENERATORS)
-    return random.choices(gens, weights=weights)[0]()
+    return random.choices(gens, weights=weights)[0](c)
 
 
 # --- Outcome policy (decision-time, not fact-time) --------------------------
@@ -284,8 +418,10 @@ async def _wait_for_terminal_assessment(review_id, timeout_s: float) -> dict | N
     return None
 
 
-async def seed_one_review(asset_id: str, tally: Tally, sim_time: datetime) -> "UUID | None":
-    category, payload = random_context_payload()
+async def seed_one_review(
+    asset_id: str, tally: Tally, sim_time: datetime, c: Conditions
+) -> "UUID | None":
+    category, payload = random_context_payload(c)
 
     async with SessionLocal() as session:
         result = await ingest_context(
@@ -556,10 +692,20 @@ async def main() -> None:
     t0 = time.monotonic()
     total_shifts = ARGS.days * ARGS.shifts_per_day
     last_touched: dict = {}  # asset_id -> shift_num last touched, for the cooldown
+    plant = PlantState()
 
     # Simulated clock: the corpus is presented as the `--days` window ending today.
-    window_end = datetime.now(timezone.utc)
+    #
+    # Snapped to a real shift boundary. Shifts are exactly 24/shifts_per_day hours
+    # apart, so an unsnapped window_end would put every shift on an arbitrary
+    # clock phase — the night shift would land at, say, 04:00-12:00, and anything
+    # reading these timestamps back could only report "events between 04:00 and
+    # 12:00" instead of naming the shift. Plants run 06:00 / 14:00 / 22:00.
     shift_hours = 24 / ARGS.shifts_per_day
+    _now = datetime.now(timezone.utc)
+    _boundary = SHIFT_START_HOUR % int(shift_hours)
+    _hour = ((_now.hour - _boundary) // int(shift_hours)) * int(shift_hours) + _boundary
+    window_end = _now.replace(hour=_hour % 24, minute=0, second=0, microsecond=0)
 
     try:
         for shift_num in range(total_shifts):
@@ -580,11 +726,39 @@ async def main() -> None:
             ]
             pool = eligible if len(eligible) >= n_assets else ASSET_IDS  # fallback if cooldown starves the pool
             touched = random.sample(pool, k=min(n_assets, len(pool)))
+
+            # R3 — working the battery prompts a downstream inspection of the gas
+            # cleaning plant on the same shift. The cooldown is deliberately not
+            # consulted: a process coupling does not wait its turn.
+            plant.coupled_this_shift = set()
+            if COKE_BATTERY_B in touched and random.random() < COUPLED_INSPECTION_P:
+                if GAS_CLEANING_PLANT not in touched:
+                    touched.append(GAS_CLEANING_PLANT)
+                plant.coupled_this_shift.add(GAS_CLEANING_PLANT)
+
+            # R4 — advance equipment condition before anything is read. This is a
+            # plant model, not a reaction to what the rules said: an asset starts
+            # drifting on its own schedule and stays drifted until maintenance.
+            for asset_id in touched:
+                plant.tick(asset_id, shift_num)
+
+            # Night is the last shift of the day.
+            shift_idx = shift_num % ARGS.shifts_per_day
+            night = shift_idx == ARGS.shifts_per_day - 1
+
             for asset_id in touched:
                 last_touched[asset_id] = shift_num
                 # Jitter within the shift so rows don't all share one timestamp.
                 jittered = sim_time + timedelta(minutes=random.randint(0, int(shift_hours * 60) - 1))
-                await seed_one_review(asset_id, tally, jittered)
+                degraded = plant.degraded(asset_id, shift_num)
+                cond = Conditions(
+                    asset_id=asset_id,
+                    night=night,
+                    degraded=degraded,
+                    coupled=asset_id in plant.coupled_this_shift,
+                    degraded_metric=plant.degraded_metric.get(asset_id),
+                )
+                await seed_one_review(asset_id, tally, jittered, cond)
 
             if fires_handover:
                 await seed_one_handover(day_idx, tally, sim_time)
