@@ -14,6 +14,7 @@ from sqlalchemy import text
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.config import get_settings
+from app.simulator.instrumentation import parse_sensor_kinds, resolve_sensor_kinds
 
 if TYPE_CHECKING:
     from app.simulator.sources import OrchestratorSim
@@ -25,6 +26,7 @@ PlantFloor = Literal["ground", "first", "second"]
 SIGNAL_CATALOG: dict[str, dict[str, Any]] = {
     "elevated_gas": {
         "weight": 1.2,
+        "requires_kind": "gas",
         "builders": lambda rng: [
             {
                 "category": "sensor",
@@ -126,6 +128,7 @@ SIGNAL_CATALOG: dict[str, dict[str, Any]] = {
     },
     "over_temperature": {
         "weight": 1.0,
+        "requires_kind": "temp",
         "builders": lambda rng: [
             {
                 "category": "sensor",
@@ -138,6 +141,7 @@ SIGNAL_CATALOG: dict[str, dict[str, Any]] = {
     },
     "equipment_vibration_anomaly": {
         "weight": 0.9,
+        "requires_kind": "vibration",
         "builders": lambda rng: [
             {
                 "category": "sensor",
@@ -149,6 +153,7 @@ SIGNAL_CATALOG: dict[str, dict[str, Any]] = {
     },
     "effluent_quality_breach": {
         "weight": 0.7,
+        "requires_kind": "ph",
         "builders": lambda rng: [
             {
                 "category": "sensor",
@@ -163,6 +168,7 @@ SIGNAL_CATALOG: dict[str, dict[str, Any]] = {
     },
     "tank_level_critical": {
         "weight": 0.8,
+        "requires_kind": "level",
         "builders": lambda rng: [
             {
                 "category": "sensor",
@@ -254,6 +260,7 @@ class AssetRow:
     name: str
     zone: str
     floor: str
+    sensor_kinds: list[str] | None = None
 
 
 async def load_assets(
@@ -263,7 +270,7 @@ async def load_assets(
         result = await session.execute(
             text(
                 """
-                SELECT id, name, zone, floor FROM assets
+                SELECT id, name, zone, floor, sensor_kinds FROM assets
                 WHERE floor = ANY(CAST(:floors AS text[]))
                 ORDER BY name
                 """
@@ -272,7 +279,7 @@ async def load_assets(
         )
     else:
         result = await session.execute(
-            text("SELECT id, name, zone, floor FROM assets ORDER BY name")
+            text("SELECT id, name, zone, floor, sensor_kinds FROM assets ORDER BY name")
         )
     return [
         AssetRow(
@@ -280,6 +287,7 @@ async def load_assets(
             name=row._mapping["name"],
             zone=row._mapping["zone"],
             floor=row._mapping["floor"] or "ground",
+            sensor_kinds=parse_sensor_kinds(row._mapping["sensor_kinds"]),
         )
         for row in result.fetchall()
     ]
@@ -313,7 +321,37 @@ async def list_assets_with_open_reviews(session: AsyncSession) -> list[str]:
     return [row._mapping["asset_id"] for row in result.fetchall()]
 
 
-def pick_signals(rng: random.Random, config: RandomModeConfig) -> list[str]:
+_UNFILTERED = object()
+
+
+def eligible_signals(sensor_kinds: list[str] | None) -> list[str]:
+    """Signals this asset can physically produce.
+
+    A sensor-derived signal needs the matching instrumentation — a muster point
+    cannot report a vibration anomaly. Permit / worker / PPE / weather signals
+    carry no `requires_kind` and stay eligible everywhere, so the pool is never
+    empty however sparsely an asset is instrumented.
+    """
+    kinds = set(resolve_sensor_kinds(sensor_kinds))
+    return [
+        name
+        for name, meta in SIGNAL_CATALOG.items()
+        if meta.get("requires_kind") is None or meta["requires_kind"] in kinds
+    ]
+
+
+def pick_signals(
+    rng: random.Random,
+    config: RandomModeConfig,
+    sensor_kinds: Any = _UNFILTERED,
+) -> list[str]:
+    # Omitting `sensor_kinds` means "don't filter"; passing None means the asset
+    # row has no instrumentation recorded and falls back to the default kinds.
+    allowed = (
+        set(SIGNAL_CATALOG)
+        if sensor_kinds is _UNFILTERED
+        else set(eligible_signals(sensor_kinds))
+    )
     weights = {
         name: (
             config.signal_weights.get(name, meta["weight"])
@@ -321,6 +359,7 @@ def pick_signals(rng: random.Random, config: RandomModeConfig) -> list[str]:
             else meta["weight"]
         )
         for name, meta in SIGNAL_CATALOG.items()
+        if name in allowed
     }
     names = list(weights.keys())
     w = [max(0.01, float(weights[n])) for n in names]

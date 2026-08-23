@@ -491,7 +491,7 @@ class DemoController:
                         continue
 
                     asset = rng.choice(pool)
-                    signals = pick_signals(rng, config)
+                    signals = pick_signals(rng, config, asset.sensor_kinds)
                     facts = await emit_issue(
                         session,
                         asset=asset,

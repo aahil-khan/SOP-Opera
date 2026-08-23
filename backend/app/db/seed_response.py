@@ -49,7 +49,7 @@ FALLBACK_CONTACTS: list[tuple[int, str, str]] = [
 
 
 def _zones() -> list[str]:
-    return sorted({zone for _, _, zone, _ in ASSETS})
+    return sorted({zone for _, _, zone, _, _ in ASSETS})
 
 
 async def seed_response() -> None:

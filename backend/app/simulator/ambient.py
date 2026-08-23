@@ -22,6 +22,13 @@ from app.core.config import get_settings
 from app.db.session import SessionLocal
 from app.realtime.connection_manager import manager
 from app.simulator.dsl import ScenarioStep
+from app.simulator.instrumentation import (
+    ALL_SENSOR_KINDS,
+    UNIT_BY_KIND,
+    parse_sensor_kinds,
+    resolve_sensor_kinds,
+    sample_kind,
+)
 from app.simulator.sources import CATEGORY_TO_SOURCE, SOURCE_LABELS, OrchestratorSim
 
 logger = logging.getLogger(__name__)
@@ -66,61 +73,36 @@ COINCIDENCE_SIGNALS: list[dict[str, Any]] = [
 ]
 
 
-def nominal_sensor_payload(rng: random.Random, settings: Any) -> dict[str, Any]:
+def nominal_sensor_payload(
+    rng: random.Random, settings: Any, kinds: list[str] | None = None
+) -> dict[str, Any]:
     """Single-metric SCADA sample (used by coincidence / heartbeat / tests)."""
-    gas_ceiling = max(1.0, float(settings.gas_elevated_threshold) - 2.0)
-    temp_ceiling = max(20.0, float(settings.temp_elevated_threshold) - 5.0)
-    vib_ceiling = max(0.5, float(settings.vibration_anomaly_threshold) - 0.5)
-    level_lo = float(settings.tank_level_low_pct) + 5.0
-    level_hi = float(settings.tank_level_high_pct) - 5.0
-    ph_lo = float(settings.effluent_ph_min) + 0.3
-    ph_hi = float(settings.effluent_ph_max) - 0.3
-    wind_ceiling = max(1.0, float(settings.weather_wind_hold_ms) - 2.0)
-
-    kind = rng.choice(
-        ["gas", "temp", "vibration", "level", "ph", "wind"]
-    )
-    if kind == "gas":
-        return {
-            "gas_reading": round(rng.uniform(0.5, gas_ceiling), 1),
-            "unit": "ppm",
-        }
-    if kind == "temp":
-        return {
-            "temp_reading": round(rng.uniform(25.0, temp_ceiling), 1),
-            "unit": "C",
-        }
-    if kind == "vibration":
-        return {
-            "vibration_mm_s": round(rng.uniform(0.2, vib_ceiling), 2),
-        }
-    if kind == "level":
-        return {
-            "level_pct": round(rng.uniform(level_lo, level_hi), 1),
-        }
-    if kind == "ph":
-        return {"ph": round(rng.uniform(ph_lo, ph_hi), 2)}
-    return {
-        "wind_ms": round(rng.uniform(0.5, wind_ceiling), 1),
-        "lightning": False,
-    }
+    choices = list(kinds) if kinds else list(ALL_SENSOR_KINDS)
+    return sample_kind(rng.choice(choices), rng, settings)
 
 
-def nominal_scada_bundle(rng: random.Random, settings: Any) -> dict[str, Any]:
-    """Multi-metric payload — one WS sample updates several gauges."""
-    gas_ceiling = max(1.0, float(settings.gas_elevated_threshold) - 2.0)
-    temp_ceiling = max(20.0, float(settings.temp_elevated_threshold) - 5.0)
-    vib_ceiling = max(0.5, float(settings.vibration_anomaly_threshold) - 0.5)
-    level_lo = float(settings.tank_level_low_pct) + 5.0
-    level_hi = float(settings.tank_level_high_pct) - 5.0
+def nominal_scada_bundle(
+    rng: random.Random, settings: Any, kinds: list[str] | None = None
+) -> dict[str, Any]:
+    """Multi-metric payload for one asset's actual instrumentation.
+
+    Returns `{}` for an asset with no process sensors — the caller emits no
+    SCADA sample at all rather than inventing a reading for it.
+    """
+    resolved = resolve_sensor_kinds(kinds)
+    if not resolved:
+        return {}
     # Small jitter so sparklines move without looking chaotic
-    return {
-        "gas_reading": round(rng.uniform(0.5, gas_ceiling), 1),
-        "temp_reading": round(rng.uniform(28.0, temp_ceiling), 1),
-        "vibration_mm_s": round(rng.uniform(0.3, vib_ceiling), 2),
-        "level_pct": round(rng.uniform(level_lo, level_hi), 1),
-        "unit": "ppm",
-    }
+    payload: dict[str, Any] = {}
+    for kind in resolved:
+        payload.update(sample_kind(kind, rng, settings))
+    # One bundle carries several metrics, so `unit` is only meaningful for the
+    # first kind that has one — keep it stable rather than last-write-wins.
+    for kind in resolved:
+        if kind in UNIT_BY_KIND:
+            payload["unit"] = UNIT_BY_KIND[kind]
+            break
+    return payload
 
 
 def nominal_status_sample(rng: random.Random) -> tuple[str, dict[str, Any]]:
@@ -173,15 +155,16 @@ def assert_nominal_below_thresholds(payload: dict[str, Any], settings: Any) -> N
         assert float(payload["wind_ms"]) < float(settings.weather_wind_hold_ms)
 
 
-async def _load_assets(session: AsyncSession) -> list[dict[str, str]]:
+async def _load_assets(session: AsyncSession) -> list[dict[str, Any]]:
     result = await session.execute(
-        text("SELECT id::text AS id, name, floor FROM assets ORDER BY name")
+        text("SELECT id::text AS id, name, floor, sensor_kinds FROM assets ORDER BY name")
     )
     return [
         {
             "id": row._mapping["id"],
             "name": row._mapping["name"],
             "floor": row._mapping["floor"] or "ground",
+            "sensor_kinds": parse_sensor_kinds(row._mapping["sensor_kinds"]),
         }
         for row in result.fetchall()
     ]
@@ -254,7 +237,7 @@ class AmbientPlantLoop:
         self._last_heartbeat: datetime | None = None
         self._orch = OrchestratorSim()
         self._rng = random.Random()
-        self._assets_cache: list[dict[str, str]] = []
+        self._assets_cache: list[dict[str, Any]] = []
 
     @property
     def running(self) -> bool:
@@ -300,10 +283,10 @@ class AmbientPlantLoop:
         except Exception:
             logger.debug("ambient: asset refresh failed", exc_info=True)
 
-    def _next_batch(self, n: int) -> list[dict[str, str]]:
+    def _next_batch(self, n: int) -> list[dict[str, Any]]:
         if not self._assets_cache:
             return []
-        batch: list[dict[str, str]] = []
+        batch: list[dict[str, Any]] = []
         total = len(self._assets_cache)
         for _ in range(min(n, total)):
             batch.append(self._assets_cache[self._cursor % total])
@@ -319,17 +302,22 @@ class AmbientPlantLoop:
         for asset in batch:
             if asset["id"] in locked:
                 continue
-            payload = nominal_scada_bundle(self._rng, settings)
-            samples.append(
-                _sample_dict(
-                    source="scada",
-                    asset_id=asset["id"],
-                    asset_name=asset["name"],
-                    category="sensor",
-                    payload=payload,
-                    ts=ts,
-                )
+            payload = nominal_scada_bundle(
+                self._rng, settings, asset.get("sensor_kinds")
             )
+            # Uninstrumented assets (muster point, offices) emit no SCADA sample;
+            # they still carry the status layer below.
+            if payload:
+                samples.append(
+                    _sample_dict(
+                        source="scada",
+                        asset_id=asset["id"],
+                        asset_name=asset["name"],
+                        category="sensor",
+                        payload=payload,
+                        ts=ts,
+                    )
+                )
             if emit_status:
                 status = nominal_status_sample(self._rng)
                 cat, status_payload = status
@@ -413,7 +401,10 @@ class AmbientPlantLoop:
         if not unlocked:
             return
         asset = unlocked[self._cursor % len(unlocked)]
-        payload = nominal_sensor_payload(self._rng, settings)
+        # Heartbeat samples what this asset is actually instrumented for; an
+        # uninstrumented asset can still carry a plant-wide weather reading.
+        kinds = resolve_sensor_kinds(asset.get("sensor_kinds")) or ["wind"]
+        payload = nominal_sensor_payload(self._rng, settings, kinds)
         category = "weather" if "wind_ms" in payload else "sensor"
         source = CATEGORY_TO_SOURCE.get(category, "scada")
         try:
