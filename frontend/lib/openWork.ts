@@ -253,6 +253,25 @@ export function workStatusForView(view: LiveAssetView): {
   };
 }
 
+/**
+ * Triage order for the Open Work board.
+ *
+ * Deliberately keyed on the same `badgeRisk` the card itself renders — a second
+ * severity notion here would let the board sort one way and label another.
+ */
+const WORK_RISK_RANK: Record<WorkBadgeRisk, number> = {
+  halted: 5,
+  critical: 4,
+  blocking: 3,
+  elevated: 2,
+  nominal: 1,
+};
+
+/** Higher is more urgent. Callers sort descending, then by recency. */
+export function workPriorityRank(view: LiveAssetView): number {
+  return WORK_RISK_RANK[workStatusForView(view).badgeRisk] ?? 0;
+}
+
 export function nextActionForView(view: LiveAssetView): string {
   return workStatusForView(view).nextAction;
 }
