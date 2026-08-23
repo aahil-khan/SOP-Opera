@@ -19,6 +19,7 @@ import {
   columnForView,
   nextActionForView,
   ownerNameForView,
+  workPriorityRank,
   workStatusForView,
   type OpenWorkColumnId,
 } from "@/lib/openWork";
@@ -230,8 +231,18 @@ export function ReviewSidebar({
     for (const v of views) {
       cols[columnForView(v)].push(v);
     }
+    // Most dangerous first, newest first within a tier. Decorate-sort-undecorate
+    // because workPriorityRank re-derives the whole work status, and a raw
+    // comparator would do that O(n log n) times on every store tick.
     for (const id of Object.keys(cols) as OpenWorkColumnId[]) {
-      cols[id].sort((a, b) => arrivedAt(b) - arrivedAt(a));
+      cols[id] = cols[id]
+        .map((view) => ({
+          view,
+          rank: workPriorityRank(view),
+          at: arrivedAt(view),
+        }))
+        .sort((a, b) => b.rank - a.rank || b.at - a.at)
+        .map((row) => row.view);
     }
     return cols;
   }, [views]);

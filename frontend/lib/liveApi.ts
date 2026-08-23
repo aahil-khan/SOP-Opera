@@ -255,6 +255,23 @@ export interface ProviderComparisonRow {
   failure_rate: number | null;
 }
 
+/**
+ * Carries the HTTP status so a caller can tell a benign conflict from a real
+ * failure. The message is byte-identical to what was thrown before, so anything
+ * that only formats the error is unaffected.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -274,7 +291,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(`${init?.method ?? "GET"} ${path} failed (${res.status}): ${detail}`);
+    throw new ApiError(
+      `${init?.method ?? "GET"} ${path} failed (${res.status}): ${detail}`,
+      res.status,
+      path,
+    );
   }
   if (res.status === 204) {
     return undefined as T;

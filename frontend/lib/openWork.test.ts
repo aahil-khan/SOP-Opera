@@ -6,6 +6,7 @@ import {
   fallbackNextAction,
   isBlockedWork,
   lifecycleLabelForReviewState,
+  workPriorityRank,
 } from "./openWork";
 
 type TestView = Parameters<typeof columnForView>[0];
@@ -25,6 +26,8 @@ function view(
     assessmentRisk?: "nominal" | "elevated" | "blocking";
     assessmentSummary?: string;
     mapCleared?: boolean;
+    sensorCritical?: boolean;
+    createdAt?: string;
   },
 ): TestView {
   const decision =
@@ -55,7 +58,7 @@ function view(
       triggered_by: "test",
       origin: "system",
       raised_by_worker_id: null,
-      created_at: "2026-01-01T00:00:00Z",
+      created_at: extras?.createdAt ?? "2026-01-01T00:00:00Z",
     },
     detail: !wantsDetail
       ? null
@@ -81,7 +84,7 @@ function view(
           } as unknown as NonNullable<TestView["assessment"]>)
         : null,
     risk_level: extras?.assessmentRisk ?? "nominal",
-    sensor_critical: false,
+    sensor_critical: extras?.sensorCritical ?? false,
     map_cleared: extras?.mapCleared ?? false,
   };
 }
@@ -175,4 +178,53 @@ test("isBlockedWork counts active supervisor blocks only", () => {
     ),
     false,
   );
+});
+
+test("workPriorityRank ranks the Decide column by danger, not arrival", () => {
+  const critical = view("pending_decision", null, {
+    assessmentRisk: "elevated",
+    sensorCritical: true,
+  });
+  const blocking = view("pending_decision", null, { assessmentRisk: "blocking" });
+  const elevated = view("pending_decision", null, { assessmentRisk: "elevated" });
+  const nominal = view("pending_decision", null, { assessmentRisk: "nominal" });
+
+  assert.ok(workPriorityRank(critical) > workPriorityRank(blocking));
+  assert.ok(workPriorityRank(blocking) > workPriorityRank(elevated));
+  assert.ok(workPriorityRank(elevated) > workPriorityRank(nominal));
+});
+
+test("workPriorityRank puts a halted closure above a clean one", () => {
+  const halted = view("closed", null, { decisionOutcome: "blocked" });
+  const clean = view("closed", null, { decisionOutcome: "approved" });
+  assert.ok(workPriorityRank(halted) > workPriorityRank(clean));
+});
+
+test("severity outranks recency, recency breaks ties", () => {
+  // Mirrors the board sort in ReviewSidebar: rank desc, then arrival desc.
+  const at = (v: ReturnType<typeof view>) =>
+    Date.parse(v.review?.created_at ?? "") || 0;
+  const oldBlocking = view("pending_decision", null, {
+    assessmentRisk: "blocking",
+    createdAt: "2026-01-01T00:00:00Z",
+  });
+  const newNominal = view("pending_decision", null, {
+    assessmentRisk: "nominal",
+    createdAt: "2026-01-01T09:00:00Z",
+  });
+  const newerBlocking = view("pending_decision", null, {
+    assessmentRisk: "blocking",
+    createdAt: "2026-01-01T10:00:00Z",
+  });
+
+  const sorted = [newNominal, oldBlocking, newerBlocking]
+    .map((v) => ({ v, rank: workPriorityRank(v), at: at(v) }))
+    .sort((a, b) => b.rank - a.rank || b.at - a.at)
+    .map((row) => row.v.review?.created_at);
+
+  assert.deepEqual(sorted, [
+    "2026-01-01T10:00:00Z",
+    "2026-01-01T00:00:00Z",
+    "2026-01-01T09:00:00Z",
+  ]);
 });
