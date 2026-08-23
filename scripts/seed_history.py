@@ -397,6 +397,12 @@ class Tally:
     # handle_context_change() can hand back an *existing* review it re-triggered,
     # so counting every 'assessing' result would double-count one review.
     sim_times: dict = field(default_factory=dict)
+    # review_id -> one sim time per closure, in closure order. A review reopened
+    # and re-closed six times over a year is six operational events at six
+    # different moments; keeping only the first collapses them onto one day, and
+    # anything reading the corpus as a time series (W11b's month views, W13's
+    # cross-event and shift mining) then sees a year as a handful of instants.
+    closure_sim_times: dict = field(default_factory=dict)
     reviews_reopened: int = 0
     race_skipped: int = 0
     handovers_opened: int = 0
@@ -498,6 +504,7 @@ async def seed_one_review(
         return review_id
 
     tally.reviews_closed += 1
+    tally.closure_sim_times.setdefault(review_id, []).append(sim_time)
     tally.by_outcome[outcome] = tally.by_outcome.get(outcome, 0) + 1
     return review_id
 
@@ -594,6 +601,10 @@ async def backdate_corpus(tally: Tally) -> int:
     carry the simulated plant timeline. That gap is a property of a seeded corpus
     and is why W11c's "demonstration corpus" labelling is non-negotiable.
 
+    Closure reports are backdated individually, each to the moment that closure
+    actually happened — see Tally.closure_sim_times. `reviews.created_at` still
+    marks first-opened, which is what it means.
+
     KNOWN SIMPLIFICATION: a reopened review (see reviews_reopened in seed_one_review)
     can have a second decisions/reports row for the same review_id (legitimate —
     reports.closure_event_seq exists precisely for this). This pass backdates by
@@ -631,9 +642,6 @@ async def backdate_corpus(tally: Tally) -> int:
                     WHERE review_id = CAST(:rid AS uuid)""",
                 """UPDATE decisions SET submitted_at = CAST(:t AS timestamptz) + interval '18 minutes'
                     WHERE review_id = CAST(:rid AS uuid)""",
-                """UPDATE reports SET generated_at = CAST(:t AS timestamptz) + interval '25 minutes',
-                          frozen_at = CAST(:t AS timestamptz) + interval '25 minutes'
-                    WHERE review_id = CAST(:rid AS uuid)""",
                 """UPDATE review_tasks SET created_at = CAST(:t AS timestamptz) + interval '20 minutes'
                     WHERE review_id = CAST(:rid AS uuid)""",
                 """UPDATE context_entries SET valid_from = CAST(:t AS timestamptz),
@@ -646,6 +654,32 @@ async def backdate_corpus(tally: Tally) -> int:
             ):
                 await session.execute(text(stmt), params)
             updated += 1
+
+        # Each closure to the moment it actually happened, ordered by
+        # closure_event_seq so the Nth report gets the Nth close's sim time.
+        for review_id, times in tally.closure_sim_times.items():
+            rows = await session.execute(
+                text(
+                    """
+                    SELECT id FROM reports
+                     WHERE review_id = CAST(:rid AS uuid)
+                     ORDER BY closure_event_seq
+                    """
+                ),
+                {"rid": str(review_id)},
+            )
+            for report_row, closed_at in zip(rows.fetchall(), times):
+                await session.execute(
+                    text(
+                        """
+                        UPDATE reports
+                           SET generated_at = CAST(:t AS timestamptz) + interval '25 minutes',
+                               frozen_at    = CAST(:t AS timestamptz) + interval '25 minutes'
+                         WHERE id = CAST(:id AS uuid)
+                        """
+                    ),
+                    {"id": str(report_row._mapping["id"]), "t": closed_at},
+                )
 
         for handover_id, sim_time in tally.handover_sim_times.items():
             params = {"hid": str(handover_id), "t": sim_time}

@@ -32,19 +32,28 @@ def _seeded_clause(alias: str = "rv") -> str:
 
 
 async def load_events(session: AsyncSession, months: int) -> list[Event]:
-    """Closed reviews in the window, as the miner's Event shape.
+    """Closures in the window, as the miner's Event shape.
 
-    One row per review — the latest closure report, so a reopened-and-reclosed
-    review contributes its final packet rather than one row per closure.
+    One row per **closure**, not per review. A review that is reopened and
+    re-closed is a fresh operational event on that asset each time — new
+    context, a new assessment, a new human decision — and collapsing those onto
+    the review would throw away most of the corpus and, worse, most of its time
+    axis: `reviews.created_at` marks first-opened, so every later closure would
+    be dated to the first one and a year of history would read as a handful of
+    instants.
+
+    Dated by `generated_at`, the moment the packet was frozen, which is when
+    that closure actually happened.
     """
     result = await session.execute(
         text(
             """
-            SELECT DISTINCT ON (r.review_id)
+            SELECT
+                r.id AS report_id,
                 r.review_id,
                 rv.asset_id,
                 a.name AS asset_name,
-                rv.created_at,
+                r.generated_at AS at,
                 r.content AS content,
                 (
                     SELECT ass.risk_level
@@ -57,11 +66,11 @@ async def load_events(session: AsyncSession, months: int) -> list[Event]:
             FROM reports r
             JOIN reviews rv ON rv.id = r.review_id
             JOIN assets a ON a.id = rv.asset_id
-            WHERE rv.created_at >= now() - make_interval(months => :months)
+            WHERE r.generated_at >= now() - make_interval(months => :months)
             """
             + _seeded_clause()
             + """
-            ORDER BY r.review_id, r.closure_event_seq DESC
+            ORDER BY r.generated_at
             """
         ),
         {"months": months},
@@ -77,7 +86,7 @@ async def load_events(session: AsyncSession, months: int) -> list[Event]:
                 review_id=str(m["review_id"]),
                 asset_id=str(m["asset_id"]),
                 asset_name=m["asset_name"],
-                at=m["created_at"],
+                at=m["at"],
                 facts=facts,
                 verdict=m["risk_level"] or "nominal",
             )
@@ -111,12 +120,12 @@ async def corpus_span(session: AsyncSession, months: int) -> dict:
         text(
             """
             SELECT count(*) AS review_count,
-                   min(rv.created_at) AS first_at,
-                   max(rv.created_at) AS last_at,
+                   min(r.generated_at) AS first_at,
+                   max(r.generated_at) AS last_at,
                    count(DISTINCT rv.asset_id) AS asset_count
-            FROM reviews rv
-            JOIN reports r ON r.review_id = rv.id
-            WHERE rv.created_at >= now() - make_interval(months => :months)
+            FROM reports r
+            JOIN reviews rv ON rv.id = r.review_id
+            WHERE r.generated_at >= now() - make_interval(months => :months)
             """
             + _seeded_clause()
         ),

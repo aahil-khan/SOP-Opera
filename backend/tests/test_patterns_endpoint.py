@@ -54,6 +54,16 @@ async def client():
     await apply_schema()
     await seed_minimal()
 
+    # Verdicts persist by design — they are a human record, and nothing in the
+    # app deletes them. That makes them leak between runs of this file: the
+    # second run finds the pattern already ratified and the "candidate" it
+    # expected is gone. Cleared per test so each starts from no human verdict.
+    from app.db.session import SessionLocal
+
+    async with SessionLocal() as s:
+        await s.execute(text("DELETE FROM pattern_verdicts"))
+        await s.commit()
+
     from app.main import app
 
     transport = ASGITransport(app=app)
