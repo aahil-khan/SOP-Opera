@@ -18,6 +18,7 @@ import urllib.error
 import urllib.request
 from dataclasses import dataclass
 
+from app.agents.llm_outcomes import normalize_provider
 from app.core.config import get_settings
 
 VALID_PROVIDERS: tuple[str, ...] = ("mock", "ollama", "openai_compatible")
@@ -34,8 +35,16 @@ class ProviderCheck:
     reason: str | None = None
 
 
-def _normalise_provider(provider: str | None) -> str:
-    key = (provider or "mock").lower()
+def canonical_provider(provider: str | None) -> str:
+    """
+    Fold a stored provider label onto its `VALID_PROVIDERS` key.
+
+    Runs are stamped with the path that produced them, not just the vendor:
+    `agents/graph.py` writes `langgraph:<provider>`, and `openai` is a legacy
+    spelling of `openai_compatible`. Both must collapse onto the same key or
+    per-provider aggregates silently split into buckets nothing looks up.
+    """
+    key = normalize_provider(provider)
     if key in ("openai", "openai_compatible"):
         return "openai_compatible"
     return key
@@ -52,7 +61,7 @@ def _model_for(provider: str) -> str:
 
 def check_provider(provider: str) -> ProviderCheck:
     """Fast provider availability check used by AI Ops and auto-selection."""
-    key = _normalise_provider(provider)
+    key = canonical_provider(provider)
     if key not in VALID_PROVIDERS:
         return ProviderCheck(
             provider=provider,
@@ -133,9 +142,9 @@ def check_provider(provider: str) -> ProviderCheck:
 def _explicit_env_provider() -> str | None:
     settings = get_settings()
     if "AI_PROVIDER" in os.environ:
-        return _normalise_provider(os.environ.get("AI_PROVIDER"))
+        return canonical_provider(os.environ.get("AI_PROVIDER"))
     if "ai_provider" in getattr(settings, "model_fields_set", set()):
-        return _normalise_provider(settings.ai_provider)
+        return canonical_provider(settings.ai_provider)
     return None
 
 
@@ -174,11 +183,11 @@ def set_runtime_provider(provider: str | None) -> None:
     global _runtime_provider
     if (
         provider is not None
-        and _normalise_provider(provider) not in VALID_PROVIDERS
+        and canonical_provider(provider) not in VALID_PROVIDERS
     ):
         raise ValueError(
             f"Unknown provider {provider!r}; expected one of {VALID_PROVIDERS}"
         )
     _runtime_provider = (
-        _normalise_provider(provider) if provider is not None else None
+        canonical_provider(provider) if provider is not None else None
     )
