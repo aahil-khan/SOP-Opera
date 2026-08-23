@@ -100,9 +100,17 @@ function labelAnchor(angleDeg: number): {
 
 interface DomainRadarProps {
   view: LiveAssetView;
+  /**
+   * Asset is reading All clear. The review-derived faces reset rather than
+   * replaying the closed review's permits, crew, evidence and actions as if
+   * they were still true. Passed down from AssetPanel because the flag there
+   * already folds in map_cleared, sensor_critical, halted work and whether the
+   * panel was opened as a closure.
+   */
+  allClear?: boolean;
 }
 
-export function DomainRadar({ view }: DomainRadarProps) {
+export function DomainRadar({ view, allClear = false }: DomainRadarProps) {
   const assetId = view.asset.id;
   const detailOwner = view.detail?.area_owner ?? null;
 
@@ -243,6 +251,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
       historyCount: historyResult?.count ?? 0,
       historyPending: historyResult === null,
       historyLastOutcome: historyResult?.reports[0]?.outcome ?? null,
+      reviewResolved: allClear,
       ...responseCounts,
     };
   }, [
@@ -257,6 +266,7 @@ export function DomainRadar({ view }: DomainRadarProps) {
     historyResult,
     areaOwner,
     responseCounts,
+    allClear,
   ]);
 
   const scores = useMemo(

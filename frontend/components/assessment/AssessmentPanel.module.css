@@ -112,8 +112,31 @@
 
 .actions {
   display: flex;
+  align-items: center;
   gap: var(--space-2);
   flex-wrap: wrap;
+}
+
+.retryProviderLabel {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  font-size: var(--text-2xs);
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: var(--tracking-label);
+}
+
+.retryProviderSelect {
+  padding: 0.3rem 0.5rem;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border-default);
+  background: color-mix(in srgb, var(--surface-panel) 70%, transparent);
+  color: var(--text-primary);
+  font: inherit;
+  font-size: var(--text-xs);
+  text-transform: none;
+  letter-spacing: normal;
 }
 
 .manualForm {

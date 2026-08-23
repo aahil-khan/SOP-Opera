@@ -81,6 +81,18 @@
   color: var(--status-elevated);
 }
 
+/* Stop / Undo / Acknowledge failures. Sits under the header rather than beside
+   the row: the row it belongs to may have re-sorted or vanished by the time the
+   request comes back. */
+.actionError {
+  margin: 0;
+  padding: var(--space-2) var(--space-4);
+  border-bottom: 1px solid var(--border-muted);
+  background: color-mix(in srgb, var(--status-blocking-muted) 60%, transparent);
+  font-size: var(--text-xs);
+  color: var(--status-blocking);
+}
+
 /* --- Sections -------------------------------------------------------------- */
 
 /*

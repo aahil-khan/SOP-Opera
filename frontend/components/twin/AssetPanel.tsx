@@ -548,9 +548,12 @@ export function AssetPanel({
               </section>
             )}
 
-            {!showBrain && <DomainRadar view={view} />}
+            {!showBrain && <DomainRadar view={view} allClear={isHappy} />}
 
-            {!isHappy && (
+            {/* The forecast is evidence behind a verdict that has not been given
+                yet. Once a decision is recorded it is history, and replaying an
+                ETA-to-critical from the stored trace reads as a live warning. */}
+            {!isHappy && openReview && (
               <TrendForecastCard
                 assessment={assessment}
                 reviewId={review?.id}

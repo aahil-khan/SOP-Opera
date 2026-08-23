@@ -255,6 +255,23 @@ export interface ProviderComparisonRow {
   failure_rate: number | null;
 }
 
+/**
+ * Carries the HTTP status so a caller can tell a benign conflict from a real
+ * failure. The message is byte-identical to what was thrown before, so anything
+ * that only formats the error is unaffected.
+ */
+export class ApiError extends Error {
+  readonly status: number;
+  readonly path: string;
+
+  constructor(message: string, status: number, path: string) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.path = path;
+  }
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(`${API_BASE}${path}`, {
     ...init,
@@ -274,7 +291,11 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     } catch {
       /* ignore */
     }
-    throw new Error(`${init?.method ?? "GET"} ${path} failed (${res.status}): ${detail}`);
+    throw new ApiError(
+      `${init?.method ?? "GET"} ${path} failed (${res.status}): ${detail}`,
+      res.status,
+      path,
+    );
   }
   if (res.status === 204) {
     return undefined as T;
@@ -931,4 +952,76 @@ export interface HistoryOverview {
 
 export function fetchHistoryOverview(months = 12): Promise<HistoryOverview> {
   return request<HistoryOverview>(`/history/overview?months=${months}`);
+}
+
+// --- W13 · pattern discovery -------------------------------------------------
+
+export type PatternFamily =
+  | "recurrence"
+  | "asset_pair"
+  | "shift_band"
+  | "within_event";
+
+export type PatternState = "candidate" | "ratified" | "dismissed";
+
+export interface MinedPattern {
+  key: string;
+  family: PatternFamily;
+  /** The finding in plain words — the headline a supervisor reads. */
+  claim: string;
+  hits: number;
+  trials: number;
+  rate: number;
+  base_rate: number;
+  /** How much more often than the base rate. "lift", said in English. */
+  ratio: number;
+  /** Why no rule could state this. Empty when one already does. */
+  why_no_rule: string;
+  covered_by: string | null;
+  review_ids: string[];
+  state: PatternState;
+  decided_by: string | null;
+  decided_at: string | null;
+  note: string | null;
+}
+
+export interface MinedScope {
+  window_months: number;
+  review_count: number;
+  asset_count: number;
+  first_review_at: string | null;
+  last_review_at: string | null;
+  min_support: number;
+  min_ratio: number;
+  alpha: number;
+}
+
+export interface PatternsView {
+  scope: MinedScope;
+  patterns: MinedPattern[];
+  corpus_is_seeded: boolean;
+}
+
+export function fetchPatterns(months = 12): Promise<PatternsView> {
+  return request<PatternsView>(`/api/patterns?months=${months}`);
+}
+
+export function ratifyPattern(
+  key: string,
+  note?: string | null,
+): Promise<MinedPattern> {
+  return request<MinedPattern>(
+    `/api/patterns/${encodeURIComponent(key)}/ratify`,
+    { method: "POST", body: JSON.stringify({ note: note ?? null }) },
+  );
+}
+
+export function dismissPattern(
+  key: string,
+  note?: string | null,
+): Promise<MinedPattern> {
+  return request<MinedPattern>(
+    `/api/patterns/${encodeURIComponent(key)}/dismiss`,
+    { method: "POST", body: JSON.stringify({ note: note ?? null }) },
+  );
 }

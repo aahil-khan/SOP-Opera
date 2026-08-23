@@ -53,6 +53,9 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
   const [openId, setOpenId] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [showNever, setShowNever] = useState(false);
+  const [actionError, setActionError] = useState<
+    { text: string; detail: string } | null
+  >(null);
 
   const groups = useMemo(() => groupByIntent(actions), [actions]);
   const counting = actions.some((a) => a.status === "armed");
@@ -72,10 +75,23 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
   // lines at the top of a panel whose whole job is the list underneath.
   const { count } = headline(actions, assetName);
 
+  /**
+   * Stop / Undo / Acknowledge all land here. A rejection used to escape as an
+   * unhandled promise — the operator got a crash overlay and no idea whether
+   * the plant changed. Anything that fails now says so in the panel.
+   */
   const run = async (id: string, fn: () => Promise<void>) => {
     setBusyId(id);
+    setActionError(null);
     try {
       await fn();
+    } catch (err) {
+      // Plain sentence, not the request that failed — an operator cannot act on
+      // a URL. The raw message stays available on hover and in the console.
+      setActionError({
+        text: "That did not go through. The plant has not changed — try again.",
+        detail: err instanceof Error ? err.message : String(err),
+      });
     } finally {
       setBusyId(null);
     }
@@ -114,6 +130,16 @@ export function AutoResponsePanel({ reviewId }: { reviewId?: string }) {
       {!autoEnabled ? (
         <p className={styles.pausedNote}>
           Paused — nothing new will act on its own.
+        </p>
+      ) : null}
+
+      {actionError ? (
+        <p
+          className={styles.actionError}
+          role="alert"
+          title={actionError.detail}
+        >
+          {actionError.text}
         </p>
       ) : null}
 

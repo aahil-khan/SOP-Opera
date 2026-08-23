@@ -33,6 +33,7 @@ import {
   fetchResponseDevices,
   putResponseConfig,
   revokeResponseAction,
+  ApiError,
   type AssessmentHistoryItem,
   type DecisionIn,
   type ResponseAction,
@@ -705,6 +706,13 @@ function buildSensorCriticalMap(
   return map;
 }
 
+/**
+ * Monotonic token for `loadResponse`. Module scope, not store state: it is
+ * bookkeeping for in-flight requests, and putting it in the store would make
+ * every refetch a render.
+ */
+let responseLoadSeq = 0;
+
 export const useLiveStore = create<LiveState>((set, get) => {
   const pendingTelemetry: TelemetrySample[] = [];
   let telemetryFlushTimer: ReturnType<typeof setTimeout> | null = null;
@@ -1028,8 +1036,16 @@ export const useLiveStore = create<LiveState>((set, get) => {
   responseArmWindowSeconds: 10,
 
   loadResponse: async () => {
+    // Every `response.*` websocket frame triggers a refetch, so several are
+    // routinely in flight at once. Without a sequence guard an older response
+    // can land last and restore a page to `dispatched` after we just
+    // acknowledged it — which puts the Acknowledge button back on a settled
+    // page and makes the next click a 409.
+    const seq = (responseLoadSeq += 1);
     try {
-      set({ responseActions: await fetchActiveResponseActions() });
+      const actions = await fetchActiveResponseActions();
+      if (seq !== responseLoadSeq) return;
+      set({ responseActions: actions });
     } catch {
       /* rail stays as-is; a failed refetch must not blank a live incident */
     }
@@ -1071,7 +1087,27 @@ export const useLiveStore = create<LiveState>((set, get) => {
   },
 
   ackResponsePage: async (pageId: string) => {
-    await acknowledgeResponsePage(pageId);
+    try {
+      // Apply the returned page immediately so the button cannot come back
+      // while the refetch is still in flight.
+      const page = await acknowledgeResponsePage(pageId);
+      set((state) => ({
+        responseActions: state.responseActions.map((action) =>
+          action.id === page.action_id
+            ? {
+                ...action,
+                pages: action.pages.map((p) => (p.id === page.id ? page : p)),
+              }
+            : action,
+        ),
+      }));
+    } catch (err) {
+      // 409 means the page is no longer `dispatched`: either we already acked
+      // it, or the dispatcher escalated it at the ack timeout. Both are the
+      // outcome the operator wanted — the page is no longer waiting on them —
+      // so refresh to the real status instead of surfacing an error.
+      if (!(err instanceof ApiError) || err.status !== 409) throw err;
+    }
     await get().loadResponse();
   },
 

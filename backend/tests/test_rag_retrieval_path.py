@@ -76,7 +76,12 @@ async def test_rag_path_taken_when_query_matches_corpus(session):
     assert result.refs
     rag_refs = [r for r in result.refs if r.retrieval_path == "rag"]
     assert rag_refs
-    assert all(r.source == "historical_incidents" for r in rag_refs)
+    # W5: RAG now spans all rag_vector_source_types, so top_k can also surface
+    # lower-scored regulations/SOPs alongside the true match — assert the
+    # near-exact incident hit won, not that every rag ref is an incident.
+    assert any(
+        r.source == "historical_incidents" and (r.score or 0) >= 0.99 for r in rag_refs
+    )
     assert all(r.chunk_id is not None for r in rag_refs)
 
 

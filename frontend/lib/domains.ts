@@ -1,5 +1,9 @@
-import type { LiveAssetView, SpatialLinkView } from "@/lib/liveStore";
-import { spatialLinksFromAssessment } from "@/lib/liveStore";
+import type { LiveAssetView } from "@/lib/liveStore";
+// Straight from the leaf module rather than through liveStore's re-export: that
+// re-export pulls the whole store (and every component it touches) in behind it,
+// which is the same cycle the responseLiveCount note below works around.
+import type { SpatialLinkView } from "@/lib/spatialLinks";
+import { spatialLinksFromAssessment } from "@/lib/spatialLinks";
 import type { AreaOwner, RetrievedReference } from "@/shared/schemas";
 
 export type DomainId =
@@ -130,6 +134,16 @@ export interface DomainScoreExtras {
   historyPending?: boolean;
   /** Risk level of the most recent closure, for the face headline. */
   historyLastOutcome?: string | null;
+  /**
+   * The review this view is pinned to is over and the asset reads All clear.
+   *
+   * Four faces — permits, people, evidence, response — are computed from the
+   * review, not from the asset. Without this they keep reporting a closed
+   * review's permits, crew, facts and automatic actions as current, so an asset
+   * can say "All clear" and "2 actions taken" at the same time. Set by the
+   * radar from AssetPanel's `isHappy`.
+   */
+  reviewResolved?: boolean;
 }
 
 function clampScore(n: number): number {
@@ -169,6 +183,9 @@ export function computeDomainScore(
   extras: DomainScoreExtras = {},
 ): DomainScore {
   const spatialLinks = spatialLinksFromAssessment(view.assessment);
+  // Zero the review-derived inputs rather than short-circuiting each case: the
+  // existing empty-state headline and facts are already the right copy.
+  const resolved = extras.reviewResolved === true;
 
   switch (domain) {
     case "sensors": {
@@ -201,7 +218,7 @@ export function computeDomainScore(
       };
     }
     case "permits": {
-      const permits = activePermits(view);
+      const permits = resolved ? [] : activePermits(view);
       const empty = permits.length === 0;
       const hotWork = permits.some(
         (c) => String(c.payload.work_type ?? "") === "hot_work",
@@ -231,8 +248,12 @@ export function computeDomainScore(
       };
     }
     case "people": {
-      const crew = crewCount(view);
-      const owner = view.detail?.area_owner ?? extras.areaOwner ?? null;
+      const crew = resolved ? 0 : crewCount(view);
+      // The zone owner is fetched per asset, not per review, so it survives a
+      // closure; only the review's worker_location entries are dropped.
+      const owner = resolved
+        ? (extras.areaOwner ?? null)
+        : (view.detail?.area_owner ?? extras.areaOwner ?? null);
       const empty = crew === 0 && !owner;
       let score = 0;
       if (!empty) {
@@ -258,8 +279,8 @@ export function computeDomainScore(
       };
     }
     case "evidence": {
-      const facts = view.detail?.derived_facts ?? [];
-      const refs = references(view);
+      const facts = resolved ? [] : (view.detail?.derived_facts ?? []);
+      const refs = resolved ? [] : references(view);
       const n = facts.length + refs.length;
       const empty = n === 0;
       const score = empty
@@ -284,9 +305,9 @@ export function computeDomainScore(
       };
     }
     case "response": {
-      const live = extras.responseLiveCount ?? 0;
-      const refused = extras.responseRefusedCount ?? 0;
-      const protect = extras.responseProtectCount ?? 0;
+      const live = resolved ? 0 : (extras.responseLiveCount ?? 0);
+      const refused = resolved ? 0 : (extras.responseRefusedCount ?? 0);
+      const protect = resolved ? 0 : (extras.responseProtectCount ?? 0);
       // Refusals alone are not activity: a review where the system only
       // declined things has done nothing to the plant and should read empty.
       const empty = live === 0;

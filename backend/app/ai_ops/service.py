@@ -14,6 +14,7 @@ from app.ai_ops.schemas import (
 )
 from app.assessment.provider_state import (
     VALID_PROVIDERS,
+    canonical_provider,
     check_provider,
     effective_provider_check,
 )
@@ -90,47 +91,91 @@ def _langsmith_fields() -> tuple[bool, str, str | None]:
 
 
 async def _provider_rows(session: AsyncSession) -> list[ProviderComparisonRow]:
+    """
+    Per-provider aggregates over the append-only event log.
+
+    Events are stamped with the *path* that produced them, so one vendor can
+    appear under several labels (`openai_compatible`, `langgraph:openai_compatible`).
+    SQL therefore aggregates by the raw label and returns sums plus their
+    counts; the fold onto `VALID_PROVIDERS` keys happens in Python via
+    `canonical_provider`, so means are recomputed from the combined totals
+    rather than averaged twice. Grouping on the raw label alone would strand
+    every prefixed run in a bucket the table never looks up.
+    """
     result = await session.execute(
         text(
             """
             SELECT
-                provider,
-                COALESCE(
-                    (array_agg(model ORDER BY recorded_at DESC)
-                        FILTER (WHERE model IS NOT NULL))[1],
-                    NULL
-                ) AS last_model,
+                provider AS raw_provider,
+                (array_agg(model ORDER BY recorded_at DESC)
+                    FILTER (WHERE model IS NOT NULL))[1] AS last_model,
+                MAX(recorded_at) FILTER (WHERE model IS NOT NULL) AS last_model_at,
                 COUNT(*)::int AS assessment_count,
                 COUNT(*) FILTER (WHERE status = 'complete')::int AS complete_count,
                 COUNT(*) FILTER (WHERE status = 'failed')::int AS failed_count,
-                AVG(latency_ms) FILTER (
-                    WHERE status = 'complete' AND latency_ms IS NOT NULL
-                ) AS mean_latency_ms,
+                COALESCE(
+                    SUM(latency_ms) FILTER (WHERE status = 'complete'),
+                    0
+                )::bigint AS latency_sum,
+                COUNT(latency_ms) FILTER (WHERE status = 'complete')::int
+                    AS latency_n,
                 COALESCE(
                     SUM(tokens_in + tokens_out) FILTER (WHERE status = 'complete'),
                     0
-                )::int AS total_tokens,
-                AVG(tokens_in + tokens_out) FILTER (
-                    WHERE status = 'complete'
-                ) AS mean_tokens,
+                )::bigint AS token_sum,
+                COUNT(tokens_in + tokens_out) FILTER (WHERE status = 'complete')::int
+                    AS token_n,
                 COALESCE(
                     SUM(cost_usd) FILTER (WHERE status = 'complete'),
                     0
-                ) AS total_cost_usd,
-                AVG(cost_usd) FILTER (
-                    WHERE status = 'complete' AND cost_usd IS NOT NULL
-                ) AS mean_cost_usd
+                ) AS cost_sum,
+                COUNT(cost_usd) FILTER (WHERE status = 'complete')::int AS cost_n
             FROM ai_ops_events
             GROUP BY provider
             """
         )
     )
-    measured: dict[str, dict] = {
-        row._mapping["provider"]: dict(row._mapping)
-        for row in result.fetchall()
-    }
 
-    latencies: dict[str, LatencySummary] = {}
+    measured: dict[str, dict] = {}
+    for row in result.fetchall():
+        m = dict(row._mapping)
+        key = canonical_provider(m["raw_provider"])
+        agg = measured.setdefault(
+            key,
+            {
+                "last_model": None,
+                "last_model_at": None,
+                "assessment_count": 0,
+                "complete_count": 0,
+                "failed_count": 0,
+                "latency_sum": 0,
+                "latency_n": 0,
+                "token_sum": 0,
+                "token_n": 0,
+                "cost_sum": 0.0,
+                "cost_n": 0,
+            },
+        )
+        for field in (
+            "assessment_count",
+            "complete_count",
+            "failed_count",
+            "latency_sum",
+            "latency_n",
+            "token_sum",
+            "token_n",
+            "cost_n",
+        ):
+            agg[field] += int(m[field] or 0)
+        agg["cost_sum"] += float(m["cost_sum"] or 0.0)
+        # Most recent labelled model wins across the folded labels.
+        stamped_at = m["last_model_at"]
+        if m["last_model"] is not None and (
+            agg["last_model_at"] is None or stamped_at > agg["last_model_at"]
+        ):
+            agg["last_model"] = m["last_model"]
+            agg["last_model_at"] = stamped_at
+
     lat_result = await session.execute(
         text(
             """
@@ -145,15 +190,15 @@ async def _provider_rows(session: AsyncSession) -> list[ProviderComparisonRow]:
     )
     by_provider: dict[str, list[int]] = {}
     for row in lat_result.fetchall():
-        by_provider.setdefault(row._mapping["provider"], []).append(
-            row._mapping["latency_ms"]
-        )
-    for provider, values in by_provider.items():
-        latencies[provider] = LatencySummary(values)
+        by_provider.setdefault(
+            canonical_provider(row._mapping["provider"]), []
+        ).append(row._mapping["latency_ms"])
+    latencies = {
+        provider: LatencySummary(values) for provider, values in by_provider.items()
+    }
 
     rows: list[ProviderComparisonRow] = []
-    all_providers = list(VALID_PROVIDERS)
-    for provider in all_providers:
+    for provider in VALID_PROVIDERS:
         check = check_provider(provider)
         m = measured.get(provider)
         if m is None:
@@ -172,13 +217,14 @@ async def _provider_rows(session: AsyncSession) -> list[ProviderComparisonRow]:
                 )
             )
             continue
-        total = int(m["assessment_count"] or 0)
-        failed = int(m["failed_count"] or 0)
+        total = m["assessment_count"]
+        failed = m["failed_count"]
         latency = latencies.get(provider, LatencySummary([]))
-        mean_latency = m["mean_latency_ms"]
-        mean_tokens = m["mean_tokens"]
-        total_cost = m["total_cost_usd"]
-        mean_cost = m["mean_cost_usd"]
+        mean_latency = (
+            m["latency_sum"] / m["latency_n"] if m["latency_n"] else None
+        )
+        mean_tokens = m["token_sum"] / m["token_n"] if m["token_n"] else None
+        mean_cost = m["cost_sum"] / m["cost_n"] if m["cost_n"] else None
         rows.append(
             ProviderComparisonRow(
                 provider=provider,
@@ -188,12 +234,10 @@ async def _provider_rows(session: AsyncSession) -> list[ProviderComparisonRow]:
                 connection_ok=check.ok,
                 note=check.reason,
                 assessment_count=total,
-                complete_count=int(m["complete_count"] or 0),
+                complete_count=m["complete_count"],
                 failed_count=failed,
                 mean_latency_ms=(
-                    round(float(mean_latency), 2)
-                    if mean_latency is not None
-                    else None
+                    round(mean_latency, 2) if mean_latency is not None else None
                 ),
                 p50_latency_ms=(
                     round(latency.p50_ms, 2) if latency.p50_ms is not None else None
@@ -201,13 +245,13 @@ async def _provider_rows(session: AsyncSession) -> list[ProviderComparisonRow]:
                 p95_latency_ms=(
                     round(latency.p95_ms, 2) if latency.p95_ms is not None else None
                 ),
-                total_tokens=int(m["total_tokens"] or 0),
+                total_tokens=int(m["token_sum"]),
                 mean_tokens=(
-                    round(float(mean_tokens), 1) if mean_tokens is not None else None
+                    round(mean_tokens, 1) if mean_tokens is not None else None
                 ),
-                total_cost_usd=round(float(total_cost or 0.0), 8),
+                total_cost_usd=round(m["cost_sum"], 8),
                 mean_cost_usd=(
-                    round(float(mean_cost), 8) if mean_cost is not None else None
+                    round(mean_cost, 8) if mean_cost is not None else None
                 ),
                 failure_rate=round(failed / total, 4) if total > 0 else None,
             )

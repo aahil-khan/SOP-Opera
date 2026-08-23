@@ -26,6 +26,7 @@ import pytest_asyncio
 from sqlalchemy import text
 
 from app.assessment.retrieval import retrieve
+from app.assessment.retrieval.deterministic import source_types_for_facts
 from app.core.config import get_settings
 from app.db.seed import seed_minimal
 from app.db.seed_embeddings import seed_embeddings
@@ -127,7 +128,15 @@ async def test_paraphrase_retrieves_the_right_incident_and_clears_the_gate(sessi
     assert result.best_score >= get_settings().rag_score_threshold
     rag_refs = [r for r in result.refs if r.retrieval_path == "rag"]
     assert rag_refs, "expected at least one vector-backed reference"
-    assert all(r.source == "historical_incidents" for r in rag_refs)
+    # W5: vector search spans rag_vector_source_types (regulations too, for
+    # elevated_gas), so top_k can include a regulation alongside the incident —
+    # assert the paraphrase matched an incident via RAG, not that every rag ref
+    # is one.
+    incident_refs = [r for r in rag_refs if r.source == "historical_incidents"]
+    assert incident_refs, (
+        f"expected the paraphrase to match an incident via RAG, "
+        f"got sources {[r.source for r in rag_refs]}"
+    )
     assert "ollama" in (result.embedding_model or "")
 
     # The hit is the right one, not merely a hit: read the chunk it matched.
@@ -136,7 +145,7 @@ async def test_paraphrase_retrieves_the_right_incident_and_clears_the_gate(sessi
     row = (
         await session.execute(
             text("SELECT chunk_text FROM knowledge_chunks WHERE id = :cid"),
-            {"cid": str(rag_refs[0].chunk_id)},
+            {"cid": str(incident_refs[0].chunk_id)},
         )
     ).first()
     assert row is not None
@@ -174,8 +183,16 @@ async def test_vector_search_extends_past_incidents_only(session, monkeypatch):
     assert rag_sources - {"historical_incidents"}, (
         f"expected vector hits beyond incidents, got {rag_sources}"
     )
-    # Deterministic references survive the merge — the citation floor holds.
-    assert any(r.retrieval_path == "deterministic" for r in result.refs)
+    # The citation floor holds: every source type this fact combination needs
+    # is present in the merged output, whether the winning ref came from
+    # vector search or the deterministic path underneath it. RAG covering a
+    # source type fully (and superseding its deterministic ref) is the
+    # intended win, not a regression — see _merge_rag_with_det.
+    needed = set(
+        source_types_for_facts(["elevated_gas", "incomplete_isolation", "zone_occupied"])
+    )
+    present = {r.source for r in result.refs}
+    assert needed <= present, f"expected coverage for {needed}, got {present}"
 
 
 @pytest.mark.asyncio

@@ -22,11 +22,10 @@ logger = logging.getLogger(__name__)
 RetrievalQuality = Literal["good", "weak", "empty"]
 RetrievalMode = Literal["rag", "deterministic", "skipped"]
 
-# Default vector-search scope — incidents only (orchestrator does not consume
-# vector-searched regs/SOPs today). The effective list is the
-# `rag_vector_source_types` setting; this constant is kept as the documented
-# default and import-compat alias.
-RAG_VECTOR_SOURCE_TYPES: list[str] = ["historical_incidents"]
+# Default vector-search scope (W5: the whole seeded corpus). The effective
+# list is the `rag_vector_source_types` setting; this constant is kept as the
+# documented default and import-compat alias.
+RAG_VECTOR_SOURCE_TYPES: list[str] = ["historical_incidents", "regulations", "sops"]
 
 
 def assess_retrieval_quality(
@@ -62,19 +61,24 @@ class HybridRetrievalResult:
         self.embedding_model = embedding_model
         self.source_types = source_types
         # How many of `refs` actually came from vector search. `refs` is the
-        # merged list — even in "rag" mode it carries deterministic regs and
-        # SOPs, which are never vector-searched (see RAG_VECTOR_SOURCE_TYPES).
-        # Reporting len(refs) as the vector count overstates what the gate did.
+        # merged list — a source type vector search didn't cover for this
+        # query still falls back to its deterministic refs (see
+        # _merge_rag_with_det). Reporting len(refs) as the vector count would
+        # overstate what the gate did.
         self.vector_ref_count = vector_ref_count
 
 
-def _merge_rag_incidents_with_det(
+def _merge_rag_with_det(
     rag_refs: list[RetrievedReference],
     det_refs: list[RetrievedReference],
 ) -> list[RetrievedReference]:
-    """Prefer vector incident hits when present; keep deterministic regs/SOPs (+ other)."""
+    """Prefer vector hits for any source type they covered; fall back to the
+    deterministic ref for a source type only when vector search didn't return
+    one — otherwise the same regulation/SOP/incident would double up under two
+    retrieval_path values."""
     seen: set[tuple[str, str]] = set()
     out: list[RetrievedReference] = []
+    rag_sources = {r.source for r in rag_refs}
     for r in rag_refs:
         key = (r.source, str(r.id))
         if key in seen:
@@ -82,8 +86,8 @@ def _merge_rag_incidents_with_det(
         seen.add(key)
         out.append(r)
     for r in det_refs:
-        if r.source == "historical_incidents" and rag_refs:
-            # Drop det incidents when RAG supplied stronger hits
+        if r.source in rag_sources:
+            # Vector search already covered this source type — its hit(s) won
             continue
         key = (r.source, str(r.id))
         if key in seen:
@@ -100,8 +104,10 @@ async def retrieve(
     fact_types: list[str],
 ) -> HybridRetrievalResult:
     """
-    Skip when no facts. Otherwise deterministic for all mapped sources;
-    vector RAG only for historical_incidents when RAG is enabled.
+    Skip when no facts. Otherwise deterministic for all mapped sources, with
+    vector RAG (when enabled) covering rag_vector_source_types — the whole
+    seeded corpus by default (W5) — and superseding the deterministic ref for
+    any source type it actually clears the quality gate for.
     """
     settings = get_settings()
     source_types = source_types_for_facts(fact_types)
@@ -166,7 +172,7 @@ async def retrieve(
 
     best = max((r.score or 0.0 for r in rag_refs), default=None)
     if quality == "good":
-        merged = _merge_rag_incidents_with_det(rag_refs, det_refs)
+        merged = _merge_rag_with_det(rag_refs, det_refs)
         rag_keys = {(r.source, str(r.id)) for r in rag_refs}
         return HybridRetrievalResult(
             refs=merged,
