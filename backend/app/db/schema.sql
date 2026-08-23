@@ -715,3 +715,35 @@ ALTER TABLE response_pages
 -- (control rooms, muster points). Values are the kind names in
 -- app/simulator/ambient.py SENSOR_KIND_PAYLOAD.
 ALTER TABLE assets ADD COLUMN IF NOT EXISTS sensor_kinds JSONB;
+
+-- W13 · pattern ratifications.
+--
+-- One row per human verdict on a mined pattern. The patterns themselves are not
+-- stored: they are recomputed from closed history on every read, so a stale
+-- ratification cannot outlive the evidence that produced it. `pattern_key` is
+-- the miner's stable identity (family:subject), which is why a re-run reattaches
+-- an existing verdict to the same pattern.
+--
+-- Deliberately NOT wired into risk/policy.py. Ratifying records an audited human
+-- judgement and nothing more; letting a mined pattern feed classify() is a
+-- separate decision that changes what the plant blocks on.
+-- NB: a table named `pattern_ratifications` already exists in some dev databases,
+-- left by an earlier abandoned attempt at this feature with an entirely different
+-- shape (fact_a / fact_b / support / lift) and no committed code behind it. It is
+-- not dropped here — schema.sql is applied on every boot and must stay additive,
+-- and at least one dev database has rows in it. Hence the distinct name.
+CREATE TABLE IF NOT EXISTS pattern_verdicts (
+    id            UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+    pattern_key   TEXT NOT NULL UNIQUE,
+    state         TEXT NOT NULL,  -- ratified | dismissed
+    claim         TEXT NOT NULL,  -- the wording at the time it was judged
+    ratio         REAL,
+    hits          INTEGER,
+    trials        INTEGER,
+    actor         TEXT NOT NULL,
+    note          TEXT,
+    decided_at    TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pattern_verdicts_state
+    ON pattern_verdicts (state);
