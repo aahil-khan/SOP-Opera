@@ -25,38 +25,45 @@ OPERATORS = [
     ("cccccccc-cccc-cccc-cccc-cccccccccccc", "Arun (Panel Operator · B)", "panel_operator"),
 ]
 
-# (id, name, zone, floor)
+# (id, name, zone, floor, sensor_kinds)
+#
+# `sensor_kinds` is the instrumentation the asset actually carries, drawn only
+# from the kinds the derived-fact rules in context/derived_facts.py consume
+# (gas · temp · vibration · level · ph). An empty list is a real answer, not a
+# gap: a muster point or an office has no process instrumentation, and the
+# ambient feed emits no SCADA sample for it. Scripted scenarios post explicit
+# payloads and are unaffected by this list.
 ASSETS = [
     # Ground floor — existing plant process areas
-    ("11111111-1111-1111-1111-111111111111", "Vessel A", "coke-oven-battery", "ground"),
-    ("22222222-2222-2222-2222-222222222222", "Walkway 3", "hazardous", "ground"),
-    ("33333333-3333-3333-3333-333333333333", "Compressor B", "compressor-yard", "ground"),
-    ("44444444-4444-4444-4444-444444444444", "Tank Farm C", "tank-farm", "ground"),
-    ("66666666-6666-6666-6666-666666666661", "By-Product Plant", "byproduct-plant", "ground"),
-    ("66666666-6666-6666-6666-666666666662", "Coke Battery B", "coke-oven-battery", "ground"),
-    ("66666666-6666-6666-6666-666666666663", "DRI Plant", "dri-plant", "ground"),
-    ("66666666-6666-6666-6666-666666666664", "ETP", "etp", "ground"),
-    ("66666666-6666-6666-6666-666666666665", "Control Room", "control-room", "ground"),
-    ("66666666-6666-6666-6666-666666666666", "Raw Material Yard", "raw-material-yard", "ground"),
+    ("11111111-1111-1111-1111-111111111111", "Vessel A", "coke-oven-battery", "ground", ["gas", "temp"]),
+    ("22222222-2222-2222-2222-222222222222", "Walkway 3", "hazardous", "ground", ["gas"]),
+    ("33333333-3333-3333-3333-333333333333", "Compressor B", "compressor-yard", "ground", ["vibration", "temp"]),
+    ("44444444-4444-4444-4444-444444444444", "Tank Farm C", "tank-farm", "ground", ["level", "gas"]),
+    ("66666666-6666-6666-6666-666666666661", "By-Product Plant", "byproduct-plant", "ground", ["gas", "temp"]),
+    ("66666666-6666-6666-6666-666666666662", "Coke Battery B", "coke-oven-battery", "ground", ["gas", "temp"]),
+    ("66666666-6666-6666-6666-666666666663", "DRI Plant", "dri-plant", "ground", ["temp", "gas"]),
+    ("66666666-6666-6666-6666-666666666664", "ETP", "etp", "ground", ["ph", "level"]),
+    ("66666666-6666-6666-6666-666666666665", "Control Room", "control-room", "ground", ["temp"]),
+    ("66666666-6666-6666-6666-666666666666", "Raw Material Yard", "raw-material-yard", "ground", ["vibration"]),
     # First floor — process & utility mezzanine
-    ("77777777-7777-7777-7777-777777777701", "Gas Cleaning Plant", "gas-cleaning", "first"),
-    ("77777777-7777-7777-7777-777777777702", "Pump House", "pump-house", "first"),
-    ("77777777-7777-7777-7777-777777777703", "Boiler House", "boiler-house", "first"),
-    ("77777777-7777-7777-7777-777777777704", "Electrical Substation", "substation", "first"),
-    ("77777777-7777-7777-7777-777777777705", "Instrument Air Plant", "instrument-air", "first"),
-    ("77777777-7777-7777-7777-777777777706", "Maintenance Workshop", "workshop", "first"),
-    ("77777777-7777-7777-7777-777777777707", "Pipe Rack Gantry", "pipe-rack", "first"),
-    ("77777777-7777-7777-7777-777777777708", "Weighbridge & Loading Dock", "weighbridge", "first"),
-    ("77777777-7777-7777-7777-777777777709", "Fire Water Pump Station", "fire-water", "first"),
+    ("77777777-7777-7777-7777-777777777701", "Gas Cleaning Plant", "gas-cleaning", "first", ["gas", "temp"]),
+    ("77777777-7777-7777-7777-777777777702", "Pump House", "pump-house", "first", ["vibration", "temp"]),
+    ("77777777-7777-7777-7777-777777777703", "Boiler House", "boiler-house", "first", ["temp", "level", "gas"]),
+    ("77777777-7777-7777-7777-777777777704", "Electrical Substation", "substation", "first", ["temp"]),
+    ("77777777-7777-7777-7777-777777777705", "Instrument Air Plant", "instrument-air", "first", ["vibration", "temp"]),
+    ("77777777-7777-7777-7777-777777777706", "Maintenance Workshop", "workshop", "first", ["temp"]),
+    ("77777777-7777-7777-7777-777777777707", "Pipe Rack Gantry", "pipe-rack", "first", ["gas"]),
+    ("77777777-7777-7777-7777-777777777708", "Weighbridge & Loading Dock", "weighbridge", "first", ["gas"]),
+    ("77777777-7777-7777-7777-777777777709", "Fire Water Pump Station", "fire-water", "first", ["level", "vibration"]),
     # Second floor — elevated ops & control
-    ("77777777-7777-7777-7777-777777777801", "Central Control Room", "central-control", "second"),
-    ("77777777-7777-7777-7777-777777777802", "SCADA Room", "scada", "second"),
-    ("77777777-7777-7777-7777-777777777803", "Admin & Shift Office", "admin-office", "second"),
-    ("77777777-7777-7777-7777-777777777804", "Crane / Hoist Deck", "crane-deck", "second"),
-    ("77777777-7777-7777-7777-777777777805", "Elevated Conveyor Gantry", "conveyor-gantry", "second"),
-    ("77777777-7777-7777-7777-777777777806", "Rooftop Cooling Towers", "cooling-towers", "second"),
-    ("77777777-7777-7777-7777-777777777807", "Muster Point", "muster-point", "second"),
-    ("77777777-7777-7777-7777-777777777808", "HVAC Plant", "hvac", "second"),
+    ("77777777-7777-7777-7777-777777777801", "Central Control Room", "central-control", "second", ["temp"]),
+    ("77777777-7777-7777-7777-777777777802", "SCADA Room", "scada", "second", ["temp"]),
+    ("77777777-7777-7777-7777-777777777803", "Admin & Shift Office", "admin-office", "second", []),
+    ("77777777-7777-7777-7777-777777777804", "Crane / Hoist Deck", "crane-deck", "second", ["vibration"]),
+    ("77777777-7777-7777-7777-777777777805", "Elevated Conveyor Gantry", "conveyor-gantry", "second", ["vibration", "temp"]),
+    ("77777777-7777-7777-7777-777777777806", "Rooftop Cooling Towers", "cooling-towers", "second", ["temp", "level", "vibration"]),
+    ("77777777-7777-7777-7777-777777777807", "Muster Point", "muster-point", "second", []),
+    ("77777777-7777-7777-7777-777777777808", "HVAC Plant", "hvac", "second", ["temp", "vibration"]),
 ]
 
 WORKERS = [
@@ -230,21 +237,29 @@ async def seed_minimal(session: AsyncSession | None = None) -> None:
             {"id": DEPT_ID, "name": "Coke Oven Ops"},
         )
 
-        for asset_id, name, zone, floor in ASSETS:
+        for asset_id, name, zone, floor, sensor_kinds in ASSETS:
             await session.execute(
                 text(
                     """
-                    INSERT INTO assets (id, name, zone, plant_id, floor)
+                    INSERT INTO assets (id, name, zone, plant_id, floor, sensor_kinds)
                     VALUES (
-                        CAST(:id AS uuid), :name, :zone, 'plant-1', :floor
+                        CAST(:id AS uuid), :name, :zone, 'plant-1', :floor,
+                        CAST(:sensor_kinds AS jsonb)
                     )
                     ON CONFLICT (id) DO UPDATE
                       SET name = EXCLUDED.name,
                           zone = EXCLUDED.zone,
-                          floor = EXCLUDED.floor
+                          floor = EXCLUDED.floor,
+                          sensor_kinds = EXCLUDED.sensor_kinds
                     """
                 ),
-                {"id": asset_id, "name": name, "zone": zone, "floor": floor},
+                {
+                    "id": asset_id,
+                    "name": name,
+                    "zone": zone,
+                    "floor": floor,
+                    "sensor_kinds": json.dumps(sensor_kinds),
+                },
             )
 
         await session.execute(

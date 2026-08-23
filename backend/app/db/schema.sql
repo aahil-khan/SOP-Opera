@@ -708,3 +708,10 @@ ALTER TABLE response_pages
 ALTER TABLE response_pages
     ADD CONSTRAINT response_pages_action_id_fkey
     FOREIGN KEY (action_id) REFERENCES response_actions(id) ON DELETE CASCADE;
+
+-- Which metrics an asset is actually instrumented for. Deliberately nullable:
+-- NULL means "unspecified" and the ambient feed falls back to the legacy
+-- all-metrics bundle, while an explicit [] means "carries no process sensors"
+-- (control rooms, muster points). Values are the kind names in
+-- app/simulator/ambient.py SENSOR_KIND_PAYLOAD.
+ALTER TABLE assets ADD COLUMN IF NOT EXISTS sensor_kinds JSONB;
